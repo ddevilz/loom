@@ -4,8 +4,6 @@ from typing import Any
 
 from falkordb import FalkorDB
 
-from .schema import schema_init
-
 _DB_SINGLETON: FalkorDB | None = None
 
 
@@ -24,7 +22,6 @@ class FalkorGateway:
     def _connect(self) -> None:
         self._db = get_falkordb_singleton()
         self._graph = self._db.select_graph(self.graph_name)
-        schema_init(self)
 
     def reconnect(self) -> None:
         self._connect()

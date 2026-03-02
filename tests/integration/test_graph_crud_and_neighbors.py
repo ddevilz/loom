@@ -15,12 +15,12 @@ def _falkordb_reachable(host: str = "127.0.0.1", port: int = 6379) -> bool:
 
 
 @pytest.mark.integration
-def test_graph_bulk_and_query_roundtrip():
+async def test_graph_bulk_and_query_roundtrip():
     if not _falkordb_reachable():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     g = LoomGraph(graph_name="loom_pytest")
-    g.query(queries.CLEAR_GRAPH)
+    await g.query(queries.CLEAR_GRAPH)
 
     nodes = [
         Node(
@@ -37,7 +37,7 @@ def test_graph_bulk_and_query_roundtrip():
         for i in range(10)
     ]
 
-    g.bulk_create_nodes(nodes)
+    await g.bulk_create_nodes(nodes)
 
     edges = [
         Edge(
@@ -48,22 +48,22 @@ def test_graph_bulk_and_query_roundtrip():
         for i in range(5)
     ]
 
-    g.bulk_create_edges(edges)
+    await g.bulk_create_edges(edges)
 
-    labeled = g.query(
+    labeled = await g.query(
         "MATCH (n:Function {id: $id}) RETURN count(n) AS c",
         params={"id": nodes[0].id},
     )
     assert labeled[0]["c"] == 1
 
-    count_rows = g.query(queries.COUNT_NODES)
+    count_rows = await g.query(queries.COUNT_NODES)
     assert count_rows[0]["c"] == 10
 
-    n0 = g.get_node(nodes[0].id)
+    n0 = await g.get_node(nodes[0].id)
     assert n0 is not None
     assert n0.id == nodes[0].id
 
-    neigh = g.neighbors(nodes[0].id, depth=2, edge_types=[EdgeType.CALLS])
+    neigh = await g.neighbors(nodes[0].id, depth=2, edge_types=[EdgeType.CALLS])
     neigh_ids = {n.id for n in neigh}
     assert nodes[1].id in neigh_ids
     assert nodes[2].id in neigh_ids
