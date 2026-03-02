@@ -1,0 +1,43 @@
+[project]
+name = "loom"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Devashish", email = "jadhavom24@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "falkordb>=1.6.0",
+    "fastembed>=0.7.4",
+    "fastmcp>=3.0.2",
+    "gitpython>=3.1.46",
+    "igraph>=1.0.0",
+    "leidenalg>=0.11.0",
+    "litellm>=1.82.0",
+    "mcp>=1.26.0",
+    "pydantic>=2.12.5",
+    "rich>=14.3.3",
+    "tree-sitter>=0.25.2",
+    "typer>=0.24.1",
+    "watchfiles>=1.1.1",
+    "uvloop ; sys_platform != 'win32'",
+    "winloop>=0.5.0; platform_system == 'Windows'",
+]
+
+[project.scripts]
+loom = "loom.cli:main"
+loom-test = "loom.devtools:run_tests"
+loom-check-deps = "loom.devtools:check_deps"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/loom"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

@@ -1,0 +1,4 @@
+.loom/
+.venv/
+__pycache__/
+.env
