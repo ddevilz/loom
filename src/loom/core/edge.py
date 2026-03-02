@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class EdgeType(StrEnum):
+    # code → code
+    CALLS = "calls"
+    IMPORTS = "imports"
+    EXTENDS = "extends"
+    IMPLEMENTS = "implements"
+    USES_TYPE = "uses_type"
+    MEMBER_OF = "member_of"
+    STEP_IN = "step_in"
+    COUPLED_WITH = "coupled_with"
+    CONTAINS = "contains"
+
+    # doc → doc
+    CHILD_OF = "child_of"
+    REFERENCES = "references"
+
+    # cross-domain
+    LOOM_IMPLEMENTS = "loom_implements"
+    LOOM_SPECIFIES = "loom_specifies"
+    LOOM_VIOLATES = "loom_violates"
+
+
+LinkMethod = Literal["name_match", "embed_match", "llm_match"]
+
+
+class Edge(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_id: str
+    to_id: str
+    kind: EdgeType
+
+    confidence: float = 1.0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    link_method: LinkMethod | None = None
+    link_reason: str | None = None
+
+    @property
+    def is_loom_edge(self) -> bool:
+        return self.kind in {
+            EdgeType.LOOM_IMPLEMENTS,
+            EdgeType.LOOM_SPECIFIES,
+            EdgeType.LOOM_VIOLATES,
+        }
+
+    @model_validator(mode="after")
+    def _validate_edge(self) -> "Edge":
+        if not (0.0 <= self.confidence <= 1.0):
+            raise ValueError("confidence must be between 0.0 and 1.0")
+
+        if self.is_loom_edge:
+            # link_method/link_reason are optional, but if present must be coherent
+            if self.link_method is None and self.link_reason is not None:
+                raise ValueError("link_reason requires link_method for LOOM_* edges")
+        else:
+            if self.link_method is not None or self.link_reason is not None:
+                raise ValueError("link_method/link_reason are only allowed for LOOM_* edges")
+
+        return self
