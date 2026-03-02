@@ -32,6 +32,24 @@ def create_or_update_edge(rel_type: str) -> str:
     )
 
 
+def create_or_update_node_with_label(label: str) -> str:
+    return (
+        "MERGE (n:Node {id: $id}) "
+        "SET n += $props "
+        f"SET n:`{label}` "
+        "RETURN n"
+    )
+
+
+def bulk_create_or_update_nodes_with_label(label: str) -> str:
+    return (
+        "UNWIND $nodes AS n "
+        "MERGE (node:Node {id: n.id}) "
+        "SET node += n.props "
+        f"SET node:`{label}`"
+    )
+
+
 def bulk_create_or_update_edges(rel_type: str) -> str:
     return (
         "UNWIND $edges AS e "

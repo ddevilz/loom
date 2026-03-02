@@ -50,6 +50,12 @@ def test_graph_bulk_and_query_roundtrip():
 
     g.bulk_create_edges(edges)
 
+    labeled = g.query(
+        "MATCH (n:Function {id: $id}) RETURN count(n) AS c",
+        params={"id": nodes[0].id},
+    )
+    assert labeled[0]["c"] == 1
+
     count_rows = g.query(queries.COUNT_NODES)
     assert count_rows[0]["c"] == 10
 

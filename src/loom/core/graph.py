@@ -42,5 +42,15 @@ class LoomGraph:
         self.edges.bulk_upsert(edges)
 
     def neighbors(self, node_id: str, depth: int = 1, edge_types: list[EdgeType] | None = None) -> list[Node]:
+        resolved_id = node_id
+        if ":" not in node_id:
+            rows = self.query(
+                "MATCH (f:Function {name: $name}) RETURN f.id AS id LIMIT 1",
+                params={"name": node_id},
+            )
+            if not rows:
+                return []
+            resolved_id = rows[0]["id"]
+
         types = edge_types or list(EdgeType)
-        return self.traversal.neighbors(node_id=node_id, depth=depth, edge_types=types)
+        return self.traversal.neighbors(node_id=resolved_id, depth=depth, edge_types=types)

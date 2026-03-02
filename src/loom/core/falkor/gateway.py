@@ -4,6 +4,8 @@ from typing import Any
 
 from falkordb import FalkorDB
 
+from .schema import schema_init
+
 _DB_SINGLETON: FalkorDB | None = None
 
 
@@ -22,19 +24,32 @@ class FalkorGateway:
     def _connect(self) -> None:
         self._db = get_falkordb_singleton()
         self._graph = self._db.select_graph(self.graph_name)
+        schema_init(self)
 
     def reconnect(self) -> None:
         self._connect()
 
-    def run(self, cypher: str, params: dict[str, Any] | None = None):
+    def run(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ):
         try:
-            return self._graph.query(cypher, params=params)
+            return self._graph.query(cypher, params=params, timeout=timeout)
         except Exception:
             self.reconnect()
-            return self._graph.query(cypher, params=params)
+            return self._graph.query(cypher, params=params, timeout=timeout)
 
-    def query_rows(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        res = self.run(cypher, params=params)
+    def query_rows(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ) -> list[dict[str, Any]]:
+        res = self.run(cypher, params=params, timeout=timeout)
         header = list(getattr(res, "header", []) or [])
 
         out: list[dict[str, Any]] = []
