@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 PYTHON_BUILTINS: frozenset[str] = frozenset(
     {
         "abs",
@@ -153,8 +155,97 @@ COMMON_STDLIB: frozenset[str] = frozenset(
     }
 )
 
-NOISE_FILTER: frozenset[str] = PYTHON_BUILTINS | COMMON_STDLIB
+PYTHON_NOISE: frozenset[str] = PYTHON_BUILTINS | COMMON_STDLIB
 
 
-def should_ignore_call(name: str) -> bool:
-    return name in NOISE_FILTER
+# NOTE: These language lists are intentionally conservative.
+# They should only include extremely common library/built-in calls that tend to
+# overwhelm call graphs without adding architectural signal.
+
+JAVA_COMMON: frozenset[str] = frozenset(
+    {
+        "toString",
+        "hashCode",
+        "equals",
+        "getClass",
+        "notify",
+        "notifyAll",
+        "wait",
+        "clone",
+        "finalize",
+        "size",
+        "isEmpty",
+        "contains",
+        "add",
+        "remove",
+        "clear",
+        "put",
+        "get",
+        "stream",
+        "map",
+        "filter",
+        "forEach",
+        "collect",
+        "of",
+        "valueOf",
+        "println",
+        "print",
+        "format",
+    }
+)
+
+
+JS_TS_COMMON: frozenset[str] = frozenset(
+    {
+        # arrays
+        "push",
+        "pop",
+        "shift",
+        "unshift",
+        "slice",
+        "splice",
+        "map",
+        "filter",
+        "reduce",
+        "forEach",
+        "find",
+        "some",
+        "every",
+        "includes",
+        "indexOf",
+        "join",
+        # promises
+        "then",
+        "catch",
+        "finally",
+        # object utilities
+        "keys",
+        "values",
+        "entries",
+        "assign",
+        # json
+        "parse",
+        "stringify",
+        # logging
+        "log",
+        "warn",
+        "error",
+        "debug",
+    }
+)
+
+
+LanguageName = Literal["python", "java", "javascript", "typescript"]
+
+
+def should_ignore_call(name: str, *, language: LanguageName | None = None) -> bool:
+    if language is None or language == "python":
+        return name in PYTHON_NOISE
+
+    if language == "java":
+        return name in JAVA_COMMON
+
+    if language in {"javascript", "typescript"}:
+        return name in JS_TS_COMMON
+
+    return False
