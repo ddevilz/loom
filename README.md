@@ -95,27 +95,31 @@ validate_user()  ──[MEMBER_OF]───────▶  community:auth
 
 ```
 src/loom/
-├── core/           # Node, Edge, Graph models — the foundation
-│   ├── node.py     # Unified node type (code symbol OR doc section)
-│   ├── edge.py     # All edge types including IMPLEMENTS/SPECIFIES/VIOLATES
-│   ├── graph.py    # FalkorDB CRUD layer
-│   └── schema.py   # Indexes and vector index setup
+├── core/                 # Core graph domain + FalkorDB facade
+│   ├── node.py           # Node model (code symbols + doc sections)
+│   ├── edge.py           # Edge model + EdgeType
+│   ├── graph.py          # LoomGraph async facade
+│   └── falkor/           # FalkorDB data-access implementation details
+│       ├── gateway.py    # Connection + low-level query execution
+│       ├── repositories.py
+│       ├── queries.py
+│       ├── mappers.py
+│       └── schema.py     # Index + vector index initialization
 │
-├── ingest/         # Source connectors
-│   ├── code/       # Git repos (Python, JS, TS, Go, Java, Rust, Ruby)
-│   └── docs/       # PDF, DOCX, Markdown, Confluence, Notion, Jira
-│
-├── analysis/       # Intelligence pipeline
-│   ├── code/       # AST parser, call tracer, communities, coupling, dead code
-│   └── docs/       # TOC detection, hierarchy extraction, LLM summaries
-│
-├── embed/          # nomic-embed-text (unified code + prose space)
-├── linker/         # Semantic linker — creates IMPLEMENTS/SPECIFIES edges
-├── search/         # Dual-traversal search (code graph + doc tree simultaneously)
-├── watch/          # File watcher — incremental re-index on change
-├── drift/          # Spec drift detection + coverage scoring
-├── llm/            # LiteLLM client (OpenAI / Ollama / any provider)
-└── mcp/            # FastMCP server — 5 tools for AI agents
+├── ingest/               # (WIP) source connectors
+├── analysis/             # (WIP) analysis pipeline
+├── embed/                # (WIP) embeddings
+├── linker/               # (WIP) cross-domain linking
+├── search/               # (WIP) query/search layer
+├── watch/                # (WIP) file watching
+├── drift/                # (WIP) drift detection
+├── llm/                  # (WIP) LLM client
+└── mcp/                  # (WIP) MCP server
+
+tests/
+├── unit/
+├── integration/
+└── fixtures/
 ```
 
 ---
@@ -294,8 +298,8 @@ uv run mypy src/
 
 **v0.1** *(current sprint)*
 - [x] Project setup + environment
-- [ ] Node + Edge models (graph schema)
-- [ ] FalkorDB CRUD layer + indexes
+- [x] Node + Edge models (graph schema)
+- [x] FalkorDB CRUD layer + indexes
 - [ ] Python code parser (tree-sitter)
 - [ ] PDF/DOCX/Markdown doc pipeline
 - [ ] Semantic linker (3-tier)

@@ -23,6 +23,13 @@ dependencies = [
     "watchfiles>=1.1.1",
     "uvloop ; sys_platform != 'win32'",
     "winloop>=0.5.0; platform_system == 'Windows'",
+    "tree-sitter-python>=0.25.0",
+    "tree-sitter-javascript>=0.25.0",
+    "tree-sitter-typescript>=0.23.2",
+    "tree-sitter-go>=0.25.0",
+    "tree-sitter-java>=0.23.5",
+    "tree-sitter-rust>=0.24.0",
+    "tree-sitter-ruby>=0.23.1",
 ]
 
 [project.scripts]

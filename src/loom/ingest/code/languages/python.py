@@ -1,0 +1,270 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from tree_sitter import Language
+from tree_sitter import Node as TSNode
+from tree_sitter import Parser
+from tree_sitter_python import language as python_language
+
+from loom.core import Node, NodeKind, NodeSource
+
+from loom.ingest.code.languages.constants import (
+    DEC_ACTION,
+    DEC_API_VIEW,
+    DEC_APP_DELETE,
+    DEC_APP_GET,
+    DEC_APP_PATCH,
+    DEC_APP_POST,
+    DEC_APP_PUT,
+    DEC_APP_ROUTE,
+    DEC_CSRF_EXEMPT,
+    DEC_LOGIN_REQUIRED,
+    DEC_PERMISSION_REQUIRED,
+    DEC_REQUIRE_HTTP_METHODS,
+    DEC_ROUTER_DELETE,
+    DEC_ROUTER_GET,
+    DEC_ROUTER_PATCH,
+    DEC_ROUTER_POST,
+    DEC_ROUTER_PUT,
+    DEC_SHARED_TASK,
+    DEC_TASK,
+    HINT_CELERY_TASK,
+    HINT_DJANGO_AUTH,
+    HINT_DJANGO_VIEW,
+    HINT_DRF_ACTION,
+    HINT_DRF_VIEW,
+    HINT_FASTAPI_ROUTE,
+    HINT_FLASK_ROUTE,
+    LANG_PYTHON,
+    META_DECORATORS,
+    META_FRAMEWORK_HINT,
+    TS_PY_ATTRIBUTE,
+    TS_PY_CALL,
+    TS_PY_CLASS_DEF,
+    TS_PY_DECORATED_DEF,
+    TS_PY_DECORATOR,
+    TS_PY_FUNCTION_DEF,
+    TS_PY_IDENTIFIER,
+)
+
+
+_PY_LANGUAGE = Language(python_language())
+
+
+@dataclass(frozen=True)
+class _Context:
+    class_stack: tuple[str, ...] = ()
+    func_stack: tuple[str, ...] = ()
+
+    def push_class(self, name: str) -> "_Context":
+        return _Context(class_stack=self.class_stack + (name,), func_stack=self.func_stack)
+
+    def push_func(self, name: str) -> "_Context":
+        return _Context(class_stack=self.class_stack, func_stack=self.func_stack + (name,))
+
+    def qualname(self, name: str) -> str:
+        parts: list[str] = []
+        if self.class_stack:
+            parts.append(".".join(self.class_stack))
+        if self.func_stack:
+            parts.append(".".join(self.func_stack))
+        parts.append(name)
+        return ".".join(parts)
+
+
+def _is_test_path(path: str) -> bool:
+    p = Path(path)
+    if p.name.startswith("test_") or p.name.endswith("_test.py"):
+        return True
+    parts = {part.lower() for part in p.parts}
+    return "tests" in parts or "test" in parts
+
+
+def _node_text(src: bytes, n: TSNode) -> str:
+    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
+
+
+def _get_name(src: bytes, n: TSNode) -> str | None:
+    name_node = n.child_by_field_name("name")
+    if name_node is None:
+        return None
+    return _node_text(src, name_node)
+
+
+def _lines(n: TSNode) -> tuple[int, int]:
+    # tree-sitter rows are 0-indexed; convert to 1-indexed inclusive
+    start_line = n.start_point[0] + 1
+    end_line = n.end_point[0] + 1
+    return start_line, end_line
+
+
+# ── framework hint rules ────────────────────────────────────────────
+_FRAMEWORK_HINTS: dict[str, str] = {
+    DEC_APP_ROUTE: HINT_FLASK_ROUTE,
+    DEC_APP_GET: HINT_FASTAPI_ROUTE,
+    DEC_APP_POST: HINT_FASTAPI_ROUTE,
+    DEC_APP_PUT: HINT_FASTAPI_ROUTE,
+    DEC_APP_DELETE: HINT_FASTAPI_ROUTE,
+    DEC_APP_PATCH: HINT_FASTAPI_ROUTE,
+    DEC_ROUTER_GET: HINT_FASTAPI_ROUTE,
+    DEC_ROUTER_POST: HINT_FASTAPI_ROUTE,
+    DEC_ROUTER_PUT: HINT_FASTAPI_ROUTE,
+    DEC_ROUTER_DELETE: HINT_FASTAPI_ROUTE,
+    DEC_ROUTER_PATCH: HINT_FASTAPI_ROUTE,
+    DEC_LOGIN_REQUIRED: HINT_DJANGO_AUTH,
+    DEC_PERMISSION_REQUIRED: HINT_DJANGO_AUTH,
+    DEC_REQUIRE_HTTP_METHODS: HINT_DJANGO_VIEW,
+    DEC_CSRF_EXEMPT: HINT_DJANGO_VIEW,
+    DEC_API_VIEW: HINT_DRF_VIEW,
+    DEC_ACTION: HINT_DRF_ACTION,
+    DEC_TASK: HINT_CELERY_TASK,
+    DEC_SHARED_TASK: HINT_CELERY_TASK,
+}
+
+
+def _get_decorators(src: bytes, decorated_node: TSNode) -> list[str]:
+    """Extract decorator name strings from a decorated_definition node."""
+    decorators: list[str] = []
+    for child in decorated_node.children:
+        if child.type == TS_PY_DECORATOR:
+            # decorator children: "@" + expression
+            # expression can be: identifier, attribute, call
+            for part in child.children:
+                if part.type == TS_PY_IDENTIFIER:
+                    decorators.append(_node_text(src, part))
+                elif part.type == TS_PY_ATTRIBUTE:
+                    decorators.append(_node_text(src, part))
+                elif part.type == TS_PY_CALL:
+                    fn = part.child_by_field_name("function")
+                    if fn is not None:
+                        decorators.append(_node_text(src, fn))
+    return decorators
+
+
+def _detect_framework_hint(decorators: list[str]) -> str | None:
+    for dec in decorators:
+        # check exact match or dotted match
+        if dec in _FRAMEWORK_HINTS:
+            return _FRAMEWORK_HINTS[dec]
+        # also check suffix (e.g. "blueprint.route" matches "*.route")
+        parts = dec.rsplit(".", 1)
+        if len(parts) == 2:
+            suffix_key = parts[0].rsplit(".", 1)[-1] + "." + parts[1]
+            if suffix_key in _FRAMEWORK_HINTS:
+                return _FRAMEWORK_HINTS[suffix_key]
+    return None
+
+
+def _extract_from_def(
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _Context,
+    out: list[Node],
+    decorators: list[str] | None = None,
+) -> None:
+    if n.type == TS_PY_DECORATED_DEF:
+        decs = _get_decorators(src, n)
+        inner = n.child_by_field_name("definition")
+        if inner is not None:
+            _extract_from_def(path=path, src=src, n=inner, ctx=ctx, out=out, decorators=decs)
+        return
+
+    if n.type == TS_PY_CLASS_DEF:
+        name = _get_name(src, n)
+        if not name:
+            return
+
+        start_line, end_line = _lines(n)
+        meta: dict[str, Any] = {}
+        if decorators:
+            meta[META_DECORATORS] = decorators
+            hint = _detect_framework_hint(decorators)
+            if hint:
+                meta[META_FRAMEWORK_HINT] = hint
+        out.append(
+            Node(
+                id=f"{NodeKind.CLASS.value}:{path}:{name}:{start_line}",
+                kind=NodeKind.CLASS,
+                source=NodeSource.CODE,
+                name=name,
+                path=path,
+                start_line=start_line,
+                end_line=end_line,
+                language=LANG_PYTHON,
+                metadata=meta,
+            )
+        )
+
+        body = n.child_by_field_name("body")
+        if body is not None:
+            _walk(path=path, src=src, n=body, ctx=ctx.push_class(name), out=out)
+        return
+
+    if n.type == TS_PY_FUNCTION_DEF:
+        name = _get_name(src, n)
+        if not name:
+            return
+
+        start_line, end_line = _lines(n)
+        kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
+        if kind == NodeKind.METHOD:
+            symbol = ctx.qualname(name)
+        elif ctx.func_stack:
+            symbol = ".".join(ctx.func_stack + (name,))
+        else:
+            symbol = name
+        meta: dict[str, Any] = {}
+        if decorators:
+            meta[META_DECORATORS] = decorators
+            hint = _detect_framework_hint(decorators)
+            if hint:
+                meta[META_FRAMEWORK_HINT] = hint
+        out.append(
+            Node(
+                id=f"{kind.value}:{path}:{symbol}:{start_line}",
+                kind=kind,
+                source=NodeSource.CODE,
+                name=name,
+                path=path,
+                start_line=start_line,
+                end_line=end_line,
+                language=LANG_PYTHON,
+                metadata=meta,
+            )
+        )
+
+        body = n.child_by_field_name("body")
+        if body is not None:
+            _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out)
+        return
+
+
+def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
+    # We walk all children and recursively extract definitions.
+    for child in n.children:
+        if child.type in {TS_PY_FUNCTION_DEF, TS_PY_CLASS_DEF, TS_PY_DECORATED_DEF}:
+            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
+        else:
+            if child.child_count:
+                _walk(path=path, src=src, n=child, ctx=ctx, out=out)
+
+
+def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
+    if exclude_tests and _is_test_path(path):
+        return []
+
+    p = Path(path)
+    src = p.read_bytes()
+
+    parser = Parser()
+    parser.language = _PY_LANGUAGE
+    tree = parser.parse(src)
+
+    out: list[Node] = []
+    _walk(path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out)
+    return out
