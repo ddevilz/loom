@@ -22,31 +22,55 @@ from loom.ingest.code.languages.constants import (
     FILETYPE_PROJECT_FILE,
     FILETYPE_TSCONFIG,
     LANG_CSS,
+    LANG_ENV,
     LANG_HTML,
+    LANG_INI,
     LANG_JSON,
+    LANG_PROPERTIES,
+    LANG_TOML,
     LANG_XML,
     LANG_YAML,
+    META_ARIA_ATTRIBUTES,
     META_CLASS_COUNT,
     META_CLASSES,
     META_CONFIG_TYPE,
+    META_CSS_IMPORTS,
     META_CSS_VARIABLES,
+    META_CUSTOM_ELEMENTS,
+    META_DATA_ATTRIBUTES,
+    META_DATABASE_CONFIG,
+    META_DEPENDENCIES,
+    META_DEV_DEPENDENCIES,
     META_ELEMENT_COUNT,
+    META_EVENT_HANDLERS,
     META_FILE_TYPE,
+    META_FONT_FACES,
     META_FORM_ACTIONS,
     META_FORM_COUNT,
+    META_FRAMEWORK_DIRECTIVES,
     META_ID_COUNT,
     META_IS_ARRAY,
     META_ITEM_COUNT,
+    META_KEYFRAMES,
     META_MEDIA_QUERY_COUNT,
+    META_META_TAGS,
     META_NAMESPACES,
     META_PARSE_ERROR,
+    META_PROJECT_NAME,
+    META_PROJECT_VERSION,
+    META_PROPERTY_COUNT,
+    META_PROPERTY_KEYS,
     META_ROOT_TAG,
     META_SCHEMA_URL,
     META_SCRIPTS,
+    META_SENSITIVE_KEYS,
+    META_SPRING_PROFILE,
     META_STYLESHEETS,
     META_TEMPLATE_ENGINE,
     META_TITLE,
     META_TOP_LEVEL_KEYS,
+    META_VARIABLE_COUNT,
+    META_VARIABLE_NAMES,
     XML_EVENT_START_NS,
     JSON_KEY_COMPILER_OPTIONS,
     JSON_KEY_DEPENDENCIES,
@@ -295,6 +319,205 @@ def parse_yaml(path: str, *, exclude_tests: bool = False) -> list[Node]:
         name=p.name,
         path=path.replace("\\", "/"),
         language=LANG_YAML,
+        metadata=meta,
+    )
+    return [node]
+
+
+def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
+    """Extract metadata from Java .properties files: keys, Spring profiles, database config."""
+    p = Path(path)
+    content = p.read_text(encoding="utf-8", errors="replace")
+    
+    meta: dict[str, Any] = {}
+    
+    # Parse properties (key=value format, ignore comments)
+    properties = {}
+    for line in content.split('\n'):
+        line = line.strip()
+        if line and not line.startswith('#') and not line.startswith('!'):
+            if '=' in line:
+                key, _, value = line.partition('=')
+                properties[key.strip()] = value.strip()
+    
+    if properties:
+        meta[META_PROPERTY_COUNT] = len(properties)
+        meta[META_PROPERTY_KEYS] = list(properties.keys())[:50]
+        
+        # Detect Spring profile
+        if 'spring.profiles.active' in properties:
+            meta[META_SPRING_PROFILE] = properties['spring.profiles.active']
+        
+        # Detect database configuration
+        db_keys = [k for k in properties.keys() if 'database' in k.lower() or 'datasource' in k.lower() or 'jdbc' in k.lower()]
+        if db_keys:
+            meta[META_DATABASE_CONFIG] = True
+        
+        # Detect sensitive keys
+        sensitive_patterns = ['password', 'secret', 'key', 'token', 'credential']
+        sensitive = [k for k in properties.keys() if any(p in k.lower() for p in sensitive_patterns)]
+        if sensitive:
+            meta[META_SENSITIVE_KEYS] = sensitive[:10]
+    
+    node = Node(
+        id=f"{NodeKind.FILE.value}:{path}",
+        kind=NodeKind.FILE,
+        source=NodeSource.CODE,
+        name=p.name,
+        path=path.replace("\\", "/"),
+        language=LANG_PROPERTIES,
+        metadata=meta,
+    )
+    return [node]
+
+
+def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
+    """Extract metadata from .env files: environment variables, sensitive keys."""
+    p = Path(path)
+    content = p.read_text(encoding="utf-8", errors="replace")
+    
+    meta: dict[str, Any] = {}
+    
+    # Parse environment variables (KEY=value format, ignore comments)
+    variables = {}
+    for line in content.split('\n'):
+        line = line.strip()
+        if line and not line.startswith('#'):
+            if '=' in line:
+                key, _, value = line.partition('=')
+                variables[key.strip()] = value.strip()
+    
+    if variables:
+        meta[META_VARIABLE_COUNT] = len(variables)
+        meta[META_VARIABLE_NAMES] = list(variables.keys())[:50]
+        
+        # Detect sensitive keys
+        sensitive_patterns = ['password', 'secret', 'key', 'token', 'credential', 'api_key', 'private']
+        sensitive = [k for k in variables.keys() if any(p in k.lower() for p in sensitive_patterns)]
+        if sensitive:
+            meta[META_SENSITIVE_KEYS] = sensitive[:10]
+        
+        # Detect database configuration
+        db_keys = [k for k in variables.keys() if 'database' in k.lower() or 'db_' in k.lower()]
+        if db_keys:
+            meta[META_DATABASE_CONFIG] = True
+    
+    node = Node(
+        id=f"{NodeKind.FILE.value}:{path}",
+        kind=NodeKind.FILE,
+        source=NodeSource.CODE,
+        name=p.name,
+        path=path.replace("\\", "/"),
+        language=LANG_ENV,
+        metadata=meta,
+    )
+    return [node]
+
+
+def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
+    """Extract metadata from TOML files: dependencies, project info."""
+    p = Path(path)
+    content = p.read_text(encoding="utf-8", errors="replace")
+    
+    meta: dict[str, Any] = {}
+    
+    # Simple TOML parsing (extract sections and key-value pairs)
+    # This is a basic implementation - for production, use tomli library
+    current_section = None
+    dependencies = []
+    dev_dependencies = []
+    
+    for line in content.split('\n'):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        
+        # Section headers
+        if line.startswith('[') and line.endswith(']'):
+            current_section = line[1:-1]
+        # Key-value pairs
+        elif '=' in line:
+            key, _, value = line.partition('=')
+            key = key.strip()
+            value = value.strip().strip('"\'')
+            
+            # Extract project metadata
+            if current_section == 'project' or current_section == 'tool.poetry':
+                if key == 'name':
+                    meta[META_PROJECT_NAME] = value
+                elif key == 'version':
+                    meta[META_PROJECT_VERSION] = value
+            
+            # Extract dependencies
+            if 'dependencies' in (current_section or ''):
+                if 'dev' in current_section:
+                    dev_dependencies.append(key)
+                else:
+                    dependencies.append(key)
+    
+    if dependencies:
+        meta[META_DEPENDENCIES] = dependencies[:50]
+    if dev_dependencies:
+        meta[META_DEV_DEPENDENCIES] = dev_dependencies[:50]
+    
+    # Detect file type
+    if 'pyproject.toml' in p.name:
+        meta[META_FILE_TYPE] = 'python_project'
+    elif 'Cargo.toml' in p.name:
+        meta[META_FILE_TYPE] = 'rust_project'
+    
+    node = Node(
+        id=f"{NodeKind.FILE.value}:{path}",
+        kind=NodeKind.FILE,
+        source=NodeSource.CODE,
+        name=p.name,
+        path=path.replace("\\", "/"),
+        language=LANG_TOML,
+        metadata=meta,
+    )
+    return [node]
+
+
+def parse_ini(path: str, *, exclude_tests: bool = False) -> list[Node]:
+    """Extract metadata from INI configuration files."""
+    p = Path(path)
+    content = p.read_text(encoding="utf-8", errors="replace")
+    
+    meta: dict[str, Any] = {}
+    
+    # Parse INI sections and keys
+    sections = {}
+    current_section = 'default'
+    
+    for line in content.split('\n'):
+        line = line.strip()
+        if not line or line.startswith(';') or line.startswith('#'):
+            continue
+        
+        # Section headers
+        if line.startswith('[') and line.endswith(']'):
+            current_section = line[1:-1]
+            sections[current_section] = []
+        # Key-value pairs
+        elif '=' in line or ':' in line:
+            separator = '=' if '=' in line else ':'
+            key, _, value = line.partition(separator)
+            if current_section not in sections:
+                sections[current_section] = []
+            sections[current_section].append(key.strip())
+    
+    if sections:
+        meta[META_TOP_LEVEL_KEYS] = list(sections.keys())[:20]
+        total_keys = sum(len(keys) for keys in sections.values())
+        meta[META_PROPERTY_COUNT] = total_keys
+    
+    node = Node(
+        id=f"{NodeKind.FILE.value}:{path}",
+        kind=NodeKind.FILE,
+        source=NodeSource.CODE,
+        name=p.name,
+        path=path.replace("\\", "/"),
+        language=LANG_INI,
         metadata=meta,
     )
     return [node]

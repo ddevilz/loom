@@ -222,3 +222,16 @@ def test_parse_tree_skips_venv_and_node_modules(tmp_path: Path):
     nodes = parse_tree(str(tmp_path))
     names = {n.name for n in nodes}
     assert names == {"real"}
+
+
+def test_parse_tree_skips_hidden_dirs(tmp_path: Path):
+    from loom.analysis.code.parser import parse_tree
+
+    (tmp_path / "app.py").write_text("def real():\n    pass\n", encoding="utf-8")
+    hidden = tmp_path / ".hidden"
+    hidden.mkdir()
+    (hidden / "x.py").write_text("def hidden():\n    pass\n", encoding="utf-8")
+
+    nodes = parse_tree(str(tmp_path))
+    names = {n.name for n in nodes}
+    assert names == {"real"}

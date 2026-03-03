@@ -3,16 +3,16 @@ from __future__ import annotations
 LANG_PYTHON = "python"
 LANG_TYPESCRIPT = "typescript"
 LANG_TSX = "tsx"
-LANG_JAVASCRIPT = "javascript"
-LANG_GO = "go"
 LANG_JAVA = "java"
-LANG_RUST = "rust"
-LANG_RUBY = "ruby"
 LANG_HTML = "html"
+LANG_CSS = "css"
 LANG_XML = "xml"
 LANG_JSON = "json"
-LANG_CSS = "css"
 LANG_YAML = "yaml"
+LANG_PROPERTIES = "properties"
+LANG_ENV = "env"
+LANG_TOML = "toml"
+LANG_INI = "ini"
 
 META_DECORATORS = "decorators"
 META_FRAMEWORK_HINT = "framework_hint"
@@ -59,10 +59,35 @@ META_ELEMENT_COUNT = "element_count"
 META_CONFIG_TYPE = "config_type"
 META_PARSE_ERROR = "parse_error"
 META_TOP_LEVEL_KEYS = "top_level_keys"
-META_FILE_TYPE = "file_type"
 META_SCHEMA_URL = "schema_url"
+META_FILE_TYPE = "file_type"
 META_IS_ARRAY = "is_array"
 META_ITEM_COUNT = "item_count"
+META_PROPERTY_COUNT = "property_count"
+META_PROPERTY_KEYS = "property_keys"
+META_VARIABLE_COUNT = "variable_count"
+META_VARIABLE_NAMES = "variable_names"
+META_REFLECTION_PATTERN = "reflection_pattern"
+META_DYNAMIC_TARGET = "dynamic_target"
+META_RESOLUTION_TYPE = "resolution_type"
+META_CALL_CONFIDENCE = "call_confidence"
+META_RAW_EXPRESSION = "raw_expression"
+META_SENSITIVE_KEYS = "sensitive_keys"
+META_SPRING_PROFILE = "spring_profile"
+META_DATABASE_CONFIG = "database_config"
+META_DEPENDENCIES = "dependencies"
+META_DEV_DEPENDENCIES = "dev_dependencies"
+META_PROJECT_NAME = "project_name"
+META_PROJECT_VERSION = "project_version"
+META_CSS_IMPORTS = "css_imports"
+META_KEYFRAMES = "keyframes"
+META_FONT_FACES = "font_faces"
+META_CUSTOM_ELEMENTS = "custom_elements"
+META_DATA_ATTRIBUTES = "data_attributes"
+META_EVENT_HANDLERS = "event_handlers"
+META_FRAMEWORK_DIRECTIVES = "framework_directives"
+META_META_TAGS = "meta_tags"
+META_ARIA_ATTRIBUTES = "aria_attributes"
 META_CLASS_COUNT = "class_count"
 META_CLASSES = "classes"
 META_ID_COUNT = "id_count"
@@ -112,12 +137,22 @@ TS_PY_DECORATOR = "decorator"
 TS_PY_CALL = "call"
 TS_PY_ATTRIBUTE = "attribute"
 TS_PY_IDENTIFIER = "identifier"
+TS_PY_IMPORT_STATEMENT = "import_statement"
+TS_PY_IMPORT_FROM_STATEMENT = "import_from_statement"
+TS_PY_DOTTED_NAME = "dotted_name"
+TS_PY_ALIASED_IMPORT = "aliased_import"
 
 TS_JS_CLASS_DECL = "class_declaration"
 TS_JS_FUNCTION_DECL = "function_declaration"
 TS_JS_FUNCTION = "function"
 TS_JS_ARROW_FUNCTION = "arrow_function"
 TS_JS_METHOD_DEF = "method_definition"
+TS_JS_ENUM_DECL = "enum_declaration"
+TS_JS_INTERFACE_DECL = "interface_declaration"
+TS_JS_TYPE_ALIAS_DECL = "type_alias_declaration"
+TS_JS_IMPORT_STATEMENT = "import_statement"
+TS_JS_EXPORT_STATEMENT = "export_statement"
+TS_JS_DECORATOR = "decorator"
 
 TS_GO_TYPE_DECL = "type_declaration"
 TS_GO_TYPE_SPEC = "type_spec"
@@ -132,6 +167,39 @@ TS_JAVA_INTERFACE_DECL = "interface_declaration"
 TS_JAVA_ENUM_DECL = "enum_declaration"
 TS_JAVA_METHOD_DECL = "method_declaration"
 TS_JAVA_CTOR_DECL = "constructor_declaration"
+TS_JAVA_ANNOTATION_TYPE_DECL = "annotation_type_declaration"
+TS_JAVA_ANNOTATION = "annotation"
+TS_JAVA_MARKER_ANNOTATION = "marker_annotation"
+TS_JAVA_MODIFIERS = "modifiers"
+TS_JAVA_LAMBDA_EXPRESSION = "lambda_expression"
+TS_JAVA_METHOD_REFERENCE = "method_reference"
+TS_JAVA_RECORD_DECL = "record_declaration"
+
+# Java reflection patterns
+JAVA_REFLECTION_METHODS = {
+    "forName",
+    "getMethod",
+    "getDeclaredMethod",
+    "getMethods",
+    "getDeclaredMethods",
+    "invoke",
+    "newInstance",
+    "newProxyInstance",
+    "getConstructor",
+    "getDeclaredConstructor",
+}
+
+# Python dynamic call patterns
+PYTHON_DYNAMIC_METHODS = {
+    "getattr",
+    "setattr",
+    "hasattr",
+    "delattr",
+    "__import__",
+}
+
+# TypeScript/JavaScript dynamic patterns
+JS_DYNAMIC_IMPORT = "import"
 
 TS_RUST_STRUCT_ITEM = "struct_item"
 TS_RUST_ENUM_ITEM = "enum_item"

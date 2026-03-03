@@ -12,11 +12,18 @@ from loom.core import Node, NodeKind, NodeSource
 
 from loom.ingest.code.languages.constants import (
     LANG_JAVA,
+    TS_JAVA_ANNOTATION,
+    TS_JAVA_ANNOTATION_TYPE_DECL,
     TS_JAVA_CLASS_DECL,
     TS_JAVA_CTOR_DECL,
     TS_JAVA_ENUM_DECL,
     TS_JAVA_INTERFACE_DECL,
+    TS_JAVA_LAMBDA_EXPRESSION,
+    TS_JAVA_MARKER_ANNOTATION,
     TS_JAVA_METHOD_DECL,
+    TS_JAVA_METHOD_REFERENCE,
+    TS_JAVA_MODIFIERS,
+    TS_JAVA_RECORD_DECL,
 )
 
 _JAVA_LANGUAGE = Language(java_language())
@@ -46,6 +53,83 @@ def _get_name(src: bytes, n: TSNode) -> str | None:
     return _node_text(src, name_node)
 
 
+def _extract_annotations(src: bytes, n: TSNode) -> list[str]:
+    """Extract annotations from a node's modifiers."""
+    annotations = []
+    # Annotations are children of the modifiers node or direct children
+    for child in n.children:
+        if child.type == TS_JAVA_MODIFIERS:
+            # Look inside modifiers for annotations
+            for mod_child in child.children:
+                if mod_child.type in {TS_JAVA_ANNOTATION, TS_JAVA_MARKER_ANNOTATION}:
+                    name_node = mod_child.child_by_field_name("name")
+                    if name_node:
+                        ann_text = _node_text(src, name_node)
+                        annotations.append(ann_text)
+        elif child.type in {TS_JAVA_ANNOTATION, TS_JAVA_MARKER_ANNOTATION}:
+            # Direct annotation (less common)
+            name_node = child.child_by_field_name("name")
+            if name_node:
+                ann_text = _node_text(src, name_node)
+                annotations.append(ann_text)
+    return annotations
+
+
+def _extract_modifiers(src: bytes, n: TSNode) -> list[str]:
+    """Extract modifiers like public, private, static, abstract, etc."""
+    modifiers = []
+    for child in n.children:
+        if child.type == TS_JAVA_MODIFIERS:
+            for mod_child in child.children:
+                if mod_child.type in {"public", "private", "protected", "static", "final", "abstract", "synchronized", "native", "strictfp", "transient", "volatile"}:
+                    modifiers.append(mod_child.type)
+    return modifiers
+
+
+def _extract_superclass(src: bytes, n: TSNode) -> str | None:
+    """Extract superclass from extends clause."""
+    superclass_node = n.child_by_field_name("superclass")
+    if superclass_node:
+        return _node_text(src, superclass_node)
+    return None
+
+
+def _extract_interfaces(src: bytes, n: TSNode) -> list[str]:
+    """Extract implemented/extended interfaces."""
+    interfaces = []
+    super_interfaces = n.child_by_field_name("interfaces")
+    if super_interfaces:
+        for child in super_interfaces.children:
+            if child.type == "type_identifier":
+                interfaces.append(_node_text(src, child))
+    return interfaces
+
+
+def _extract_type_parameters(src: bytes, n: TSNode) -> str | None:
+    """Extract generic type parameters like <T>, <K, V>."""
+    type_params = n.child_by_field_name("type_parameters")
+    if type_params:
+        return _node_text(src, type_params)
+    return None
+
+
+def _count_lambdas_and_refs(src: bytes, n: TSNode) -> dict[str, int]:
+    """Count lambda expressions and method references in a node tree."""
+    counts = {'lambda_count': 0, 'method_ref_count': 0}
+    
+    def _count_recursive(node: TSNode):
+        if node.type == TS_JAVA_LAMBDA_EXPRESSION:
+            counts['lambda_count'] += 1
+        elif node.type == TS_JAVA_METHOD_REFERENCE:
+            counts['method_ref_count'] += 1
+        
+        for child in node.children:
+            _count_recursive(child)
+    
+    _count_recursive(n)
+    return counts
+
+
 def _lines(n: TSNode) -> tuple[int, int]:
     start_line = n.start_point[0] + 1
     end_line = n.end_point[0] + 1
@@ -60,8 +144,8 @@ def _extract_from_def(
     ctx: _Context,
     out: list[Node],
 ) -> None:
-    # Java: class_declaration, interface_declaration, method_declaration, constructor_declaration
-    if n.type in {TS_JAVA_CLASS_DECL, TS_JAVA_INTERFACE_DECL, TS_JAVA_ENUM_DECL}:
+    # Java: class_declaration, interface_declaration, enum_declaration, annotation_type_declaration, record_declaration
+    if n.type in {TS_JAVA_CLASS_DECL, TS_JAVA_INTERFACE_DECL, TS_JAVA_ENUM_DECL, TS_JAVA_ANNOTATION_TYPE_DECL, TS_JAVA_RECORD_DECL}:
         name = _get_name(src, n)
         if not name:
             return
@@ -72,8 +156,40 @@ def _extract_from_def(
             kind = NodeKind.INTERFACE
         elif n.type == TS_JAVA_ENUM_DECL:
             kind = NodeKind.ENUM
+        elif n.type == TS_JAVA_ANNOTATION_TYPE_DECL:
+            kind = NodeKind.INTERFACE  # Annotation types are special interfaces
+        elif n.type == TS_JAVA_RECORD_DECL:
+            kind = NodeKind.CLASS  # Records are special classes
         else:
             kind = NodeKind.CLASS
+
+        # Extract metadata
+        metadata = {}
+        
+        annotations = _extract_annotations(src, n)
+        if annotations:
+            metadata["annotations"] = annotations
+        
+        modifiers = _extract_modifiers(src, n)
+        if modifiers:
+            metadata["modifiers"] = modifiers
+        
+        if n.type == TS_JAVA_CLASS_DECL:
+            superclass = _extract_superclass(src, n)
+            if superclass:
+                metadata["extends"] = superclass
+        
+        interfaces = _extract_interfaces(src, n)
+        if interfaces:
+            metadata["implements"] = interfaces
+        
+        type_params = _extract_type_parameters(src, n)
+        if type_params:
+            metadata["type_parameters"] = type_params
+        
+        # Mark records
+        if n.type == TS_JAVA_RECORD_DECL:
+            metadata["is_record"] = True
 
         out.append(
             Node(
@@ -85,7 +201,7 @@ def _extract_from_def(
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_JAVA,
-                metadata={},
+                metadata=metadata,
             )
         )
 
@@ -105,6 +221,26 @@ def _extract_from_def(
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
         symbol = ctx.qualname(name) if ctx.class_stack else name
 
+        # Extract metadata
+        metadata = {}
+        
+        annotations = _extract_annotations(src, n)
+        if annotations:
+            metadata["annotations"] = annotations
+        
+        modifiers = _extract_modifiers(src, n)
+        if modifiers:
+            metadata["modifiers"] = modifiers
+        
+        # Count lambdas and method references in method body
+        body = n.child_by_field_name("body")
+        if body:
+            functional_counts = _count_lambdas_and_refs(src, body)
+            if functional_counts['lambda_count'] > 0:
+                metadata['lambda_count'] = functional_counts['lambda_count']
+            if functional_counts['method_ref_count'] > 0:
+                metadata['method_ref_count'] = functional_counts['method_ref_count']
+
         out.append(
             Node(
                 id=f"{kind.value}:{path}:{symbol}:{start_line}",
@@ -115,11 +251,10 @@ def _extract_from_def(
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_JAVA,
-                metadata={},
+                metadata=metadata,
             )
         )
 
-        body = n.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx, out=out)
         return
@@ -131,6 +266,8 @@ def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -
             TS_JAVA_CLASS_DECL,
             TS_JAVA_INTERFACE_DECL,
             TS_JAVA_ENUM_DECL,
+            TS_JAVA_ANNOTATION_TYPE_DECL,
+            TS_JAVA_RECORD_DECL,
             TS_JAVA_METHOD_DECL,
             TS_JAVA_CTOR_DECL,
         }:

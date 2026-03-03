@@ -5,6 +5,7 @@ from pathlib import Path
 
 from loom.core import Node
 from loom.ingest.code.registry import get_registry
+from loom.ingest.code.walker import walk_repo
 
 logger = logging.getLogger(__name__)
 
@@ -29,47 +30,41 @@ def parse_tree(
     *,
     exclude_tests: bool = False,
 ) -> list[Node]:
-    """Walk a directory tree recursively and parse all supported files.
+    """Backward-compatible wrapper for repo parsing.
 
-    Automatically skips:
-    - Directories in SKIP_DIRS (.git, node_modules, __pycache__, .venv, ...)
-    - Files with non-code extensions (.html, .css, .xml, .png, .pdf, ...)
-    - Only parses files whose extension has a registered language parser
+    Prefer `parse_repo()` for gitignore-aware repo parsing.
     """
-    reg = get_registry()
-    root_path = Path(root)
+    return parse_repo(root, exclude_tests=exclude_tests)
 
-    if not root_path.is_dir():
-        return parse_code(root, exclude_tests=exclude_tests)
+
+def parse_repo(
+    root: str,
+    *,
+    exclude_tests: bool = False,
+) -> list[Node]:
+    """Parse an entire repo/directory into Nodes.
+
+    Discovery is delegated to `walk_repo()` (gitignore-aware, symlink-safe).
+    Parsing is delegated to `parse_code()`.
+    """
+
+    root_path = Path(root)
+    if root_path.is_file():
+        return parse_code(str(root_path), exclude_tests=exclude_tests)
+
+    files_by_lang = walk_repo(str(root_path))
+    all_files: list[str] = []
+    for files in files_by_lang.values():
+        all_files.extend(files)
 
     all_nodes: list[Node] = []
     file_count = 0
-    skip_count = 0
-
-    for item in sorted(root_path.rglob("*")):
-        # skip ignored directories (check each parent component)
-        if any(reg.should_skip_dir(part) for part in item.parts):
-            continue
-
-        if not item.is_file():
-            continue
-
-        ext = item.suffix.lower()
-        if reg.should_skip_file(ext):
-            skip_count += 1
-            continue
-
+    for fp in sorted(all_files):
         try:
-            nodes = parse_code(str(item), exclude_tests=exclude_tests)
-            all_nodes.extend(nodes)
+            all_nodes.extend(parse_code(fp, exclude_tests=exclude_tests))
             file_count += 1
         except Exception:
-            logger.warning("Failed to parse %s", item, exc_info=True)
+            logger.warning("Failed to parse %s", fp, exc_info=True)
 
-    logger.info(
-        "parse_tree: %d files parsed, %d skipped, %d symbols extracted",
-        file_count,
-        skip_count,
-        len(all_nodes),
-    )
+    logger.info("parse_repo: %d files parsed, %d symbols extracted", file_count, len(all_nodes))
     return all_nodes

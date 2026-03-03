@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from loom.core import Node
+from loom.config import DEFAULT_SKIP_DIRS
 
 from loom.ingest.code.languages.constants import (
     EXT_CSS,
@@ -28,31 +29,6 @@ from loom.ingest.code.languages.constants import (
 
 class LanguageParser(Protocol):
     def __call__(self, path: str, *, exclude_tests: bool = False) -> list[Node]: ...
-
-
-# ── skip list: directories that should never be walked ──────────────
-SKIP_DIRS: frozenset[str] = frozenset({
-    ".git",
-    ".hg",
-    ".svn",
-    "__pycache__",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "node_modules",
-    ".venv",
-    "venv",
-    ".env",
-    ".tox",
-    "dist",
-    "build",
-    ".eggs",
-    "*.egg-info",
-    ".next",
-    ".nuxt",
-    "vendor",
-    "target",
-})
 
 # ── known non-code extensions we always skip ────────────────────────
 # Note: HTML, XML, JSON, CSS, YAML are now parsed as FILE nodes
@@ -95,7 +71,9 @@ class LanguageRegistry:
         return extension.lower() in self._parsers
 
     def should_skip_dir(self, dirname: str) -> bool:
-        return dirname in SKIP_DIRS or dirname.endswith(".egg-info")
+        if dirname.startswith("."):
+            return True
+        return dirname in DEFAULT_SKIP_DIRS or dirname.endswith(".egg-info")
 
     def should_skip_file(self, extension: str) -> bool:
         ext = extension.lower()

@@ -17,6 +17,12 @@ class EdgeType(StrEnum):
     STEP_IN = "step_in"
     COUPLED_WITH = "coupled_with"
     CONTAINS = "contains"
+    
+    # dynamic/reflection edges
+    DYNAMIC_CALL = "dynamic_call"
+    REFLECTS_CALL = "reflects_call"
+    DYNAMIC_IMPORT = "dynamic_import"
+    UNRESOLVED_CALL = "unresolved_call"
 
     # doc → doc
     CHILD_OF = "child_of"
