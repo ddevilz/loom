@@ -1,4 +1,5 @@
 import socket
+import uuid
 
 import pytest
 
@@ -13,12 +14,24 @@ def _falkordb_reachable(host: str = "127.0.0.1", port: int = 6379) -> bool:
         return False
 
 
+@pytest.fixture
+async def isolated_graph():
+    """Yield a LoomGraph with a unique name and drop it after the test."""
+    name = f"loom_pytest_{uuid.uuid4().hex[:8]}"
+    g = LoomGraph(graph_name=name)
+    yield g
+    try:
+        await g.delete()
+    except Exception:
+        pass
+
+
 @pytest.mark.integration
-async def test_schema_init_idempotent():
+async def test_schema_init_idempotent(isolated_graph: LoomGraph):
     if not _falkordb_reachable():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
-    g = LoomGraph(graph_name="loom_pytest_schema")
+    g = isolated_graph
 
     await g.schema_init()
     await g.schema_init()

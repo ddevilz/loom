@@ -59,6 +59,8 @@ class EdgeRepository:
             params={"from_id": edge.from_id, "to_id": edge.to_id, "props": props},
         )
 
+    _CHUNK_SIZE = 500
+
     def bulk_upsert(self, edges: list[Edge]) -> None:
         if not edges:
             return
@@ -78,7 +80,9 @@ class EdgeRepository:
                 }
                 for e in group
             ]
-            self._gw.run(cypher, params={"edges": payload})
+            for i in range(0, len(payload), self._CHUNK_SIZE):
+                chunk = payload[i : i + self._CHUNK_SIZE]
+                self._gw.run(cypher, params={"edges": chunk})
 
 
 class TraversalRepository:

@@ -190,13 +190,18 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
         logger.info(f"Creating {len(member_edges)} MEMBER_OF edges")
         await graph.bulk_create_edges(member_edges)
     
-    # Update function nodes with community_id
-    for node_id, community_id in node_to_community.items():
-        update_query = """
-        MATCH (n {id: $node_id})
-        SET n.community_id = $community_id
+    # Update function nodes with community_id (batched to avoid N+1)
+    if node_to_community:
+        updates = [
+            {"node_id": nid, "community_id": cid}
+            for nid, cid in node_to_community.items()
+        ]
+        batch_query = """
+        UNWIND $updates AS u
+        MATCH (n {id: u.node_id})
+        SET n.community_id = u.community_id
         """
-        await graph.query(update_query, {"node_id": node_id, "community_id": community_id})
+        await graph.query(batch_query, {"updates": updates})
     
     logger.info(f"Community detection complete. {len(node_to_community)} nodes clustered.")
     

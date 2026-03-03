@@ -39,9 +39,8 @@ def test_parse_python_kinds_and_required_fields():
         assert n.end_line is not None
         assert n.end_line >= n.start_line
 
-        # id must include the start line suffix and correct prefix
+        # id must start with the correct kind prefix
         assert n.id.startswith(f"{n.kind.value}:")
-        assert n.id.endswith(f":{n.start_line}")
 
 
 def test_parse_python_methods_include_decorated_method_kinds():
@@ -235,3 +234,75 @@ def test_parse_tree_skips_hidden_dirs(tmp_path: Path):
     nodes = parse_tree(str(tmp_path))
     names = {n.name for n in nodes}
     assert names == {"real"}
+
+
+# ── Fix 4: named lambdas, TypedDict, nested classes ─────────────────
+
+def test_named_lambda_extracted(tmp_path: Path):
+    p = tmp_path / "lambdas.py"
+    p.write_text(
+        "double = lambda x: x * 2\n"
+        "class Ops:\n"
+        "    triple = lambda self, x: x * 3\n",
+        encoding="utf-8",
+    )
+    nodes = parse_python(str(p))
+    dbl = _by_name(nodes, "double")
+    assert len(dbl) == 1
+    assert dbl[0].kind == NodeKind.FUNCTION
+    assert dbl[0].metadata.get("is_lambda") is True
+
+    tri = _by_name(nodes, "triple")
+    assert len(tri) == 1
+    assert tri[0].kind == NodeKind.METHOD
+
+
+def test_typeddict_extracted(tmp_path: Path):
+    p = tmp_path / "types.py"
+    p.write_text(
+        'from typing import TypedDict\n'
+        'UserDict = TypedDict("UserDict", {"name": str, "age": int})\n',
+        encoding="utf-8",
+    )
+    nodes = parse_python(str(p))
+    td = _by_name(nodes, "UserDict")
+    assert len(td) == 1
+    assert td[0].kind == NodeKind.CLASS
+    assert td[0].metadata.get("class_factory") == "TypedDict"
+
+
+def test_namedtuple_extracted(tmp_path: Path):
+    p = tmp_path / "tuples.py"
+    p.write_text(
+        'from collections import namedtuple\n'
+        'Point = namedtuple("Point", ["x", "y"])\n',
+        encoding="utf-8",
+    )
+    nodes = parse_python(str(p))
+    pt = _by_name(nodes, "Point")
+    assert len(pt) == 1
+    assert pt[0].kind == NodeKind.CLASS
+    assert pt[0].metadata.get("class_factory") == "namedtuple"
+
+
+def test_nested_class_extracted(tmp_path: Path):
+    p = tmp_path / "nested.py"
+    p.write_text(
+        "class Outer:\n"
+        "    class Inner:\n"
+        "        def method(self):\n"
+        "            pass\n",
+        encoding="utf-8",
+    )
+    nodes = parse_python(str(p))
+    outer = _by_name(nodes, "Outer")
+    assert len(outer) == 1
+    assert outer[0].kind == NodeKind.CLASS
+
+    inner = _by_name(nodes, "Inner")
+    assert len(inner) == 1
+    assert inner[0].kind == NodeKind.CLASS
+
+    method = _by_name(nodes, "method")
+    assert len(method) == 1
+    assert method[0].kind == NodeKind.METHOD

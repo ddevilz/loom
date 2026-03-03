@@ -107,9 +107,55 @@ def test_parse_javascript_arrow_function(tmp_path: Path):
         encoding="utf-8",
     )
     nodes = parse_javascript(str(p))
-    # Arrow functions without names might not be captured
-    # This tests the parser doesn't crash
-    assert isinstance(nodes, list)
+    assert len(nodes) == 1
+    assert nodes[0].name == "multiply"
+    assert nodes[0].kind == NodeKind.FUNCTION
+    assert nodes[0].metadata.get("is_arrow") is True
+
+
+def test_parse_javascript_const_function_expr(tmp_path: Path):
+    p = tmp_path / "fn.js"
+    p.write_text(
+        "const greet = function(name) { return name; };\n",
+        encoding="utf-8",
+    )
+    nodes = parse_javascript(str(p))
+    assert len(nodes) == 1
+    assert nodes[0].name == "greet"
+    assert nodes[0].kind == NodeKind.FUNCTION
+
+
+# ── Fix 5: TypeScript const arrow functions ──────────────────────────
+
+def test_parse_typescript_const_arrow(tmp_path: Path):
+    p = tmp_path / "handlers.ts"
+    p.write_text(
+        "const fetchUsers = async () => { return []; };\n"
+        "const add = (a: number, b: number): number => a + b;\n",
+        encoding="utf-8",
+    )
+    nodes = parse_typescript(str(p))
+    fetch = _by_name(nodes, "fetchUsers")
+    assert len(fetch) == 1
+    assert fetch[0].kind == NodeKind.FUNCTION
+    assert fetch[0].metadata.get("is_arrow") is True
+    assert fetch[0].metadata.get("is_async") is True
+
+    add_fn = _by_name(nodes, "add")
+    assert len(add_fn) == 1
+    assert add_fn[0].kind == NodeKind.FUNCTION
+
+
+def test_parse_typescript_export_const_arrow(tmp_path: Path):
+    p = tmp_path / "api.ts"
+    p.write_text(
+        "export const handler = (req: Request) => { return req; };\n",
+        encoding="utf-8",
+    )
+    nodes = parse_typescript(str(p))
+    h = _by_name(nodes, "handler")
+    assert len(h) == 1
+    assert h[0].kind == NodeKind.FUNCTION
 
 
 # ── Go ──────────────────────────────────────────────────────────────
@@ -214,6 +260,39 @@ def test_parse_java_extracts_enum(tmp_path: Path):
     
     status = _by_name(nodes, "Status")[0]
     assert status.kind == NodeKind.ENUM
+
+
+def test_parse_java_package_qualified_ids(tmp_path: Path):
+    p = tmp_path / "UserService.java"
+    p.write_text(
+        "package com.example.service;\n\n"
+        "public class UserService {\n"
+        "  public void save() {}\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    nodes = parse_java(str(p))
+    cls = _by_name(nodes, "UserService")[0]
+    assert "com.example.service.UserService" in cls.id
+
+    method = _by_name(nodes, "save")[0]
+    assert "com.example.service.UserService.save" in method.id
+
+
+def test_parse_java_no_package_still_works(tmp_path: Path):
+    p = tmp_path / "Simple.java"
+    p.write_text(
+        "class Simple {\n"
+        "  void run() {}\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    nodes = parse_java(str(p))
+    cls = _by_name(nodes, "Simple")[0]
+    assert cls.id.endswith(":Simple")
+
+    method = _by_name(nodes, "run")[0]
+    assert "Simple.run" in method.id
 
 
 # ── Rust ────────────────────────────────────────────────────────────
@@ -332,6 +411,42 @@ def test_parse_ruby_extracts_top_level_function(tmp_path: Path):
     assert len(nodes) == 1
     assert nodes[0].name == "greet"
     assert nodes[0].kind == NodeKind.FUNCTION
+
+
+def test_parse_ruby_rails_dsl_extraction(tmp_path: Path):
+    p = tmp_path / "user.rb"
+    p.write_text(
+        "class User < ApplicationRecord\n"
+        "  has_many :posts\n"
+        "  belongs_to :team\n"
+        "  validates :name, presence: true\n"
+        "  scope :active, -> { where(active: true) }\n"
+        "  before_action :authenticate\n"
+        "\n"
+        "  def save\n"
+        "    true\n"
+        "  end\n"
+        "end\n",
+        encoding="utf-8",
+    )
+    nodes = parse_ruby(str(p))
+    user = _by_name(nodes, "User")[0]
+    assert user.kind == NodeKind.CLASS
+    assert user.metadata.get("extends") == "ApplicationRecord"
+
+    dsl = user.metadata.get("rails_dsl")
+    assert dsl is not None
+    dsl_methods = [d["method"] for d in dsl]
+    assert "has_many" in dsl_methods
+    assert "belongs_to" in dsl_methods
+    assert "validates" in dsl_methods
+    assert "scope" in dsl_methods
+    assert "before_action" in dsl_methods
+
+    # Method still extracted
+    save = _by_name(nodes, "save")
+    assert len(save) == 1
+    assert save[0].kind == NodeKind.METHOD
 
 
 # ── Registry integration ────────────────────────────────────────────

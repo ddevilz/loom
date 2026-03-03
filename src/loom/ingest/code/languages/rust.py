@@ -78,7 +78,7 @@ def _extract_from_def(
 
         out.append(
             Node(
-                id=f"{kind.value}:{path}:{name}:{start_line}",
+                id=f"{kind.value}:{path}:{name}",
                 kind=kind,
                 source=NodeSource.CODE,
                 name=name,
@@ -104,7 +104,7 @@ def _extract_from_def(
         # Top-level functions
         out.append(
             Node(
-                id=f"{NodeKind.FUNCTION.value}:{path}:{name}:{start_line}",
+                id=f"{NodeKind.FUNCTION.value}:{path}:{name}",
                 kind=NodeKind.FUNCTION,
                 source=NodeSource.CODE,
                 name=name,
@@ -139,7 +139,7 @@ def _extract_from_def(
 
                     out.append(
                         Node(
-                            id=f"{NodeKind.METHOD.value}:{path}:{symbol}:{start_line}",
+                            id=f"{NodeKind.METHOD.value}:{path}:{symbol}",
                             kind=NodeKind.METHOD,
                             source=NodeSource.CODE,
                             name=method_name,

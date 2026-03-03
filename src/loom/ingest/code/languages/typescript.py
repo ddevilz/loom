@@ -145,8 +145,8 @@ def _extract_from_def(
         
         out.append(
             Node(
-                id=f"function:{path}:{import_name}:{start_line}",
-                kind=NodeKind.FUNCTION,  # Use FUNCTION as placeholder for imports
+                id=f"module:{path}:{import_name}",
+                kind=NodeKind.MODULE,
                 source=NodeSource.CODE,
                 name=import_name,
                 path=path,
@@ -167,10 +167,14 @@ def _extract_from_def(
         # Process the exported declaration
         declaration = n.child_by_field_name('declaration')
         if declaration:
-            # Recursively process the exported item
+            prev_len = len(out)
+            # Try normal definition extraction first
             _extract_from_def(path=path, src=src, n=declaration, ctx=ctx, out=out, language=language)
+            # Also try const function pattern (export const x = () => {})
+            if len(out) == prev_len:
+                _try_extract_const_function(path=path, src=src, n=declaration, ctx=ctx, out=out, language=language)
             # Mark the last added node as exported
-            if out:
+            if len(out) > prev_len:
                 export_info = _extract_export_info(src, n)
                 out[-1].metadata['is_exported'] = True
                 if export_info.get('default'):
@@ -193,7 +197,7 @@ def _extract_from_def(
         
         out.append(
             Node(
-                id=f"{NodeKind.CLASS.value}:{path}:{name}:{start_line}",
+                id=f"{NodeKind.CLASS.value}:{path}:{name}",
                 kind=NodeKind.CLASS,
                 source=NodeSource.CODE,
                 name=name,
@@ -234,7 +238,7 @@ def _extract_from_def(
 
         out.append(
             Node(
-                id=f"{kind.value}:{path}:{symbol}:{start_line}",
+                id=f"{kind.value}:{path}:{symbol}",
                 kind=kind,
                 source=NodeSource.CODE,
                 name=name,
@@ -261,7 +265,7 @@ def _extract_from_def(
 
         out.append(
             Node(
-                id=f"{NodeKind.METHOD.value}:{path}:{symbol}:{start_line}",
+                id=f"{NodeKind.METHOD.value}:{path}:{symbol}",
                 kind=NodeKind.METHOD,
                 source=NodeSource.CODE,
                 name=name,
@@ -286,7 +290,7 @@ def _extract_from_def(
         start_line, end_line = _lines(n)
         out.append(
             Node(
-                id=f"{NodeKind.ENUM.value}:{path}:{name}:{start_line}",
+                id=f"{NodeKind.ENUM.value}:{path}:{name}",
                 kind=NodeKind.ENUM,
                 source=NodeSource.CODE,
                 name=name,
@@ -307,7 +311,7 @@ def _extract_from_def(
         start_line, end_line = _lines(n)
         out.append(
             Node(
-                id=f"{NodeKind.INTERFACE.value}:{path}:{name}:{start_line}",
+                id=f"{NodeKind.INTERFACE.value}:{path}:{name}",
                 kind=NodeKind.INTERFACE,
                 source=NodeSource.CODE,
                 name=name,
@@ -328,7 +332,7 @@ def _extract_from_def(
         start_line, end_line = _lines(n)
         out.append(
             Node(
-                id=f"{NodeKind.TYPE.value}:{path}:{name}:{start_line}",
+                id=f"{NodeKind.TYPE.value}:{path}:{name}",
                 kind=NodeKind.TYPE,
                 source=NodeSource.CODE,
                 name=name,
@@ -340,6 +344,66 @@ def _extract_from_def(
             )
         )
         return
+
+
+def _try_extract_const_function(
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _Context,
+    out: list[Node],
+    language: str,
+) -> bool:
+    """Handle `const name = () => {}` and `const name = function() {}`."""
+    if n.type != "lexical_declaration":
+        return False
+
+    found = False
+    for child in n.children:
+        if child.type != "variable_declarator":
+            continue
+
+        name_node = child.child_by_field_name("name")
+        value_node = child.child_by_field_name("value")
+        if name_node is None or value_node is None:
+            continue
+        if name_node.type != "identifier":
+            continue
+        if value_node.type not in {TS_JS_ARROW_FUNCTION, TS_JS_FUNCTION, "function_expression"}:
+            continue
+
+        name = _node_text(src, name_node)
+        start_line, end_line = _lines(n)
+        metadata: dict = {}
+
+        if value_node.type == TS_JS_ARROW_FUNCTION:
+            metadata["is_arrow"] = True
+        for vc in value_node.children:
+            if vc.type == "async":
+                metadata["is_async"] = True
+                break
+
+        out.append(
+            Node(
+                id=f"{NodeKind.FUNCTION.value}:{path}:{name}",
+                kind=NodeKind.FUNCTION,
+                source=NodeSource.CODE,
+                name=name,
+                path=path,
+                start_line=start_line,
+                end_line=end_line,
+                language=language,
+                metadata=metadata,
+            )
+        )
+
+        body = value_node.child_by_field_name("body")
+        if body is not None:
+            _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out, language=language)
+        found = True
+
+    return found
 
 
 def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node], language: str) -> None:
@@ -357,6 +421,8 @@ def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node], l
             TS_JS_EXPORT_STATEMENT,
         }:
             _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, language=language)
+        elif _try_extract_const_function(path=path, src=src, n=child, ctx=ctx, out=out, language=language):
+            pass
         else:
             if child.child_count:
                 _walk(path=path, src=src, n=child, ctx=ctx, out=out, language=language)

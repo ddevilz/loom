@@ -76,7 +76,7 @@ def _extract_from_def(
         start_line, end_line = _lines(n)
         out.append(
             Node(
-                id=f"{NodeKind.CLASS.value}:{path}:{name}:{start_line}",
+                id=f"{NodeKind.CLASS.value}:{path}:{name}",
                 kind=NodeKind.CLASS,
                 source=NodeSource.CODE,
                 name=name,
@@ -104,7 +104,7 @@ def _extract_from_def(
 
         out.append(
             Node(
-                id=f"{kind.value}:{path}:{symbol}:{start_line}",
+                id=f"{kind.value}:{path}:{symbol}",
                 kind=kind,
                 source=NodeSource.CODE,
                 name=name,
@@ -131,7 +131,7 @@ def _extract_from_def(
 
         out.append(
             Node(
-                id=f"{NodeKind.METHOD.value}:{path}:{symbol}:{start_line}",
+                id=f"{NodeKind.METHOD.value}:{path}:{symbol}",
                 kind=NodeKind.METHOD,
                 source=NodeSource.CODE,
                 name=name,
@@ -149,10 +149,71 @@ def _extract_from_def(
         return
 
 
+def _try_extract_const_function(
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _Context,
+    out: list[Node],
+) -> bool:
+    """Handle `const name = () => {}` and `const name = function() {}`."""
+    if n.type != "lexical_declaration":
+        return False
+
+    found = False
+    for child in n.children:
+        if child.type != "variable_declarator":
+            continue
+
+        name_node = child.child_by_field_name("name")
+        value_node = child.child_by_field_name("value")
+        if name_node is None or value_node is None:
+            continue
+        if name_node.type != "identifier":
+            continue
+        if value_node.type not in {TS_JS_ARROW_FUNCTION, TS_JS_FUNCTION, "function_expression"}:
+            continue
+
+        name = _node_text(src, name_node)
+        start_line, end_line = _lines(n)
+        metadata: dict = {}
+
+        if value_node.type == TS_JS_ARROW_FUNCTION:
+            metadata["is_arrow"] = True
+        for vc in value_node.children:
+            if vc.type == "async":
+                metadata["is_async"] = True
+                break
+
+        out.append(
+            Node(
+                id=f"{NodeKind.FUNCTION.value}:{path}:{name}",
+                kind=NodeKind.FUNCTION,
+                source=NodeSource.CODE,
+                name=name,
+                path=path,
+                start_line=start_line,
+                end_line=end_line,
+                language=LANG_JAVASCRIPT,
+                metadata=metadata,
+            )
+        )
+
+        body = value_node.child_by_field_name("body")
+        if body is not None:
+            _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out)
+        found = True
+
+    return found
+
+
 def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
     for child in n.children:
         if child.type in {TS_JS_FUNCTION_DECL, TS_JS_CLASS_DECL, TS_JS_METHOD_DEF, TS_JS_FUNCTION, TS_JS_ARROW_FUNCTION}:
             _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
+        elif _try_extract_const_function(path=path, src=src, n=child, ctx=ctx, out=out):
+            pass
         else:
             if child.child_count:
                 _walk(path=path, src=src, n=child, ctx=ctx, out=out)

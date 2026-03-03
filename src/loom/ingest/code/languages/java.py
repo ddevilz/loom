@@ -32,14 +32,19 @@ _JAVA_LANGUAGE = Language(java_language())
 @dataclass(frozen=True)
 class _Context:
     class_stack: tuple[str, ...] = ()
+    package: str = ""
 
     def push_class(self, name: str) -> "_Context":
-        return _Context(class_stack=self.class_stack + (name,))
+        return _Context(class_stack=self.class_stack + (name,), package=self.package)
 
     def qualname(self, name: str) -> str:
+        parts: list[str] = []
+        if self.package:
+            parts.append(self.package)
         if self.class_stack:
-            return ".".join(self.class_stack) + "." + name
-        return name
+            parts.append(".".join(self.class_stack))
+        parts.append(name)
+        return ".".join(parts)
 
 
 def _node_text(src: bytes, n: TSNode) -> str:
@@ -191,9 +196,10 @@ def _extract_from_def(
         if n.type == TS_JAVA_RECORD_DECL:
             metadata["is_record"] = True
 
+        symbol = ctx.qualname(name)
         out.append(
             Node(
-                id=f"{kind.value}:{path}:{name}:{start_line}",
+                id=f"{kind.value}:{path}:{symbol}",
                 kind=kind,
                 source=NodeSource.CODE,
                 name=name,
@@ -243,7 +249,7 @@ def _extract_from_def(
 
         out.append(
             Node(
-                id=f"{kind.value}:{path}:{symbol}:{start_line}",
+                id=f"{kind.value}:{path}:{symbol}",
                 kind=kind,
                 source=NodeSource.CODE,
                 name=name,
@@ -277,6 +283,16 @@ def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -
                 _walk(path=path, src=src, n=child, ctx=ctx, out=out)
 
 
+def _extract_package(src: bytes, root: TSNode) -> str:
+    """Extract the package name from a Java compilation unit."""
+    for child in root.children:
+        if child.type == "package_declaration":
+            for part in child.children:
+                if part.type in {"scoped_identifier", "identifier"}:
+                    return _node_text(src, part)
+    return ""
+
+
 def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:
     p = Path(path)
     src = p.read_bytes()
@@ -285,6 +301,7 @@ def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:
     parser.language = _JAVA_LANGUAGE
     tree = parser.parse(src)
 
+    package = _extract_package(src, tree.root_node)
     out: list[Node] = []
-    _walk(path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out)
+    _walk(path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(package=package), out=out)
     return out

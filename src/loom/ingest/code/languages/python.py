@@ -231,8 +231,8 @@ def _extract_from_def(
                 import_name = f"import_{module.replace('.', '_')}"
                 out.append(
                     Node(
-                        id=f"function:{path}:{import_name}:{start_line}",
-                        kind=NodeKind.FUNCTION,
+                        id=f"module:{path}:{import_name}",
+                        kind=NodeKind.MODULE,
                         source=NodeSource.CODE,
                         name=import_name,
                         path=path,
@@ -252,8 +252,8 @@ def _extract_from_def(
             import_name = f"import_{from_module.replace('.', '_')}"
             out.append(
                 Node(
-                    id=f"function:{path}:{import_name}:{start_line}",
-                    kind=NodeKind.FUNCTION,
+                    id=f"module:{path}:{import_name}",
+                    kind=NodeKind.MODULE,
                     source=NodeSource.CODE,
                     name=import_name,
                     path=path,
@@ -291,7 +291,7 @@ def _extract_from_def(
                 meta[META_FRAMEWORK_HINT] = hint
         out.append(
             Node(
-                id=f"{NodeKind.CLASS.value}:{path}:{name}:{start_line}",
+                id=f"{NodeKind.CLASS.value}:{path}:{name}",
                 kind=NodeKind.CLASS,
                 source=NodeSource.CODE,
                 name=name,
@@ -331,7 +331,7 @@ def _extract_from_def(
             meta['is_async'] = True
         out.append(
             Node(
-                id=f"{kind.value}:{path}:{symbol}:{start_line}",
+                id=f"{kind.value}:{path}:{symbol}",
                 kind=kind,
                 source=NodeSource.CODE,
                 name=name,
@@ -349,11 +349,87 @@ def _extract_from_def(
         return
 
 
+# TypedDict / namedtuple / NamedTuple — treated as class-like
+_CLASS_FACTORY_NAMES = frozenset({"TypedDict", "namedtuple", "NamedTuple"})
+
+
+def _try_extract_assignment(
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _Context,
+    out: list[Node],
+) -> bool:
+    """Handle `name = lambda ...` and `Name = TypedDict(...)` patterns.
+
+    Returns True if the node was consumed.
+    """
+    if n.type != "expression_statement":
+        return False
+
+    for child in n.children:
+        if child.type != "assignment":
+            continue
+
+        lhs = child.child_by_field_name("left")
+        rhs = child.child_by_field_name("right")
+        if lhs is None or rhs is None or lhs.type != TS_PY_IDENTIFIER:
+            continue
+
+        name = _node_text(src, lhs)
+        start_line, end_line = _lines(n)
+
+        # named lambda: my_func = lambda x: ...
+        if rhs.type == "lambda":
+            symbol = ctx.qualname(name) if ctx.class_stack else name
+            kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
+            out.append(
+                Node(
+                    id=f"{kind.value}:{path}:{symbol}",
+                    kind=kind,
+                    source=NodeSource.CODE,
+                    name=name,
+                    path=path,
+                    start_line=start_line,
+                    end_line=end_line,
+                    language=LANG_PYTHON,
+                    metadata={"is_lambda": True},
+                )
+            )
+            return True
+
+        # class factory: MyDict = TypedDict(...)
+        if rhs.type == TS_PY_CALL:
+            func_node = rhs.child_by_field_name("function")
+            if func_node is not None:
+                func_name = _node_text(src, func_node)
+                if func_name in _CLASS_FACTORY_NAMES:
+                    out.append(
+                        Node(
+                            id=f"{NodeKind.CLASS.value}:{path}:{name}",
+                            kind=NodeKind.CLASS,
+                            source=NodeSource.CODE,
+                            name=name,
+                            path=path,
+                            start_line=start_line,
+                            end_line=end_line,
+                            language=LANG_PYTHON,
+                            metadata={"class_factory": func_name},
+                        )
+                    )
+                    return True
+
+    return False
+
+
 def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
     # We walk all children and recursively extract definitions.
     for child in n.children:
         if child.type in {TS_PY_FUNCTION_DEF, TS_PY_CLASS_DEF, TS_PY_DECORATED_DEF, TS_PY_IMPORT_STATEMENT, TS_PY_IMPORT_FROM_STATEMENT}:
             _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
+        elif _try_extract_assignment(path=path, src=src, n=child, ctx=ctx, out=out):
+            pass
         else:
             if child.child_count:
                 _walk(path=path, src=src, n=child, ctx=ctx, out=out)

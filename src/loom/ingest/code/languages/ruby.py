@@ -34,6 +34,21 @@ class _Context:
         return name
 
 
+# Rails DSL method names we want to capture as class metadata
+_RAILS_DSL_METHODS = frozenset({
+    "has_many", "has_one", "belongs_to", "has_and_belongs_to_many",
+    "validates", "validates_presence_of", "validates_uniqueness_of",
+    "scope", "default_scope",
+    "before_action", "after_action", "around_action",
+    "before_filter", "after_filter", "skip_before_action",
+    "before_save", "after_save", "before_create", "after_create",
+    "before_update", "after_update", "before_destroy", "after_destroy",
+    "before_validation", "after_validation",
+    "attr_accessor", "attr_reader", "attr_writer",
+    "delegate", "alias_method",
+})
+
+
 def _node_text(src: bytes, n: TSNode) -> str:
     return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
 
@@ -68,9 +83,52 @@ def _extract_from_def(
         start_line, end_line = _lines(n)
         kind = NodeKind.MODULE if n.type == TS_RUBY_MODULE else NodeKind.CLASS
 
+        metadata: dict = {}
+
+        # Extract superclass (class Foo < Bar)
+        superclass_node = n.child_by_field_name("superclass")
+        if superclass_node:
+            for sc_child in superclass_node.children:
+                if sc_child.type in {"constant", "scope_resolution"}:
+                    metadata["extends"] = _node_text(src, sc_child)
+                    break
+
+        # Extract Rails DSL calls from the class body
+        dsl_calls: list[dict] = []
+        body_node = None
+        for child in n.children:
+            if child.type == "body_statement":
+                body_node = child
+                break
+        if body_node:
+            for child in body_node.children:
+                if child.type == "call":
+                    call_name_node = None
+                    for cc in child.children:
+                        if cc.type == "identifier":
+                            call_name_node = cc
+                            break
+                    if call_name_node:
+                        call_name = _node_text(src, call_name_node)
+                        if call_name in _RAILS_DSL_METHODS:
+                            # Extract first argument as the target
+                            args_node = None
+                            for cc in child.children:
+                                if cc.type == "argument_list":
+                                    args_node = cc
+                                    break
+                            target = None
+                            if args_node and args_node.child_count > 0:
+                                first_arg = args_node.children[0]
+                                target = _node_text(src, first_arg)
+                            dsl_calls.append({"method": call_name, "target": target})
+
+        if dsl_calls:
+            metadata["rails_dsl"] = dsl_calls
+
         out.append(
             Node(
-                id=f"{kind.value}:{path}:{name}:{start_line}",
+                id=f"{kind.value}:{path}:{name}",
                 kind=kind,
                 source=NodeSource.CODE,
                 name=name,
@@ -78,7 +136,7 @@ def _extract_from_def(
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_RUBY,
-                metadata={},
+                metadata=metadata,
             )
         )
 
@@ -99,7 +157,7 @@ def _extract_from_def(
 
         out.append(
             Node(
-                id=f"{kind.value}:{path}:{symbol}:{start_line}",
+                id=f"{kind.value}:{path}:{symbol}",
                 kind=kind,
                 source=NodeSource.CODE,
                 name=name,
