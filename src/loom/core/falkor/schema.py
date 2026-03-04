@@ -38,9 +38,8 @@ def schema_init(gw, *, embedding_dim: int = 768) -> None:
         gw,
         (
             "CREATE VECTOR INDEX FOR (n:Node) ON n.embedding "
-            "OPTIONS {dimension: $dim, similarityFunction: cosine}"
+            f"OPTIONS {{dimension: {embedding_dim}, similarityFunction: cosine}}"
         ),
-        params={"dim": embedding_dim},
     )
 
     if isinstance(graph_name, str):

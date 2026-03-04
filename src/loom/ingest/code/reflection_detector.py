@@ -5,6 +5,11 @@ Detects reflection patterns and dynamic invocations across languages:
 - Java: Class.forName, getMethod, invoke, Proxy
 - Python: getattr, setattr, __import__, importlib
 - TypeScript/JavaScript: obj[prop](), dynamic import()
+
+NOTE: This module is not yet wired into any language parser. The detection
+functions are implemented but not currently integrated into the parsing pipeline.
+To enable reflection detection, these functions need to be called from the
+respective language parsers and the metadata needs to be persisted to nodes.
 """
 from __future__ import annotations
 

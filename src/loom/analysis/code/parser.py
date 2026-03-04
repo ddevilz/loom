@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+import warnings
 
 from loom.core import Node
 from loom.ingest.code.registry import get_registry
@@ -13,7 +14,12 @@ logger = logging.getLogger(__name__)
 def parse_code(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Parse a single file into Nodes. Returns [] for unsupported extensions."""
     reg = get_registry()
-    ext = Path(path).suffix.lower()
+    p = Path(path)
+    ext = p.suffix.lower()
+
+    # special-case env files: `.env`, `.env.local`, `.env.example`, etc.
+    if p.name.startswith(".env"):
+        ext = ".env"
 
     if reg.should_skip_file(ext):
         return []
@@ -34,6 +40,11 @@ def parse_tree(
 
     Prefer `parse_repo()` for gitignore-aware repo parsing.
     """
+    warnings.warn(
+        "parse_tree() is deprecated; use parse_repo() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return parse_repo(root, exclude_tests=exclude_tests)
 
 

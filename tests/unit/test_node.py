@@ -96,3 +96,22 @@ def test_code_id_must_match_kind_prefix():
             path="src/auth.py",
             metadata={},
         )
+
+
+def test_make_code_id():
+    code_id = Node.make_code_id(NodeKind.FUNCTION, "src/auth.py", "validate_user")
+    assert code_id == "function:src/auth.py:validate_user"
+    
+    method_id = Node.make_code_id(NodeKind.METHOD, "src/user.py", "User.save")
+    assert method_id == "method:src/user.py:User.save"
+    
+    class_id = Node.make_code_id(NodeKind.CLASS, "models/base.py", "BaseModel")
+    assert class_id == "class:models/base.py:BaseModel"
+
+
+def test_make_doc_id():
+    doc_id = Node.make_doc_id("spec.pdf", "3.2.4")
+    assert doc_id == "doc:spec.pdf:3.2.4"
+    
+    chapter_id = Node.make_doc_id("manual.docx", "chapter-1")
+    assert chapter_id == "doc:manual.docx:chapter-1"

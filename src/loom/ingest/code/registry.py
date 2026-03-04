@@ -15,12 +15,16 @@ from loom.ingest.code.languages.constants import (
     EXT_JS,
     EXT_JSX,
     EXT_JSON,
+    EXT_PROPERTIES,
     EXT_PY,
     EXT_PYW,
     EXT_RB,
     EXT_RS,
     EXT_TS,
     EXT_TSX,
+    EXT_TOML,
+    EXT_INI,
+    EXT_ENV,
     EXT_XML,
     EXT_YAML,
     EXT_YML,
@@ -43,7 +47,6 @@ SKIP_EXTENSIONS: frozenset[str] = frozenset({
     ".pyc", ".pyo", ".so", ".dll", ".dylib", ".o", ".a",  # compiled
     ".lock", ".map",  # build artifacts
     ".min.js", ".min.css",  # minified (parse source instead)
-    ".env", ".env.local", ".env.production",  # secrets
 })
 
 
@@ -106,8 +109,12 @@ def _register_defaults(reg: LanguageRegistry) -> None:
     from loom.ingest.code.languages.ruby import parse_ruby
     from loom.ingest.code.languages.markup import (
         parse_css,
+        parse_env,
         parse_html,
+        parse_ini,
         parse_json,
+        parse_properties,
+        parse_toml,
         parse_xml,
         parse_yaml,
     )
@@ -133,3 +140,8 @@ def _register_defaults(reg: LanguageRegistry) -> None:
     reg.register(EXT_CSS, parse_css)
     reg.register(EXT_YAML, parse_yaml)
     reg.register(EXT_YML, parse_yaml)
+
+    reg.register(EXT_PROPERTIES, parse_properties)
+    reg.register(EXT_TOML, parse_toml)
+    reg.register(EXT_INI, parse_ini)
+    reg.register(EXT_ENV, parse_env)

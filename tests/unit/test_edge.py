@@ -15,6 +15,11 @@ def test_edgetype_has_required_members():
         "STEP_IN",
         "COUPLED_WITH",
         "CONTAINS",
+        # dynamic/reflection
+        "DYNAMIC_CALL",
+        "REFLECTS_CALL",
+        "DYNAMIC_IMPORT",
+        "UNRESOLVED_CALL",
         # doc → doc
         "CHILD_OF",
         "REFERENCES",

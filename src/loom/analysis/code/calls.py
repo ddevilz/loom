@@ -8,7 +8,7 @@ from tree_sitter import Node as TSNode
 from tree_sitter_python import language as python_language
 
 from loom.analysis.code.noise_filter import should_ignore_call
-from loom.core import Edge, EdgeType, Node
+from loom.core import Edge, EdgeType, Node, NodeKind
 from loom.ingest.code.languages.constants import (
     TS_PY_CALL,
     TS_PY_ATTRIBUTE,
@@ -59,7 +59,7 @@ def _find_calls_in_node(src: bytes, n: TSNode, calls: list[tuple[str, float]]) -
         _find_calls_in_node(src, child, calls)
 
 
-def _find_function_body(src: bytes, tree: TSNode, func_name: str, start_line: int) -> TSNode | None:
+def _find_function_body(src: bytes, subtree: TSNode, func_name: str, start_line: int) -> TSNode | None:
     """Find the function definition node matching the given name and line."""
     def _search(node: TSNode) -> TSNode | None:
         if node.type == TS_PY_FUNCTION_DEF:
@@ -76,13 +76,13 @@ def _find_function_body(src: bytes, tree: TSNode, func_name: str, start_line: in
                 return result
         return None
     
-    return _search(tree)
+    return _search(subtree)
 
 
 def trace_calls(
     function_node: Node,
-    tree: TSNode,
-    all_symbols: dict[str, Node],
+    subtree: TSNode,
+    all_symbols: dict[str, list[Node]],
     *,
     src: bytes | None = None,
 ) -> list[Edge]:
@@ -90,8 +90,8 @@ def trace_calls(
     
     Args:
         function_node: The Node representing the function being analyzed
-        tree: The tree-sitter root node (or function body node)
-        all_symbols: Dict mapping symbol names to Nodes for resolution
+        subtree: The tree-sitter root node (or function body node)
+        all_symbols: Dict mapping symbol names to candidate Nodes for resolution
         src: Source bytes (will be read from function_node.path if not provided)
     
     Returns:
@@ -101,16 +101,30 @@ def trace_calls(
         src = Path(function_node.path).read_bytes()
     
     calls: list[tuple[str, float]] = []
-    _find_calls_in_node(src, tree, calls)
+    _find_calls_in_node(src, subtree, calls)
     
     edges: list[Edge] = []
     for callee_name, confidence in calls:
-        callee_node = all_symbols.get(callee_name)
-        
+        candidates = all_symbols.get(callee_name, [])
+        callee_node: Node | None = None
+        if len(candidates) == 1:
+            callee_node = candidates[0]
+        elif len(candidates) > 1:
+            # Heuristic: prefer same file, then prefer function over method
+            same_file = [c for c in candidates if c.path == function_node.path]
+            pool = same_file or candidates
+            funcs = [c for c in pool if c.kind == NodeKind.FUNCTION]
+            if len(funcs) == 1:
+                callee_node = funcs[0]
+            elif len(pool) == 1:
+                callee_node = pool[0]
+
         metadata: dict[str, Any] = {}
         if callee_node is None:
             metadata["unresolved"] = True
-        
+            if len(candidates) > 1:
+                metadata["ambiguous"] = True
+
         edges.append(
             Edge(
                 from_id=function_node.id,
@@ -141,7 +155,10 @@ def trace_calls_for_file(path: str, nodes: list[Node]) -> list[Edge]:
     parser.language = _PY_LANGUAGE
     tree = parser.parse(src)
     
-    symbol_map = {n.name: n for n in nodes}
+    symbol_map: dict[str, list[Node]] = {}
+    for n in nodes:
+        if n.kind in {NodeKind.FUNCTION, NodeKind.METHOD}:
+            symbol_map.setdefault(n.name, []).append(n)
     
     all_edges: list[Edge] = []
     for node in nodes:

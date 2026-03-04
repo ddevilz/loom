@@ -237,15 +237,33 @@ def test_parse_tree_includes_markup_files(tmp_path: Path):
     (tmp_path / "style.css").write_text(".btn { color: red; }", encoding="utf-8")
     (tmp_path / "config.json").write_text('{"debug": true}', encoding="utf-8")
     (tmp_path / "docker-compose.yml").write_text("version: '3'\nservices:\n  web:\n", encoding="utf-8")
+    (tmp_path / "application.properties").write_text("spring.port=8080\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = \"x\"\n", encoding="utf-8")
+    (tmp_path / "settings.ini").write_text("[main]\nkey=value\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("HELLO=world\n", encoding="utf-8")
+    (tmp_path / ".env.local").write_text("LOCAL=1\n", encoding="utf-8")
 
-    nodes = parse_tree(str(tmp_path))
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        nodes = parse_tree(str(tmp_path))
     
-    # Should have: 1 function + 4 FILE nodes
-    assert len(nodes) == 5
+    # Should have: 1 function + 9 FILE nodes
+    assert len(nodes) == 10
     
     kinds = {n.kind for n in nodes}
     assert NodeKind.FUNCTION in kinds
     assert NodeKind.FILE in kinds
     
     languages = {n.language for n in nodes if n.language}
-    assert languages == {"python", "html", "css", "json", "yaml"}
+    assert languages == {
+        "python",
+        "html",
+        "css",
+        "json",
+        "yaml",
+        "properties",
+        "toml",
+        "ini",
+        "env",
+    }

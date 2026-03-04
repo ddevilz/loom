@@ -18,7 +18,7 @@ def _parse_and_trace(code: str, func_name: str, all_symbols: dict[str, Node] | N
     tree = parser.parse(code.encode("utf-8"))
     
     func_node = Node(
-        id=f"function:test.py:{func_name}:1",
+        id=f"function:test.py:{func_name}",
         kind=NodeKind.FUNCTION,
         source=NodeSource.CODE,
         name=func_name,
@@ -29,10 +29,12 @@ def _parse_and_trace(code: str, func_name: str, all_symbols: dict[str, Node] | N
         metadata={},
     )
     
-    if all_symbols is None:
-        all_symbols = {}
-    
-    return trace_calls(func_node, tree.root_node, all_symbols, src=code.encode("utf-8"))
+    symbols_by_name: dict[str, list[Node]] = {}
+    if all_symbols is not None:
+        for k, v in all_symbols.items():
+            symbols_by_name[k] = [v]
+
+    return trace_calls(func_node, tree.root_node, symbols_by_name, src=code.encode("utf-8"))
 
 
 def test_trace_direct_function_call():
@@ -41,7 +43,7 @@ def caller():
     callee()
 """
     callee_node = Node(
-        id="function:test.py:callee:5",
+        id="function:test.py:callee",
         kind=NodeKind.FUNCTION,
         source=NodeSource.CODE,
         name="callee",
@@ -118,7 +120,7 @@ def caller():
     outer(inner())
 """
     outer_node = Node(
-        id="function:test.py:outer:5",
+        id="function:test.py:outer",
         kind=NodeKind.FUNCTION,
         source=NodeSource.CODE,
         name="outer",
@@ -129,7 +131,7 @@ def caller():
         metadata={},
     )
     inner_node = Node(
-        id="function:test.py:inner:8",
+        id="function:test.py:inner",
         kind=NodeKind.FUNCTION,
         source=NodeSource.CODE,
         name="inner",
@@ -157,7 +159,7 @@ def caller():
         bar()
 """
     foo_node = Node(
-        id="function:test.py:foo:10",
+        id="function:test.py:foo",
         kind=NodeKind.FUNCTION,
         source=NodeSource.CODE,
         name="foo",
@@ -168,7 +170,7 @@ def caller():
         metadata={},
     )
     bar_node = Node(
-        id="function:test.py:bar:13",
+        id="function:test.py:bar",
         kind=NodeKind.FUNCTION,
         source=NodeSource.CODE,
         name="bar",
@@ -194,7 +196,7 @@ def caller():
         process(item)
 """
     process_node = Node(
-        id="function:test.py:process:10",
+        id="function:test.py:process",
         kind=NodeKind.FUNCTION,
         source=NodeSource.CODE,
         name="process",

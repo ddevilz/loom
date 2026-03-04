@@ -186,7 +186,10 @@ def test_parse_tree_walks_directory(tmp_path: Path):
     (tmp_path / "index.html").write_text("<html></html>", encoding="utf-8")
     (tmp_path / "data.json").write_text("{}", encoding="utf-8")
 
-    nodes = parse_tree(str(tmp_path))
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        nodes = parse_tree(str(tmp_path))
     names = {n.name for n in nodes}
     assert "main" in names
     assert "helper" in names
@@ -218,7 +221,10 @@ def test_parse_tree_skips_venv_and_node_modules(tmp_path: Path):
     pycache.mkdir()
     (pycache / "mod.py").write_text("def cached():\n    pass\n", encoding="utf-8")
 
-    nodes = parse_tree(str(tmp_path))
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        nodes = parse_tree(str(tmp_path))
     names = {n.name for n in nodes}
     assert names == {"real"}
 
@@ -231,7 +237,10 @@ def test_parse_tree_skips_hidden_dirs(tmp_path: Path):
     hidden.mkdir()
     (hidden / "x.py").write_text("def hidden():\n    pass\n", encoding="utf-8")
 
-    nodes = parse_tree(str(tmp_path))
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        nodes = parse_tree(str(tmp_path))
     names = {n.name for n in nodes}
     assert names == {"real"}
 

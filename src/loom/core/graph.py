@@ -39,6 +39,9 @@ class LoomGraph:
     async def schema_init(self) -> None:
         await asyncio.to_thread(schema_init, self._gw)
 
+    async def delete(self) -> None:
+        await asyncio.to_thread(self._gw.run, "MATCH (n) DETACH DELETE n")
+
     def reconnect(self) -> None:
         self._gw.reconnect()
 
@@ -72,7 +75,7 @@ class LoomGraph:
         resolved_id = node_id
         if ":" not in node_id:
             rows = await self.query(
-                "MATCH (f:Function {name: $name}) RETURN f.id AS id LIMIT 1",
+                "MATCH (n:Node {name: $name}) RETURN n.id AS id LIMIT 1",
                 params={"name": node_id},
             )
             if not rows:

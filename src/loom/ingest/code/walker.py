@@ -17,25 +17,32 @@ from loom.ingest.code.languages.constants import (
     EXT_JS,
     EXT_JSX,
     EXT_JSON,
+    EXT_PROPERTIES,
     EXT_PY,
     EXT_PYW,
     EXT_RB,
     EXT_RS,
     EXT_TS,
     EXT_TSX,
+    EXT_TOML,
     EXT_XML,
     EXT_YAML,
     EXT_YML,
+    EXT_INI,
     LANG_CSS,
+    LANG_ENV,
     LANG_GO,
     LANG_HTML,
+    LANG_INI,
     LANG_JAVA,
     LANG_JAVASCRIPT,
     LANG_JSON,
     LANG_PYTHON,
+    LANG_PROPERTIES,
     LANG_RUBY,
     LANG_RUST,
     LANG_TSX,
+    LANG_TOML,
     LANG_TYPESCRIPT,
     LANG_XML,
     LANG_YAML,
@@ -61,6 +68,9 @@ _EXT_TO_LANGUAGE: dict[str, str] = {
     EXT_CSS: LANG_CSS,
     EXT_YAML: LANG_YAML,
     EXT_YML: LANG_YAML,
+    EXT_PROPERTIES: LANG_PROPERTIES,
+    EXT_TOML: LANG_TOML,
+    EXT_INI: LANG_INI,
 }
 
 
@@ -138,6 +148,11 @@ def walk_repo(
 
                     rel = _to_posix_rel(root, entry_path)
                     if spec.match_file(rel):
+                        continue
+
+                    # special-case .env files: suffix may be empty (".env") or misleading (".example")
+                    if name.startswith(".env"):
+                        results.setdefault(LANG_ENV, []).append(str(entry_path))
                         continue
 
                     ext = entry_path.suffix.lower()
