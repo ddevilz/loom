@@ -174,8 +174,15 @@ def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:
         tree = ET.fromstring(content)
         meta[META_ROOT_TAG] = tree.tag
         
-        # Extract namespaces
-        namespaces = dict([node for _, node in ET.iterparse(p, events=[XML_EVENT_START_NS])])
+        # Extract namespaces from parsed tree
+        namespaces = {}
+        for elem in tree.iter():
+            if elem.tag.startswith('{'):
+                ns_end = elem.tag.find('}')
+                if ns_end > 0:
+                    ns_uri = elem.tag[1:ns_end]
+                    if ns_uri not in namespaces.values():
+                        namespaces[f'ns{len(namespaces)}'] = ns_uri
         if namespaces:
             meta[META_NAMESPACES] = namespaces
         

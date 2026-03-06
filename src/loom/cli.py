@@ -66,11 +66,16 @@ def _print_call_rows(console: Console, *, heading: str, rows: list[dict[str, obj
 def analyze(
     path: str = typer.Argument(..., help="Path to a repo or file"),
     docs: str | None = typer.Option(None, "--docs"),
+    jira_project: str | None = typer.Option(None, "--jira-project"),
+    jira_url: str | None = typer.Option(None, "--jira-url"),
+    jira_email: str | None = typer.Option(None, "--jira-email"),
+    jira_token: str | None = typer.Option(None, "--jira-token"),
     graph_name: str = typer.Option("loom", "--graph-name"),
     exclude_tests: bool = typer.Option(False, "--exclude-tests"),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
     from loom.core import LoomGraph
+    from loom.ingest.integrations.jira import JiraConfig
     from loom.ingest.pipeline import index_repo
 
     console = Console()
@@ -79,12 +84,21 @@ def analyze(
 
     async def _run() -> None:
         graph = LoomGraph(graph_name=graph_name)
+        jira = None
+        if jira_project and jira_url and jira_email and jira_token:
+            jira = JiraConfig(
+                base_url=jira_url,
+                email=jira_email,
+                api_token=jira_token,
+                project_key=jira_project,
+            )
         res = await index_repo(
             target,
             graph,
             force=force,
             exclude_tests=exclude_tests,
             docs_path=docs,
+            jira=jira,
         )
 
         by_kind_rows = await graph.query(
@@ -115,6 +129,119 @@ def analyze(
                     rows=by_kind_rows,
                 )
             )
+
+    asyncio.run(_run())
+
+
+@app.command()
+def trace(
+    mode: str = typer.Argument(..., help="unimplemented|untraced|impact|tickets|coverage"),
+    target: str | None = typer.Argument(None),
+    graph_name: str = typer.Option("loom", "--graph-name"),
+) -> None:
+    from loom.core import LoomGraph
+    from loom.query.traceability import (
+        impact_of_ticket,
+        sprint_code_coverage,
+        tickets_for_function,
+        unimplemented_tickets,
+        untraced_functions,
+    )
+
+    console = Console()
+
+    async def _run() -> None:
+        graph = LoomGraph(graph_name=graph_name)
+
+        if mode == "unimplemented":
+            rows = await unimplemented_tickets(graph)
+            _print_table_or_none(
+                console,
+                heading=None,
+                columns=[("name", None), ("path", None)],
+                rows=[{"name": n.name, "path": n.path} for n in rows],
+            )
+            return
+        if mode == "untraced":
+            rows = await untraced_functions(graph)
+            _print_table_or_none(
+                console,
+                heading=None,
+                columns=[("kind", None), ("name", None), ("path", None)],
+                rows=[{"kind": n.kind.value, "name": n.name, "path": n.path} for n in rows],
+            )
+            return
+        if mode == "impact":
+            if not target:
+                raise typer.Exit(code=1)
+            rows = await impact_of_ticket(target, graph)
+            _print_table_or_none(
+                console,
+                heading=None,
+                columns=[("kind", None), ("name", None), ("path", None)],
+                rows=[{"kind": n.kind.value, "name": n.name, "path": n.path} for n in rows],
+            )
+            return
+        if mode == "tickets":
+            if not target:
+                raise typer.Exit(code=1)
+            rows = await tickets_for_function(target, graph)
+            _print_table_or_none(
+                console,
+                heading=None,
+                columns=[("name", None), ("path", None)],
+                rows=[{"name": n.name, "path": n.path} for n in rows],
+            )
+            return
+        if mode == "coverage":
+            if not target:
+                raise typer.Exit(code=1)
+            report = await sprint_code_coverage(target, graph)
+            console.print(
+                _kv_table(
+                    [
+                        ("sprint", report.sprint_name),
+                        ("ticket_count", str(report.ticket_count)),
+                        ("linked_function_count", str(report.linked_function_count)),
+                    ]
+                )
+            )
+            return
+
+        raise typer.Exit(code=1)
+
+    asyncio.run(_run())
+
+
+@app.command()
+def query(
+    query_text: str = typer.Argument(..., help="Natural language query"),
+    graph_name: str = typer.Option("loom", "--graph-name"),
+    limit: int = typer.Option(10, "--limit"),
+) -> None:
+    from loom.core import LoomGraph
+    from loom.search.searcher import search
+
+    console = Console()
+
+    async def _run() -> None:
+        graph = LoomGraph(graph_name=graph_name)
+        results = await search(query_text, graph, limit=limit)
+        _print_table_or_none(
+            console,
+            heading=None,
+            columns=[("score", "right"), ("via", None), ("kind", None), ("name", None), ("path", None)],
+            rows=[
+                {
+                    "score": f"{result.score:.3f}",
+                    "via": result.matched_via,
+                    "kind": result.node.kind.value,
+                    "name": result.node.name,
+                    "path": result.node.path,
+                }
+                for result in results
+            ],
+        )
 
     asyncio.run(_run())
 
@@ -325,10 +452,17 @@ def sync(
                     ("nodes", str(res.node_count)),
                     ("edges", str(res.edge_count)),
                     ("errors", str(res.error_count)),
+                    ("warnings", str(len(getattr(res, "warnings", [])))),
                     ("seconds", f"{res.duration_ms / 1000.0:.2f}"),
                 ]
             )
         )
+
+        warnings = getattr(res, "warnings", [])
+        if warnings:
+            console.print("Drift warnings:")
+            for warning in warnings[:20]:
+                console.print(f"  - {warning}")
 
         if res.error_count:
             console.print("Review errors in output.")

@@ -30,10 +30,17 @@ More.
     assert nodes[0].kind == NodeKind.DOCUMENT
     assert nodes[0].source == NodeSource.DOC
 
-    sec = [n for n in nodes if n.kind == NodeKind.SECTION]
-    assert len(sec) == 3
+    chapters = [n for n in nodes if n.kind == NodeKind.CHAPTER]
+    sections = [n for n in nodes if n.kind == NodeKind.SECTION]
+    subsections = [n for n in nodes if n.kind == NodeKind.SUBSECTION]
+    paragraphs = [n for n in nodes if n.kind == NodeKind.PARAGRAPH]
 
-    by_name = {n.name: n for n in sec}
+    assert len(chapters) == 1
+    assert len(sections) == 1
+    assert len(subsections) == 1
+    assert len(paragraphs) >= 3
+
+    by_name = {n.name: n for n in [*chapters, *sections, *subsections]}
     assert by_name["Title"].depth == 1
     assert by_name["Section A"].depth == 2
     assert by_name["Sub A1"].depth == 3
@@ -47,7 +54,7 @@ More.
     assert by_name["Sub A1"].summary is not None
 
     assert all(e.kind == EdgeType.CHILD_OF for e in edges)
-    assert len(edges) == 3
+    assert len(edges) >= 6
 
     # Ensure parent pointers exist
-    assert all(s.parent_id is not None for s in sec)
+    assert all(s.parent_id is not None for s in [*chapters, *sections, *subsections, *paragraphs])

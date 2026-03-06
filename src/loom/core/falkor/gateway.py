@@ -24,6 +24,8 @@ class FalkorGateway:
         self._graph = self._db.select_graph(self.graph_name)
 
     def reconnect(self) -> None:
+        global _DB_SINGLETON
+        _DB_SINGLETON = None
         self._connect()
 
     def run(

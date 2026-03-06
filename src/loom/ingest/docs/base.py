@@ -41,17 +41,37 @@ def make_document_node(path: str) -> Node:
     )
 
 
-def make_section_node(*, doc_path: str, heading: str, depth: int, index: int, summary: str | None) -> Node:
+def make_section_node(
+    *,
+    doc_path: str,
+    heading: str,
+    depth: int,
+    index: int,
+    summary: str | None,
+    kind: NodeKind = NodeKind.SECTION,
+) -> Node:
     ref = f"{depth}_{index}_{_slug(heading)}"
     return Node(
         id=f"doc:{doc_path}:{ref}",
-        kind=NodeKind.SECTION,
+        kind=kind,
         source=NodeSource.DOC,
         name=heading,
         path=doc_path,
         depth=depth,
         parent_id=None,
         summary=summary,
+        metadata={},
+    )
+
+
+def make_paragraph_node(*, doc_path: str, parent_ref: str, index: int, text: str) -> Node:
+    return Node(
+        id=f"doc:{doc_path}:{parent_ref}:p{index}",
+        kind=NodeKind.PARAGRAPH,
+        source=NodeSource.DOC,
+        name=f"paragraph_{index}",
+        path=doc_path,
+        summary=text,
         metadata={},
     )
 

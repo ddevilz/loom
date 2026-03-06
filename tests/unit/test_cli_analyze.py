@@ -48,11 +48,13 @@ def test_cli_analyze_wires_flags_and_prints_summary(monkeypatch):
         force: bool = False,
         exclude_tests: bool = False,
         docs_path: str | None = None,
+        jira=None,
     ):
         calls["path"] = path
         calls["force"] = force
         calls["exclude_tests"] = exclude_tests
         calls["docs_path"] = docs_path
+        calls["jira"] = jira
         calls["graph"] = graph
         return _FakeIndexResult()
 
@@ -66,6 +68,14 @@ def test_cli_analyze_wires_flags_and_prints_summary(monkeypatch):
             "tests/fixtures/sample_repo",
             "--docs",
             "docs",
+            "--jira-project",
+            "PROJ",
+            "--jira-url",
+            "https://jira.example.com",
+            "--jira-email",
+            "a@b.com",
+            "--jira-token",
+            "tok",
             "--graph-name",
             "test_graph",
             "--exclude-tests",
@@ -79,6 +89,7 @@ def test_cli_analyze_wires_flags_and_prints_summary(monkeypatch):
     assert Path(str(calls["path"])) == Path("tests/fixtures/sample_repo")
     assert calls["exclude_tests"] is True
     assert calls["force"] is True
+    assert calls["jira"].project_key == "PROJ"
 
     # Rich output should include our result fields
     out = result.stdout

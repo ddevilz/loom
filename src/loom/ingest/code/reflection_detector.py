@@ -6,10 +6,8 @@ Detects reflection patterns and dynamic invocations across languages:
 - Python: getattr, setattr, __import__, importlib
 - TypeScript/JavaScript: obj[prop](), dynamic import()
 
-NOTE: This module is not yet wired into any language parser. The detection
-functions are implemented but not currently integrated into the parsing pipeline.
-To enable reflection detection, these functions need to be called from the
-respective language parsers and the metadata needs to be persisted to nodes.
+This module is integrated into the Python and TypeScript/JavaScript parsers.
+Detection functions are called during parsing and metadata is persisted to nodes.
 """
 from __future__ import annotations
 

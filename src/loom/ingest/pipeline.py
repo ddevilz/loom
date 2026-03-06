@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
+from inspect import isawaitable
 from pathlib import Path
-from typing import Any, Callable, Protocol
 from time import perf_counter
+from typing import Any, Callable, Protocol
 
 from loom.analysis.code.parser import parse_code
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.ingest.code.walker import walk_repo
+from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
 from loom.linker.linker import SemanticLinker
 
 from loom.ingest.result import IndexError, IndexResult
@@ -148,6 +151,15 @@ def _append_docs_batch(docs_path: str, batch: _IndexBatch) -> None:
         batch.errors.append(IndexError(path=str(docs_path), phase="parse", message=str(e)))
 
 
+async def _append_jira_batch(jira: JiraConfig, batch: _IndexBatch) -> None:
+    try:
+        jira_nodes_result = fetch_jira_nodes(jira)
+        jira_nodes = await jira_nodes_result if isawaitable(jira_nodes_result) else jira_nodes_result
+        batch.nodes_to_upsert.extend(jira_nodes)
+    except Exception as e:
+        batch.errors.append(IndexError(path=jira.project_key, phase="jira", message=str(e)))
+
+
 async def _process_file(
     graph: _Graph,
     *,
@@ -170,7 +182,7 @@ async def _process_file(
     batch.nodes_to_upsert.append(_make_file_node(fp, content_hash=file_hash))
 
     try:
-        nodes = parse_code(fp, exclude_tests=exclude_tests)
+        nodes = await asyncio.to_thread(parse_code, fp, exclude_tests=exclude_tests)
         batch.nodes_to_upsert.extend(nodes)
     except Exception as e:
         batch.errors.append(IndexError(path=fp, phase="parse", message=str(e)))
@@ -181,7 +193,8 @@ async def _process_file(
         return
 
     try:
-        batch.edges_to_upsert.extend(tracer(fp, nodes))
+        edges = await asyncio.to_thread(tracer, fp, nodes)
+        batch.edges_to_upsert.extend(edges)
     except Exception:
         batch.errors.append(IndexError(path=fp, phase="calls", message=error_message))
 
@@ -228,6 +241,7 @@ async def index_repo(
     force: bool = False,
     exclude_tests: bool = False,
     docs_path: str | None = None,
+    jira: JiraConfig | None = None,
 ) -> IndexResult:
     """Index a repo into the graph.
 
@@ -251,6 +265,8 @@ async def index_repo(
 
     if docs_path is not None:
         _append_docs_batch(docs_path, batch)
+    if jira is not None:
+        await _append_jira_batch(jira, batch)
 
     for fp in current_files:
         file_id = _file_node_id(fp)
@@ -272,14 +288,15 @@ async def index_repo(
 
     await _persist_batch(graph, root, batch)
 
-    if docs_path is not None:
+    if docs_path is not None or jira is not None:
         code_nodes = _collect_code_nodes_for_linking(batch)
         doc_nodes = _collect_doc_nodes_for_linking(batch)
         if code_nodes and doc_nodes:
             try:
                 await SemanticLinker().link(code_nodes, doc_nodes, graph)
             except Exception as e:
-                batch.errors.append(IndexError(path=str(docs_path), phase="link", message=str(e)))
+                link_path = str(docs_path) if docs_path is not None else (jira.project_key if jira is not None else root)
+                batch.errors.append(IndexError(path=link_path, phase="link", message=str(e)))
 
     node_count, edge_count = await _query_graph_counts(graph, root, batch.errors)
 
