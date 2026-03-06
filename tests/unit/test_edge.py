@@ -1,6 +1,6 @@
 import pytest
 
-from loom.core.edge import Edge, EdgeType
+from loom.core.edge import Edge, EdgeOrigin, EdgeType
 
 
 def test_edgetype_has_required_members():
@@ -94,3 +94,20 @@ def test_edge_roundtrip_dump_validate():
     dumped = e.model_dump()
     e2 = Edge.model_validate(dumped)
     assert e2 == e
+
+
+def test_edge_origin_default_and_roundtrip():
+    e = Edge(from_id="a", to_id="b", kind=EdgeType.CALLS)
+    assert e.origin == EdgeOrigin.COMPUTED
+
+    e2 = Edge(
+        from_id="a",
+        to_id="b",
+        kind=EdgeType.LOOM_IMPLEMENTS,
+        origin=EdgeOrigin.HUMAN,
+        link_method="name_match",
+        link_reason="confirmed by reviewer",
+    )
+    dumped = e2.model_dump()
+    e3 = Edge.model_validate(dumped)
+    assert e3.origin == EdgeOrigin.HUMAN

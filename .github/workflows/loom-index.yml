@@ -1,0 +1,39 @@
+name: Loom Incremental Sync
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  loom-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Loom
+        run: |
+          uv sync
+
+      - name: Start FalkorDB
+        run: |
+          docker run -d -p 6379:6379 --name loom-db falkordb/falkordb
+
+      - name: Loom incremental sync
+        run: |
+          uv run loom sync \
+            --old-sha "${{ github.event.before }}" \
+            --new-sha "${{ github.sha }}" \
+            --graph-name "${{ github.repository }}" \
+            --repo-path .
+        env:
+          LOOM_DB_URL: ${{ secrets.LOOM_DB_URL }}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -37,6 +38,14 @@ class EdgeType(StrEnum):
 LinkMethod = Literal["name_match", "embed_match", "llm_match"]
 
 
+class EdgeOrigin(str, Enum):
+    COMPUTED = "computed"
+    NAME_MATCH = "name_match"
+    EMBED_MATCH = "embed_match"
+    LLM_MATCH = "llm_match"
+    HUMAN = "human"
+
+
 class Edge(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -46,6 +55,8 @@ class Edge(BaseModel):
 
     confidence: float = 1.0
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    origin: EdgeOrigin = EdgeOrigin.COMPUTED
 
     link_method: LinkMethod | None = None
     link_reason: str | None = None
