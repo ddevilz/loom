@@ -39,6 +39,8 @@ class Node(BaseModel):
     name: str
     path: str
 
+    content_hash: str | None = None
+
     summary: str | None = None
     embedding: list[float] | None = None
 

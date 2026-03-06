@@ -45,9 +45,24 @@ docker run -d -p 6379:6379 --name loom-db falkordb/falkordb
 ## Quick start
 
 ```bash
-# Current CLI is a placeholder entrypoint
+# Verify the CLI is installed and imports
 loom --dev
+
+# Index a repo
+loom analyze . --graph-name myrepo --exclude-tests
 ```
+
+---
+
+## CLI
+
+| Command | Purpose | Example |
+|---|---|---|
+| `loom analyze <path>` | Index a repository into FalkorDB and print a Rich summary (file deltas, node/edge counts, duration). | `loom analyze . --graph-name myrepo --exclude-tests --force` |
+| `loom entrypoints` | Show entrypoint candidates and high-signal call graph summaries (name-based candidates, CALLS roots, relationship type counts). | `loom entrypoints --graph-name myrepo --limit 100` |
+| `loom calls` | Inspect `CALLS` edges: who a node calls (callees), who calls a node (callers), or dump a slice of the call graph. | `loom calls --graph-name myrepo --target App --direction both --limit 50` |
+| `loom sync` | Incrementally sync changes between two git SHAs into the graph using git-diff + node diffing. | `loom sync --old-sha abc --new-sha def --graph-name myrepo --repo-path .` |
+| `loom --dev` | Development health check (verifies package import OK). | `loom --dev` |
 
 ---
 
