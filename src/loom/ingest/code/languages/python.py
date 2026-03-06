@@ -11,6 +11,8 @@ from tree_sitter_python import language as python_language
 
 from loom.core import Node, NodeKind, NodeSource
 
+from loom.core.content_hash import content_hash_for_line_span
+
 from loom.ingest.code.languages.constants import (
     DEC_ACTION,
     DEC_API_VIEW,
@@ -236,6 +238,7 @@ def _extract_from_def(
                         source=NodeSource.CODE,
                         name=import_name,
                         path=path,
+                        content_hash=content_hash_for_line_span(src, start_line, end_line),
                         start_line=start_line,
                         end_line=end_line,
                         language=LANG_PYTHON,
@@ -257,6 +260,7 @@ def _extract_from_def(
                     source=NodeSource.CODE,
                     name=import_name,
                     path=path,
+                    content_hash=content_hash_for_line_span(src, start_line, end_line),
                     start_line=start_line,
                     end_line=end_line,
                     language=LANG_PYTHON,
@@ -296,6 +300,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_PYTHON,
@@ -336,6 +341,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_PYTHON,
@@ -391,6 +397,7 @@ def _try_extract_assignment(
                     source=NodeSource.CODE,
                     name=name,
                     path=path,
+                    content_hash=content_hash_for_line_span(src, start_line, end_line),
                     start_line=start_line,
                     end_line=end_line,
                     language=LANG_PYTHON,
@@ -412,6 +419,7 @@ def _try_extract_assignment(
                             source=NodeSource.CODE,
                             name=name,
                             path=path,
+                            content_hash=content_hash_for_line_span(src, start_line, end_line),
                             start_line=start_line,
                             end_line=end_line,
                             language=LANG_PYTHON,
