@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 from time import perf_counter
 
 from loom.analysis.code.parser import parse_code
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.ingest.code.walker import walk_repo
+from loom.linker.linker import SemanticLinker
 
 from loom.ingest.result import IndexError, IndexResult
 
@@ -35,6 +36,31 @@ WHERE r.origin = 'human'
 SET r.stale = true,
     r.stale_reason = 'source_changed'
 """
+
+_DELETE_NODE_BY_ID = "MATCH (n {id: $id}) DETACH DELETE n"
+_COUNT_NODES = "MATCH (n) RETURN count(n) AS c"
+_COUNT_EDGES = "MATCH ()-[r]->() RETURN count(r) AS c"
+
+
+@dataclass
+class _IndexBatch:
+    files_skipped: int = 0
+    files_updated: int = 0
+    files_added: int = 0
+    nodes_to_upsert: list[Node] | None = None
+    edges_to_upsert: list[Edge] | None = None
+    errors: list[IndexError] | None = None
+
+    def __post_init__(self) -> None:
+        if self.nodes_to_upsert is None:
+            self.nodes_to_upsert = []
+        if self.edges_to_upsert is None:
+            self.edges_to_upsert = []
+        if self.errors is None:
+            self.errors = []
+
+
+CallTracer = Callable[[str, list[Node]], list[Edge]]
 
 
 def _file_node_id(path: str) -> str:
@@ -69,6 +95,18 @@ def _make_file_node(path: str, *, content_hash: str) -> Node:
     )
 
 
+def _collect_code_nodes_for_linking(batch: _IndexBatch) -> list[Node]:
+    return [
+        node
+        for node in batch.nodes_to_upsert
+        if node.source == NodeSource.CODE and node.kind != NodeKind.FILE
+    ]
+
+
+def _collect_doc_nodes_for_linking(batch: _IndexBatch) -> list[Node]:
+    return [node for node in batch.nodes_to_upsert if node.source == NodeSource.DOC]
+
+
 def _collect_repo_files(root: str) -> list[str]:
     files_by_lang = walk_repo(root)
     all_files: list[str] = []
@@ -78,10 +116,109 @@ def _collect_repo_files(root: str) -> list[str]:
 
 
 async def _invalidate_edges_for_file(graph: _Graph, *, path: str) -> None:
-    # Delete all non-human edges from nodes in the file; they'll be recomputed.
     await graph.query(_DELETE_NON_HUMAN_EDGES_FOR_FILE, {"path": path})
-    # Human edges are preserved but flagged stale.
     await graph.query(_MARK_HUMAN_EDGES_STALE_FOR_FILE, {"path": path})
+
+
+def _get_call_tracer(path: str) -> tuple[CallTracer | None, str | None]:
+    lower = path.lower()
+    if lower.endswith(".py"):
+        from loom.analysis.code.calls import trace_calls_for_file
+
+        return trace_calls_for_file, "python call tracing failed"
+    if lower.endswith((".ts", ".tsx")):
+        from loom.analysis.code.calls_ts import trace_calls_for_ts_file
+
+        return trace_calls_for_ts_file, "typescript call tracing failed"
+    if lower.endswith(".java"):
+        from loom.analysis.code.calls_java import trace_calls_for_java_file
+
+        return trace_calls_for_java_file, "java call tracing failed"
+    return None, None
+
+
+def _append_docs_batch(docs_path: str, batch: _IndexBatch) -> None:
+    try:
+        from loom.ingest.docs.base import walk_docs
+
+        doc_nodes, doc_edges = walk_docs(docs_path)
+        batch.nodes_to_upsert.extend(doc_nodes)
+        batch.edges_to_upsert.extend(doc_edges)
+    except Exception as e:
+        batch.errors.append(IndexError(path=str(docs_path), phase="parse", message=str(e)))
+
+
+async def _process_file(
+    graph: _Graph,
+    *,
+    fp: str,
+    stored_hash: str | None,
+    exclude_tests: bool,
+    batch: _IndexBatch,
+) -> None:
+    file_hash = _compute_file_hash(fp)
+    if stored_hash is not None and stored_hash == file_hash:
+        batch.files_skipped += 1
+        return
+
+    if stored_hash is None:
+        batch.files_added += 1
+    else:
+        batch.files_updated += 1
+        await _invalidate_edges_for_file(graph, path=fp)
+
+    batch.nodes_to_upsert.append(_make_file_node(fp, content_hash=file_hash))
+
+    try:
+        nodes = parse_code(fp, exclude_tests=exclude_tests)
+        batch.nodes_to_upsert.extend(nodes)
+    except Exception as e:
+        batch.errors.append(IndexError(path=fp, phase="parse", message=str(e)))
+        return
+
+    tracer, error_message = _get_call_tracer(fp)
+    if tracer is None or error_message is None:
+        return
+
+    try:
+        batch.edges_to_upsert.extend(tracer(fp, nodes))
+    except Exception:
+        batch.errors.append(IndexError(path=fp, phase="calls", message=error_message))
+
+
+async def _delete_missing_files(graph: _Graph, deleted_file_ids: set[str], errors: list[IndexError]) -> None:
+    for file_id in sorted(deleted_file_ids):
+        try:
+            await graph.query(_DELETE_NODE_BY_ID, {"id": file_id})
+        except Exception as e:
+            errors.append(IndexError(path=file_id, phase="persist", message=str(e)))
+
+
+async def _persist_batch(graph: _Graph, root: str, batch: _IndexBatch) -> None:
+    if batch.nodes_to_upsert:
+        try:
+            await graph.bulk_create_nodes(batch.nodes_to_upsert)
+        except Exception as e:
+            batch.errors.append(IndexError(path=root, phase="persist", message=str(e)))
+
+    if batch.edges_to_upsert:
+        try:
+            await graph.bulk_create_edges(batch.edges_to_upsert)
+        except Exception as e:
+            batch.errors.append(IndexError(path=root, phase="persist", message=str(e)))
+
+
+async def _query_graph_counts(graph: _Graph, root: str, errors: list[IndexError]) -> tuple[int, int]:
+    node_count = 0
+    edge_count = 0
+    try:
+        rows = await graph.query(_COUNT_NODES)
+        node_count = int(rows[0]["c"]) if rows else 0
+        rows = await graph.query(_COUNT_EDGES)
+        edge_count = int(rows[0]["c"]) if rows else 0
+    except Exception as e:
+        errors.append(IndexError(path=root, phase="summarize", message=str(e)))
+    return node_count, edge_count
 
 
 async def index_repo(
@@ -110,112 +247,41 @@ async def index_repo(
     current_file_ids = {_file_node_id(fp) for fp in current_files}
     stored_file_ids = set(stored_hash_by_file_id.keys())
 
-    files_skipped = 0
-    files_updated = 0
-    files_added = 0
-
-    errors: list[IndexError] = []
-
-    nodes_to_upsert: list[Node] = []
-    edges_to_upsert: list[Edge] = []
+    batch = _IndexBatch()
 
     if docs_path is not None:
-        try:
-            from loom.ingest.docs.base import walk_docs
-
-            doc_nodes, doc_edges = walk_docs(docs_path)
-            nodes_to_upsert.extend(doc_nodes)
-            edges_to_upsert.extend(doc_edges)
-        except Exception as e:
-            errors.append(IndexError(path=str(docs_path), phase="parse", message=str(e)))
+        _append_docs_batch(docs_path, batch)
 
     for fp in current_files:
         file_id = _file_node_id(fp)
-        file_hash = _compute_file_hash(fp)
-
         stored_hash = stored_hash_by_file_id.get(file_id)
-        if stored_hash is not None and stored_hash == file_hash:
-            files_skipped += 1
-            continue
-
-        if stored_hash is None:
-            files_added += 1
-        else:
-            files_updated += 1
-            await _invalidate_edges_for_file(graph, path=fp)
-
-        # Ensure FILE node exists/updates.
-        nodes_to_upsert.append(_make_file_node(fp, content_hash=file_hash))
-
-        # Parse symbols for supported languages.
-        try:
-            nodes = parse_code(fp, exclude_tests=exclude_tests)
-            nodes_to_upsert.extend(nodes)
-        except Exception as e:
-            errors.append(IndexError(path=fp, phase="parse", message=str(e)))
-            continue
-
-        # Minimal structural edges: only CALLS edges for Python for now.
-        if fp.lower().endswith(".py"):
-            try:
-                from loom.analysis.code.calls import trace_calls_for_file
-
-                edges_to_upsert.extend(trace_calls_for_file(fp, nodes))
-            except Exception:
-                errors.append(
-                    IndexError(path=fp, phase="calls", message="python call tracing failed")
-                )
-
-        if fp.lower().endswith((".ts", ".tsx")):
-            try:
-                from loom.analysis.code.calls_ts import trace_calls_for_ts_file
-
-                edges_to_upsert.extend(trace_calls_for_ts_file(fp, nodes))
-            except Exception:
-                errors.append(
-                    IndexError(path=fp, phase="calls", message="typescript call tracing failed")
-                )
-
-        if fp.lower().endswith(".java"):
-            try:
-                from loom.analysis.code.calls_java import trace_calls_for_java_file
-
-                edges_to_upsert.extend(trace_calls_for_java_file(fp, nodes))
-            except Exception:
-                errors.append(IndexError(path=fp, phase="calls", message="java call tracing failed"))
+        await _process_file(
+            graph,
+            fp=fp,
+            stored_hash=stored_hash,
+            exclude_tests=exclude_tests,
+            batch=batch,
+        )
 
     # Handle deleted files (present in graph, missing on disk)
     deleted_file_ids = stored_file_ids - current_file_ids
     files_deleted = len(deleted_file_ids)
 
     if deleted_file_ids:
-        for file_id in sorted(deleted_file_ids):
+        await _delete_missing_files(graph, deleted_file_ids, batch.errors)
+
+    await _persist_batch(graph, root, batch)
+
+    if docs_path is not None:
+        code_nodes = _collect_code_nodes_for_linking(batch)
+        doc_nodes = _collect_doc_nodes_for_linking(batch)
+        if code_nodes and doc_nodes:
             try:
-                await graph.query("MATCH (n {id: $id}) DETACH DELETE n", {"id": file_id})
+                await SemanticLinker().link(code_nodes, doc_nodes, graph)
             except Exception as e:
-                errors.append(IndexError(path=file_id, phase="persist", message=str(e)))
+                batch.errors.append(IndexError(path=str(docs_path), phase="link", message=str(e)))
 
-    if nodes_to_upsert:
-        try:
-            await graph.bulk_create_nodes(nodes_to_upsert)
-        except Exception as e:
-            errors.append(IndexError(path=root, phase="persist", message=str(e)))
-
-    if edges_to_upsert:
-        try:
-            await graph.bulk_create_edges(edges_to_upsert)
-        except Exception as e:
-            errors.append(IndexError(path=root, phase="persist", message=str(e)))
-
-    node_count = 0
-    edge_count = 0
-    try:
-        rows = await graph.query("MATCH (n) RETURN count(n) AS c")
-        node_count = int(rows[0]["c"]) if rows else 0
-        rows = await graph.query("MATCH ()-[r]->() RETURN count(r) AS c")
-        edge_count = int(rows[0]["c"]) if rows else 0
-    except Exception as e:
-        errors.append(IndexError(path=root, phase="summarize", message=str(e)))
+    node_count, edge_count = await _query_graph_counts(graph, root, batch.errors)
 
     duration_ms = (perf_counter() - t0) * 1000.0
 
@@ -223,11 +289,11 @@ async def index_repo(
         node_count=node_count,
         edge_count=edge_count,
         file_count=len(current_files),
-        files_skipped=files_skipped,
-        files_updated=files_updated,
-        files_added=files_added,
+        files_skipped=batch.files_skipped,
+        files_updated=batch.files_updated,
+        files_added=batch.files_added,
         files_deleted=files_deleted,
-        error_count=len(errors),
+        error_count=len(batch.errors),
         duration_ms=duration_ms,
-        errors=errors,
+        errors=batch.errors,
     )
