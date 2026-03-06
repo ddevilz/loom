@@ -27,6 +27,7 @@ from loom.ingest.code.languages.constants import (
     TS_JS_METHOD_DEF,
     TS_JS_TYPE_ALIAS_DECL,
 )
+from loom.ingest.code.reflection_detector import detect_js_dynamic_pattern
 
 _TS_LANGUAGE = Language(language_typescript())
 _TSX_LANGUAGE = Language(language_tsx())
@@ -125,6 +126,20 @@ def _extract_export_info(src: bytes, n: TSNode) -> dict:
         export_info['declaration_type'] = declaration.type
     
     return export_info
+
+
+def _detect_dynamic_metadata(body: TSNode | None) -> dict:
+    if body is None:
+        return {}
+
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        detected = detect_js_dynamic_pattern(current)
+        if detected is not None:
+            return detected
+        stack.extend(reversed(current.children))
+    return {}
 
 
 def _extract_from_def(
@@ -239,6 +254,8 @@ def _extract_from_def(
             if child.type == 'async':
                 metadata['is_async'] = True
                 break
+        body = n.child_by_field_name("body")
+        metadata.update(_detect_dynamic_metadata(body))
 
         out.append(
             Node(
@@ -255,7 +272,6 @@ def _extract_from_def(
             )
         )
 
-        body = n.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out, language=language)
         return
@@ -267,6 +283,8 @@ def _extract_from_def(
 
         start_line, end_line = _lines(n)
         symbol = ctx.qualname(name)
+        body = n.child_by_field_name("body")
+        metadata = _detect_dynamic_metadata(body)
 
         out.append(
             Node(
@@ -279,11 +297,10 @@ def _extract_from_def(
                 start_line=start_line,
                 end_line=end_line,
                 language=language,
-                metadata={},
+                metadata=metadata,
             )
         )
 
-        body = n.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out, language=language)
         return
@@ -392,6 +409,8 @@ def _try_extract_const_function(
             if vc.type == "async":
                 metadata["is_async"] = True
                 break
+        body = value_node.child_by_field_name("body")
+        metadata.update(_detect_dynamic_metadata(body))
 
         out.append(
             Node(
@@ -408,7 +427,6 @@ def _try_extract_const_function(
             )
         )
 
-        body = value_node.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out, language=language)
         found = True

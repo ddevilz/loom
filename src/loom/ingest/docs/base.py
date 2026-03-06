@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
+
+
+DocParser = Callable[[str], tuple[list[Node], list[Edge]]]
+_MARKDOWN_EXTENSIONS = frozenset({".md", ".markdown"})
 
 
 def _slug(s: str) -> str:
@@ -62,6 +67,19 @@ def make_child_of(child_id: str, parent_id: str) -> Edge:
     )
 
 
+def _get_doc_parser(path: Path) -> DocParser | None:
+    ext = path.suffix.lower()
+    if ext in _MARKDOWN_EXTENSIONS:
+        from .markdown import parse_markdown
+
+        return parse_markdown
+    if ext == ".pdf":
+        from .pdf import parse_pdf
+
+        return parse_pdf
+    return None
+
+
 def walk_docs(docs_path: str) -> tuple[list[Node], list[Edge]]:
     root = Path(docs_path)
     nodes: list[Node] = []
@@ -70,18 +88,11 @@ def walk_docs(docs_path: str) -> tuple[list[Node], list[Edge]]:
     for p in sorted(root.rglob("*")):
         if not p.is_file():
             continue
-        ext = p.suffix.lower()
-        if ext in {".md", ".markdown"}:
-            from .markdown import parse_markdown
-
-            n, e = parse_markdown(str(p))
-            nodes.extend(n)
-            edges.extend(e)
-        elif ext == ".pdf":
-            from .pdf import parse_pdf
-
-            n, e = parse_pdf(str(p))
-            nodes.extend(n)
-            edges.extend(e)
+        parser = _get_doc_parser(p)
+        if parser is None:
+            continue
+        n, e = parser(str(p))
+        nodes.extend(n)
+        edges.extend(e)
 
     return nodes, edges
