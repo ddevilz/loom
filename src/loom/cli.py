@@ -11,6 +11,56 @@ from rich.table import Table
 
 app = typer.Typer(add_completion=False)
 
+_NONE_TEXT = "(none)"
+
+
+def _kv_table(rows: list[tuple[str, str]]) -> Table:
+    table = Table(show_header=False)
+    for key, value in rows:
+        table.add_row(key, value)
+    return table
+
+
+def _render_table(
+    *,
+    columns: list[tuple[str, str | None]],
+    rows: list[dict[str, object]],
+    title: str | None = None,
+) -> Table:
+    table = Table(show_header=True, header_style="bold", title=title)
+    for name, justify in columns:
+        if justify is None:
+            table.add_column(name)
+        else:
+            table.add_column(name, justify=justify)
+    for row in rows:
+        table.add_row(*[str(row.get(name)) for name, _ in columns])
+    return table
+
+
+def _print_table_or_none(
+    console: Console,
+    *,
+    heading: str | None,
+    columns: list[tuple[str, str | None]],
+    rows: list[dict[str, object]],
+) -> None:
+    if heading is not None:
+        console.print(heading)
+    if rows:
+        console.print(_render_table(columns=columns, rows=rows))
+    else:
+        console.print(_NONE_TEXT)
+
+
+def _print_call_rows(console: Console, *, heading: str, rows: list[dict[str, object]]) -> None:
+    _print_table_or_none(
+        console,
+        heading=heading,
+        columns=[("kind", None), ("name", None), ("path", None), ("confidence", "right")],
+        rows=rows,
+    )
+
 
 @app.command()
 def analyze(
@@ -41,25 +91,30 @@ def analyze(
             "MATCH (n) RETURN n.kind AS kind, count(n) AS c ORDER BY c DESC LIMIT 8"
         )
 
-        table = Table(show_header=False)
-        table.add_row("file_count", str(res.file_count))
-        table.add_row("files_skipped", str(res.files_skipped))
-        table.add_row("files_updated", str(res.files_updated))
-        table.add_row("files_added", str(res.files_added))
-        table.add_row("files_deleted", str(res.files_deleted))
-        table.add_row("nodes", str(res.node_count))
-        table.add_row("edges", str(res.edge_count))
-        table.add_row("errors", str(res.error_count))
-        table.add_row("seconds", f"{res.duration_ms / 1000.0:.2f}")
-        console.print(table)
+        console.print(
+            _kv_table(
+                [
+                    ("file_count", str(res.file_count)),
+                    ("files_skipped", str(res.files_skipped)),
+                    ("files_updated", str(res.files_updated)),
+                    ("files_added", str(res.files_added)),
+                    ("files_deleted", str(res.files_deleted)),
+                    ("nodes", str(res.node_count)),
+                    ("edges", str(res.edge_count)),
+                    ("errors", str(res.error_count)),
+                    ("seconds", f"{res.duration_ms / 1000.0:.2f}"),
+                ]
+            )
+        )
 
         if by_kind_rows:
-            kinds = Table(title="Top node kinds", show_header=True, header_style="bold")
-            kinds.add_column("kind")
-            kinds.add_column("count", justify="right")
-            for row in by_kind_rows:
-                kinds.add_row(str(row.get("kind")), str(row.get("c")))
-            console.print(kinds)
+            console.print(
+                _render_table(
+                    title="Top node kinds",
+                    columns=[("kind", None), ("c", "right")],
+                    rows=by_kind_rows,
+                )
+            )
 
     asyncio.run(_run())
 
@@ -116,15 +171,20 @@ LIMIT $limit
 """,
                 {"limit": limit},
             )
-            table = Table(show_header=True, header_style="bold")
-            table.add_column("from")
-            table.add_column("to")
-            table.add_column("confidence", justify="right")
-            for row in rows:
-                f = f"{row.get('from_name')} ({row.get('from_path')})"
-                t = f"{row.get('to_name')} ({row.get('to_path')})"
-                table.add_row(f, t, str(row.get("confidence")))
-            console.print(table if rows else "(none)")
+            formatted_rows = [
+                {
+                    "from": f"{row.get('from_name')} ({row.get('from_path')})",
+                    "to": f"{row.get('to_name')} ({row.get('to_path')})",
+                    "confidence": row.get("confidence"),
+                }
+                for row in rows
+            ]
+            _print_table_or_none(
+                console,
+                heading=None,
+                columns=[("from", None), ("to", None), ("confidence", "right")],
+                rows=formatted_rows,
+            )
             return
 
         if not target:
@@ -146,23 +206,7 @@ LIMIT $limit
 """,
                 {"id": node_id, "limit": limit},
             )
-            console.print("=== callees ===")
-            if rows:
-                table = Table(show_header=True, header_style="bold")
-                table.add_column("kind")
-                table.add_column("name")
-                table.add_column("path")
-                table.add_column("confidence", justify="right")
-                for row in rows:
-                    table.add_row(
-                        str(row.get("kind")),
-                        str(row.get("name")),
-                        str(row.get("path")),
-                        str(row.get("confidence")),
-                    )
-                console.print(table)
-            else:
-                console.print("(none)")
+            _print_call_rows(console, heading="=== callees ===", rows=rows)
 
         if direction in {"callers", "both"}:
             rows = await graph.query(
@@ -174,23 +218,7 @@ LIMIT $limit
 """,
                 {"id": node_id, "limit": limit},
             )
-            console.print("=== callers ===")
-            if rows:
-                table = Table(show_header=True, header_style="bold")
-                table.add_column("kind")
-                table.add_column("name")
-                table.add_column("path")
-                table.add_column("confidence", justify="right")
-                for row in rows:
-                    table.add_row(
-                        str(row.get("kind")),
-                        str(row.get("name")),
-                        str(row.get("path")),
-                        str(row.get("confidence")),
-                    )
-                console.print(table)
-            else:
-                console.print("(none)")
+            _print_call_rows(console, heading="=== callers ===", rows=rows)
 
     asyncio.run(_run())
 
@@ -234,46 +262,25 @@ def entrypoints(
         )
         r3 = await graph.query(q3)
 
-        console.print("=== name-based candidates ===")
-        if r1:
-            t = Table(show_header=True, header_style="bold")
-            t.add_column("kind")
-            t.add_column("name")
-            t.add_column("path")
-            for row in r1:
-                t.add_row(str(row.get("kind")), str(row.get("name")), str(row.get("path")))
-            console.print(t)
-        else:
-            console.print("(none)")
-
-        console.print("=== call roots (no incoming CALLS) ===")
-        if r2:
-            t = Table(show_header=True, header_style="bold")
-            t.add_column("out_calls", justify="right")
-            t.add_column("kind")
-            t.add_column("name")
-            t.add_column("path")
-            for row in r2:
-                t.add_row(
-                    str(row.get("out_calls")),
-                    str(row.get("kind")),
-                    str(row.get("name")),
-                    str(row.get("path")),
-                )
-            console.print(t)
-        else:
-            console.print("(none)")
-
-        console.print("=== relationship types ===")
-        if r3:
-            t = Table(show_header=True, header_style="bold")
-            t.add_column("type")
-            t.add_column("count", justify="right")
-            for row in r3:
-                t.add_row(str(row.get("t")), str(row.get("c")))
-            console.print(t)
-        else:
-            console.print("(none)")
+        _print_table_or_none(
+            console,
+            heading="=== name-based candidates ===",
+            columns=[("kind", None), ("name", None), ("path", None)],
+            rows=r1,
+        )
+        _print_table_or_none(
+            console,
+            heading="=== call roots (no incoming CALLS) ===",
+            columns=[("out_calls", "right"), ("kind", None), ("name", None), ("path", None)],
+            rows=r2,
+        )
+        relationship_rows = [{"type": row.get("t"), "count": row.get("c")} for row in r3]
+        _print_table_or_none(
+            console,
+            heading="=== relationship types ===",
+            columns=[("type", None), ("count", "right")],
+            rows=relationship_rows,
+        )
 
     asyncio.run(_run())
 
@@ -309,15 +316,19 @@ def sync(
 
         res = await sync_commits(repo_path, old_sha, new_sha, graph)
 
-        table = Table(show_header=False)
-        table.add_row("files_updated", str(res.files_updated))
-        table.add_row("files_added", str(res.files_added))
-        table.add_row("files_deleted", str(res.files_deleted))
-        table.add_row("nodes", str(res.node_count))
-        table.add_row("edges", str(res.edge_count))
-        table.add_row("errors", str(res.error_count))
-        table.add_row("seconds", f"{res.duration_ms / 1000.0:.2f}")
-        console.print(table)
+        console.print(
+            _kv_table(
+                [
+                    ("files_updated", str(res.files_updated)),
+                    ("files_added", str(res.files_added)),
+                    ("files_deleted", str(res.files_deleted)),
+                    ("nodes", str(res.node_count)),
+                    ("edges", str(res.edge_count)),
+                    ("errors", str(res.error_count)),
+                    ("seconds", f"{res.duration_ms / 1000.0:.2f}"),
+                ]
+            )
+        )
 
         if res.error_count:
             console.print("Review errors in output.")

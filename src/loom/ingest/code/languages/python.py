@@ -55,6 +55,7 @@ from loom.ingest.code.languages.constants import (
     TS_PY_IMPORT_FROM_STATEMENT,
     TS_PY_IMPORT_STATEMENT,
 )
+from loom.ingest.code.reflection_detector import detect_python_dynamic_call
 
 
 _PY_LANGUAGE = Language(python_language())
@@ -98,6 +99,20 @@ def _get_name(src: bytes, n: TSNode) -> str | None:
     if name_node is None:
         return None
     return _node_text(src, name_node)
+
+
+def _detect_dynamic_metadata(body: TSNode | None) -> dict[str, Any]:
+    if body is None:
+        return {}
+
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        detected = detect_python_dynamic_call(current)
+        if detected is not None:
+            return detected
+        stack.extend(reversed(current.children))
+    return {}
 
 
 def _lines(n: TSNode) -> tuple[int, int]:
@@ -334,6 +349,8 @@ def _extract_from_def(
                 meta[META_FRAMEWORK_HINT] = hint
         if _is_async_function(src, n):
             meta['is_async'] = True
+        body = n.child_by_field_name("body")
+        meta.update(_detect_dynamic_metadata(body))
         out.append(
             Node(
                 id=f"{kind.value}:{path}:{symbol}",
@@ -349,7 +366,6 @@ def _extract_from_def(
             )
         )
 
-        body = n.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out)
         return
