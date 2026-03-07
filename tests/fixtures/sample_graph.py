@@ -139,3 +139,35 @@ def build_sample_graph():
         "edges": edges,
         "function_ids": fid,
     }
+
+
+def build_searchable_sample_graph():
+    fixture = build_sample_graph()
+    nodes: list[Node] = []
+    for node in fixture["nodes"]:
+        if node.id.endswith(":validate_user"):
+            nodes.append(
+                node.model_copy(
+                    update={
+                        "summary": "validate user authentication and enforce password policy",
+                        "embedding": [1.0, 0.0],
+                    }
+                )
+            )
+        elif node.id == "doc:spec.pdf:1.0":
+            nodes.append(
+                node.model_copy(
+                    update={
+                        "summary": "authentication and password policy requirements",
+                        "embedding": [0.95, 0.05],
+                    }
+                )
+            )
+        else:
+            nodes.append(node.model_copy(update={"summary": node.name, "embedding": [0.0, 1.0]}))
+
+    return {
+        "nodes": nodes,
+        "edges": fixture["edges"],
+        "function_ids": fixture["function_ids"],
+    }

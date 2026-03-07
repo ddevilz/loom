@@ -11,6 +11,8 @@ from tree_sitter_python import language as python_language
 
 from loom.core import Node, NodeKind, NodeSource
 
+from loom.core.content_hash import content_hash_for_line_span
+
 from loom.ingest.code.languages.constants import (
     DEC_ACTION,
     DEC_API_VIEW,
@@ -53,6 +55,7 @@ from loom.ingest.code.languages.constants import (
     TS_PY_IMPORT_FROM_STATEMENT,
     TS_PY_IMPORT_STATEMENT,
 )
+from loom.ingest.code.reflection_detector import detect_python_dynamic_call
 
 
 _PY_LANGUAGE = Language(python_language())
@@ -96,6 +99,20 @@ def _get_name(src: bytes, n: TSNode) -> str | None:
     if name_node is None:
         return None
     return _node_text(src, name_node)
+
+
+def _detect_dynamic_metadata(body: TSNode | None) -> dict[str, Any]:
+    if body is None:
+        return {}
+
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        detected = detect_python_dynamic_call(current)
+        if detected is not None:
+            return detected
+        stack.extend(reversed(current.children))
+    return {}
 
 
 def _lines(n: TSNode) -> tuple[int, int]:
@@ -152,6 +169,29 @@ def _is_async_function(src: bytes, n: TSNode) -> bool:
         if child.type == 'async':
             return True
     return False
+
+
+def _split_params(text: str) -> list[str]:
+    raw = text.strip()
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1]
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict[str, Any]:
+    params_node = n.child_by_field_name("parameters")
+    return_node = n.child_by_field_name("return_type")
+    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
+    return_type = _node_text(src, return_node).strip() if return_node is not None else None
+    signature = f"{name}({', '.join(params)})"
+    if return_type:
+        signature = f"{signature} -> {return_type}"
+    return {
+        "params": params,
+        "return_type": return_type,
+        "signature": signature,
+        "source_text": _node_text(src, n),
+    }
 
 
 # ── framework hint rules ────────────────────────────────────────────
@@ -236,6 +276,7 @@ def _extract_from_def(
                         source=NodeSource.CODE,
                         name=import_name,
                         path=path,
+                        content_hash=content_hash_for_line_span(src, start_line, end_line),
                         start_line=start_line,
                         end_line=end_line,
                         language=LANG_PYTHON,
@@ -257,6 +298,7 @@ def _extract_from_def(
                     source=NodeSource.CODE,
                     name=import_name,
                     path=path,
+                    content_hash=content_hash_for_line_span(src, start_line, end_line),
                     start_line=start_line,
                     end_line=end_line,
                     language=LANG_PYTHON,
@@ -296,6 +338,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_PYTHON,
@@ -322,6 +365,7 @@ def _extract_from_def(
         else:
             symbol = name
         meta: dict[str, Any] = {}
+        meta.update(_function_metadata(src, n, name=name))
         if decorators:
             meta[META_DECORATORS] = decorators
             hint = _detect_framework_hint(decorators)
@@ -329,6 +373,8 @@ def _extract_from_def(
                 meta[META_FRAMEWORK_HINT] = hint
         if _is_async_function(src, n):
             meta['is_async'] = True
+        body = n.child_by_field_name("body")
+        meta.update(_detect_dynamic_metadata(body))
         out.append(
             Node(
                 id=f"{kind.value}:{path}:{symbol}",
@@ -336,6 +382,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_PYTHON,
@@ -343,7 +390,6 @@ def _extract_from_def(
             )
         )
 
-        body = n.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out)
         return
@@ -391,6 +437,7 @@ def _try_extract_assignment(
                     source=NodeSource.CODE,
                     name=name,
                     path=path,
+                    content_hash=content_hash_for_line_span(src, start_line, end_line),
                     start_line=start_line,
                     end_line=end_line,
                     language=LANG_PYTHON,
@@ -412,6 +459,7 @@ def _try_extract_assignment(
                             source=NodeSource.CODE,
                             name=name,
                             path=path,
+                            content_hash=content_hash_for_line_span(src, start_line, end_line),
                             start_line=start_line,
                             end_line=end_line,
                             language=LANG_PYTHON,

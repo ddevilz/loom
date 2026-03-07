@@ -10,6 +10,8 @@ from tree_sitter_typescript import language_tsx, language_typescript
 
 from loom.core import Node, NodeKind, NodeSource
 
+from loom.core.content_hash import content_hash_for_line_span
+
 from loom.ingest.code.languages.constants import (
     LANG_TYPESCRIPT,
     LANG_TSX,
@@ -25,6 +27,7 @@ from loom.ingest.code.languages.constants import (
     TS_JS_METHOD_DEF,
     TS_JS_TYPE_ALIAS_DECL,
 )
+from loom.ingest.code.reflection_detector import detect_js_dynamic_pattern
 
 _TS_LANGUAGE = Language(language_typescript())
 _TSX_LANGUAGE = Language(language_tsx())
@@ -125,6 +128,45 @@ def _extract_export_info(src: bytes, n: TSNode) -> dict:
     return export_info
 
 
+def _split_params(text: str) -> list[str]:
+    raw = text.strip()
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1]
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
+    params_node = n.child_by_field_name("parameters")
+    return_node = n.child_by_field_name("return_type")
+    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
+    return_type = _node_text(src, return_node).strip() if return_node is not None else None
+    if isinstance(return_type, str) and return_type.startswith(":"):
+        return_type = return_type[1:].strip()
+    signature = f"{name}({', '.join(params)})"
+    if return_type:
+        signature = f"{signature} -> {return_type}"
+    return {
+        "params": params,
+        "return_type": return_type,
+        "signature": signature,
+        "source_text": _node_text(src, n),
+    }
+
+
+def _detect_dynamic_metadata(body: TSNode | None) -> dict:
+    if body is None:
+        return {}
+
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        detected = detect_js_dynamic_pattern(current)
+        if detected is not None:
+            return detected
+        stack.extend(reversed(current.children))
+    return {}
+
+
 def _extract_from_def(
     *,
     path: str,
@@ -150,6 +192,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=import_name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=language,
@@ -176,9 +219,10 @@ def _extract_from_def(
             # Mark the last added node as exported
             if len(out) > prev_len:
                 export_info = _extract_export_info(src, n)
-                out[-1].metadata['is_exported'] = True
+                updated_metadata = {**out[-1].metadata, 'is_exported': True}
                 if export_info.get('default'):
-                    out[-1].metadata['is_default_export'] = True
+                    updated_metadata['is_default_export'] = True
+                out[-1] = out[-1].model_copy(update={'metadata': updated_metadata})
         return
     
     # TypeScript/JavaScript: class_declaration, function_declaration, method_definition
@@ -202,6 +246,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=language,
@@ -226,6 +271,7 @@ def _extract_from_def(
         
         # Extract decorators and check for async
         metadata = {}
+        metadata.update(_function_metadata(src, n, name=name))
         decorators = _extract_decorators(src, n)
         if decorators:
             metadata['decorators'] = decorators
@@ -235,6 +281,8 @@ def _extract_from_def(
             if child.type == 'async':
                 metadata['is_async'] = True
                 break
+        body = n.child_by_field_name("body")
+        metadata.update(_detect_dynamic_metadata(body))
 
         out.append(
             Node(
@@ -243,6 +291,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=language,
@@ -250,7 +299,6 @@ def _extract_from_def(
             )
         )
 
-        body = n.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out, language=language)
         return
@@ -262,6 +310,9 @@ def _extract_from_def(
 
         start_line, end_line = _lines(n)
         symbol = ctx.qualname(name)
+        body = n.child_by_field_name("body")
+        metadata = _function_metadata(src, n, name=name)
+        metadata.update(_detect_dynamic_metadata(body))
 
         out.append(
             Node(
@@ -270,14 +321,14 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=language,
-                metadata={},
+                metadata=metadata,
             )
         )
 
-        body = n.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out, language=language)
         return
@@ -295,6 +346,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=language,
@@ -316,6 +368,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=language,
@@ -337,6 +390,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=language,
@@ -383,6 +437,8 @@ def _try_extract_const_function(
             if vc.type == "async":
                 metadata["is_async"] = True
                 break
+        body = value_node.child_by_field_name("body")
+        metadata.update(_detect_dynamic_metadata(body))
 
         out.append(
             Node(
@@ -391,6 +447,7 @@ def _try_extract_const_function(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=language,
@@ -398,7 +455,6 @@ def _try_extract_const_function(
             )
         )
 
-        body = value_node.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out, language=language)
         found = True

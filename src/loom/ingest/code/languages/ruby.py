@@ -10,6 +10,8 @@ from tree_sitter_ruby import language as ruby_language
 
 from loom.core import Node, NodeKind, NodeSource
 
+from loom.core.content_hash import content_hash_for_line_span
+
 from loom.ingest.code.languages.constants import (
     LANG_RUBY,
     TS_RUBY_CLASS,
@@ -133,6 +135,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_RUBY,
@@ -162,6 +165,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_RUBY,

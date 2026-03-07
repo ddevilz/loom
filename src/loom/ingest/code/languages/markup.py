@@ -8,6 +8,8 @@ from xml.etree import ElementTree as ET
 
 from loom.core import Node, NodeKind, NodeSource
 
+from loom.core.content_hash import content_hash_bytes
+
 from loom.ingest.code.languages.constants import (
     FILETYPE_APPLICATION_CONFIG,
     FILETYPE_DOCKER_COMPOSE,
@@ -107,7 +109,8 @@ from loom.ingest.code.languages.constants import (
 def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from HTML files: title, forms, script tags, template variables."""
     p = Path(path)
-    content = p.read_text(encoding="utf-8", errors="replace")
+    src = p.read_bytes()
+    content = src.decode("utf-8", errors="replace")
     
     meta: dict[str, Any] = {}
     
@@ -152,6 +155,7 @@ def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:
         source=NodeSource.CODE,
         name=p.name,
         path=path.replace("\\", "/"),
+        content_hash=content_hash_bytes(src),
         language=LANG_HTML,
         metadata=meta,
     )
@@ -161,7 +165,8 @@ def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:
 def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from XML files: root tag, namespaces, key attributes."""
     p = Path(path)
-    content = p.read_text(encoding="utf-8", errors="replace")
+    src = p.read_bytes()
+    content = src.decode("utf-8", errors="replace")
     
     meta: dict[str, Any] = {}
     
@@ -169,8 +174,15 @@ def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:
         tree = ET.fromstring(content)
         meta[META_ROOT_TAG] = tree.tag
         
-        # Extract namespaces
-        namespaces = dict([node for _, node in ET.iterparse(p, events=[XML_EVENT_START_NS])])
+        # Extract namespaces from parsed tree
+        namespaces = {}
+        for elem in tree.iter():
+            if elem.tag.startswith('{'):
+                ns_end = elem.tag.find('}')
+                if ns_end > 0:
+                    ns_uri = elem.tag[1:ns_end]
+                    if ns_uri not in namespaces.values():
+                        namespaces[f'ns{len(namespaces)}'] = ns_uri
         if namespaces:
             meta[META_NAMESPACES] = namespaces
         
@@ -194,6 +206,7 @@ def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:
         source=NodeSource.CODE,
         name=p.name,
         path=path.replace("\\", "/"),
+        content_hash=content_hash_bytes(src),
         language=LANG_XML,
         metadata=meta,
     )
@@ -203,7 +216,8 @@ def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:
 def parse_json(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from JSON files: schema hints, top-level keys."""
     p = Path(path)
-    content = p.read_text(encoding="utf-8", errors="replace")
+    src = p.read_bytes()
+    content = src.decode("utf-8", errors="replace")
     
     meta: dict[str, Any] = {}
     
@@ -243,6 +257,7 @@ def parse_json(path: str, *, exclude_tests: bool = False) -> list[Node]:
         source=NodeSource.CODE,
         name=p.name,
         path=path.replace("\\", "/"),
+        content_hash=content_hash_bytes(src),
         language=LANG_JSON,
         metadata=meta,
     )
@@ -252,7 +267,8 @@ def parse_json(path: str, *, exclude_tests: bool = False) -> list[Node]:
 def parse_css(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from CSS files: selector count, class names, media queries."""
     p = Path(path)
-    content = p.read_text(encoding="utf-8", errors="replace")
+    src = p.read_bytes()
+    content = src.decode("utf-8", errors="replace")
     
     meta: dict[str, Any] = {}
 
@@ -283,6 +299,7 @@ def parse_css(path: str, *, exclude_tests: bool = False) -> list[Node]:
         source=NodeSource.CODE,
         name=p.name,
         path=path.replace("\\", "/"),
+        content_hash=content_hash_bytes(src),
         language=LANG_CSS,
         metadata=meta,
     )
@@ -292,7 +309,8 @@ def parse_css(path: str, *, exclude_tests: bool = False) -> list[Node]:
 def parse_yaml(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from YAML files: top-level keys, detect config type."""
     p = Path(path)
-    content = p.read_text(encoding="utf-8", errors="replace")
+    src = p.read_bytes()
+    content = src.decode("utf-8", errors="replace")
     
     meta: dict[str, Any] = {}
     
@@ -318,6 +336,7 @@ def parse_yaml(path: str, *, exclude_tests: bool = False) -> list[Node]:
         source=NodeSource.CODE,
         name=p.name,
         path=path.replace("\\", "/"),
+        content_hash=content_hash_bytes(src),
         language=LANG_YAML,
         metadata=meta,
     )
@@ -327,7 +346,8 @@ def parse_yaml(path: str, *, exclude_tests: bool = False) -> list[Node]:
 def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from Java .properties files: keys, Spring profiles, database config."""
     p = Path(path)
-    content = p.read_text(encoding="utf-8", errors="replace")
+    src = p.read_bytes()
+    content = src.decode("utf-8", errors="replace")
     
     meta: dict[str, Any] = {}
     
@@ -365,6 +385,7 @@ def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
         source=NodeSource.CODE,
         name=p.name,
         path=path.replace("\\", "/"),
+        content_hash=content_hash_bytes(src),
         language=LANG_PROPERTIES,
         metadata=meta,
     )
@@ -374,7 +395,8 @@ def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
 def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from .env files: environment variables, sensitive keys."""
     p = Path(path)
-    content = p.read_text(encoding="utf-8", errors="replace")
+    src = p.read_bytes()
+    content = src.decode("utf-8", errors="replace")
     
     meta: dict[str, Any] = {}
     
@@ -408,6 +430,7 @@ def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
         source=NodeSource.CODE,
         name=p.name,
         path=path.replace("\\", "/"),
+        content_hash=content_hash_bytes(src),
         language=LANG_ENV,
         metadata=meta,
     )
@@ -417,7 +440,8 @@ def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
 def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from TOML files: dependencies, project info."""
     p = Path(path)
-    content = p.read_text(encoding="utf-8", errors="replace")
+    src = p.read_bytes()
+    content = src.decode("utf-8", errors="replace")
     
     meta: dict[str, Any] = {}
     
@@ -472,6 +496,7 @@ def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
         source=NodeSource.CODE,
         name=p.name,
         path=path.replace("\\", "/"),
+        content_hash=content_hash_bytes(src),
         language=LANG_TOML,
         metadata=meta,
     )
@@ -481,7 +506,8 @@ def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
 def parse_ini(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from INI configuration files."""
     p = Path(path)
-    content = p.read_text(encoding="utf-8", errors="replace")
+    src = p.read_bytes()
+    content = src.decode("utf-8", errors="replace")
     
     meta: dict[str, Any] = {}
     
@@ -517,6 +543,7 @@ def parse_ini(path: str, *, exclude_tests: bool = False) -> list[Node]:
         source=NodeSource.CODE,
         name=p.name,
         path=path.replace("\\", "/"),
+        content_hash=content_hash_bytes(src),
         language=LANG_INI,
         metadata=meta,
     )

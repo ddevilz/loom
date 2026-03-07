@@ -57,7 +57,7 @@ LOOM_JIRA_API_TOKEN=...
 ## Quick start
 
 ```bash
-# Current CLI is a placeholder entrypoint
+# Verify the CLI is installed and imports
 loom --dev
 
 # Index a repo

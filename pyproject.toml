@@ -18,6 +18,7 @@ dependencies = [
     "mcp>=1.26.0",
     "pydantic>=2.12.5",
     "rich>=14.3.3",
+    "sentence-transformers>=3.0.1",
     "tree-sitter>=0.25.2",
     "typer>=0.24.1",
     "watchfiles>=1.1.1",
@@ -31,6 +32,8 @@ dependencies = [
     "tree-sitter-rust>=0.24.0",
     "tree-sitter-ruby>=0.23.1",
     "pathspec>=1.0.4",
+    "pypdf>=5.1.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.scripts]

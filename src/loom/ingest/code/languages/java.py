@@ -10,6 +10,8 @@ from tree_sitter_java import language as java_language
 
 from loom.core import Node, NodeKind, NodeSource
 
+from loom.core.content_hash import content_hash_for_line_span
+
 from loom.ingest.code.languages.constants import (
     LANG_JAVA,
     TS_JAVA_ANNOTATION,
@@ -25,6 +27,7 @@ from loom.ingest.code.languages.constants import (
     TS_JAVA_MODIFIERS,
     TS_JAVA_RECORD_DECL,
 )
+from loom.ingest.code.reflection_detector import detect_java_reflection
 
 _JAVA_LANGUAGE = Language(java_language())
 
@@ -118,6 +121,29 @@ def _extract_type_parameters(src: bytes, n: TSNode) -> str | None:
     return None
 
 
+def _split_params(text: str) -> list[str]:
+    raw = text.strip()
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1]
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _method_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
+    params_node = n.child_by_field_name("parameters")
+    return_node = n.child_by_field_name("type")
+    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
+    return_type = _node_text(src, return_node).strip() if return_node is not None else None
+    signature = f"{name}({', '.join(params)})"
+    if return_type:
+        signature = f"{signature} -> {return_type}"
+    return {
+        "params": params,
+        "return_type": return_type,
+        "signature": signature,
+        "source_text": _node_text(src, n),
+    }
+
+
 def _count_lambdas_and_refs(src: bytes, n: TSNode) -> dict[str, int]:
     """Count lambda expressions and method references in a node tree."""
     counts = {'lambda_count': 0, 'method_ref_count': 0}
@@ -139,6 +165,20 @@ def _lines(n: TSNode) -> tuple[int, int]:
     start_line = n.start_point[0] + 1
     end_line = n.end_point[0] + 1
     return start_line, end_line
+
+
+def _detect_reflection_metadata(body: TSNode | None) -> dict:
+    if body is None:
+        return {}
+
+    stack = [body]
+    while stack:
+        current = stack.pop()
+        detected = detect_java_reflection(current)
+        if detected is not None:
+            return detected
+        stack.extend(reversed(current.children))
+    return {}
 
 
 def _extract_from_def(
@@ -170,7 +210,7 @@ def _extract_from_def(
 
         # Extract metadata
         metadata = {}
-        
+
         annotations = _extract_annotations(src, n)
         if annotations:
             metadata["annotations"] = annotations
@@ -204,6 +244,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_JAVA,
@@ -229,7 +270,8 @@ def _extract_from_def(
 
         # Extract metadata
         metadata = {}
-        
+        metadata.update(_method_metadata(src, n, name=name))
+
         annotations = _extract_annotations(src, n)
         if annotations:
             metadata["annotations"] = annotations
@@ -246,6 +288,7 @@ def _extract_from_def(
                 metadata['lambda_count'] = functional_counts['lambda_count']
             if functional_counts['method_ref_count'] > 0:
                 metadata['method_ref_count'] = functional_counts['method_ref_count']
+            metadata.update(_detect_reflection_metadata(body))
 
         out.append(
             Node(
@@ -254,6 +297,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_JAVA,
