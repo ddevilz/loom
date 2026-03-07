@@ -121,7 +121,6 @@ def detect_js_dynamic_pattern(node: Any) -> dict[str, Any] | None:
     """
     metadata = None
     
-    # Check for dynamic import: import("module")
     if node.type == "call_expression":
         function_node = node.child_by_field_name("function")
         if function_node and function_node.type == "import":
@@ -135,15 +134,12 @@ def detect_js_dynamic_pattern(node: Any) -> dict[str, Any] | None:
             if arguments:
                 for child in arguments.children:
                     if child.type == "string":
-                        target = child.text.decode("utf-8").strip('"\'')
-                        metadata[META_DYNAMIC_TARGET] = target
-                        metadata[META_CALL_CONFIDENCE] = "high"
-                        break
-    
-    # Check for computed member access: obj[prop]()
-    elif node.type == "call_expression":
-        function_node = node.child_by_field_name("function")
-        if function_node and function_node.type == "subscript_expression":
+                        string_node = child
+                        target = string_node.text.decode("utf-8") if string_node.text else None
+                        if target:
+                            metadata[META_DYNAMIC_TARGET] = target.strip('"\'')
+                            metadata[META_CALL_CONFIDENCE] = "high"
+        elif function_node and function_node.type == "subscript_expression":
             metadata = {
                 META_REFLECTION_PATTERN: "computed_member_call",
                 META_CALL_CONFIDENCE: "low",

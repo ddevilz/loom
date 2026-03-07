@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -9,13 +10,22 @@ from typing import Any
 
 import git
 
-from loom.core import Edge, EdgeType
+from loom.core import Edge, EdgeType, NodeKind
 
 logger = logging.getLogger(__name__)
 
 
-def analyze_coupling(
+async def _open_repo(repo_path: str) -> git.Repo | None:
+    try:
+        return await asyncio.to_thread(git.Repo, repo_path, search_parent_directories=True)
+    except (git.InvalidGitRepositoryError, git.NoSuchPathError) as e:
+        logger.warning(f"Not a valid git repository: {repo_path} - {e}")
+        return None
+
+
+async def analyze_coupling(
     repo_path: str,
+    *,
     months: int = 6,
     threshold: float = 0.3,
 ) -> list[Edge]:
@@ -34,10 +44,8 @@ def analyze_coupling(
         - Merge commits are handled (not double-counted)
         - Returns empty list for repos with no history
     """
-    try:
-        repo = git.Repo(repo_path)
-    except (git.InvalidGitRepositoryError, git.NoSuchPathError) as e:
-        logger.warning(f"Not a valid git repository: {repo_path} - {e}")
+    repo = await _open_repo(repo_path)
+    if repo is None:
         return []
     
     # Calculate cutoff date
@@ -47,8 +55,11 @@ def analyze_coupling(
     file_changes_per_commit: list[set[str]] = []
     file_appearance_count: dict[str, int] = defaultdict(int)
     
+    # Run git operations in thread pool to avoid blocking event loop
     try:
-        commits = list(repo.iter_commits(since=cutoff_date.isoformat()))
+        commits = await asyncio.to_thread(
+            lambda: list(repo.iter_commits(since=cutoff_date.isoformat()))
+        )
     except git.GitCommandError as e:
         logger.warning(f"Failed to read commits: {e}")
         return []
@@ -59,38 +70,45 @@ def analyze_coupling(
     
     logger.info(f"Analyzing {len(commits)} commits from last {months} months")
     
-    for commit in commits:
-        # Get changed files for this commit
-        changed_files: set[str] = set()
-        
-        if commit.parents:
-            # Normal commit: diff against first parent
-            try:
-                diffs = commit.diff(commit.parents[0])
-                for diff_item in diffs:
-                    # Use a_path (source path) for changed files
-                    if diff_item.a_path:
-                        changed_files.add(diff_item.a_path)
-                    # Also check b_path for new files
-                    if diff_item.b_path and diff_item.a_path != diff_item.b_path:
-                        changed_files.add(diff_item.b_path)
-            except Exception as e:
-                logger.debug(f"Failed to diff commit {commit.hexsha[:8]}: {e}")
-                continue
-        else:
-            # Initial commit: all files are new
-            try:
-                for item in commit.tree.traverse():
-                    if item.type == "blob":
-                        changed_files.add(item.path)
-            except Exception as e:
-                logger.debug(f"Failed to traverse initial commit {commit.hexsha[:8]}: {e}")
-                continue
-        
-        if changed_files:
-            file_changes_per_commit.append(changed_files)
-            for file_path in changed_files:
-                file_appearance_count[file_path] += 1
+    # Process commits in thread pool to avoid blocking
+    def _process_commits():
+        results = []
+        appearances = defaultdict(int)
+        for commit in commits:
+            # Get changed files for this commit
+            changed_files: set[str] = set()
+            
+            if commit.parents:
+                # Normal commit: diff against first parent
+                try:
+                    diffs = commit.diff(commit.parents[0])
+                    for diff_item in diffs:
+                        # Use a_path (source path) for changed files
+                        if diff_item.a_path:
+                            changed_files.add(diff_item.a_path)
+                        # Also check b_path for new files
+                        if diff_item.b_path and diff_item.a_path != diff_item.b_path:
+                            changed_files.add(diff_item.b_path)
+                except Exception as e:
+                    logger.debug(f"Failed to diff commit {commit.hexsha[:8]}: {e}")
+                    continue
+            else:
+                # Initial commit: all files are new
+                try:
+                    for item in commit.tree.traverse():
+                        if item.type == "blob":
+                            changed_files.add(item.path)
+                except Exception as e:
+                    logger.debug(f"Failed to traverse initial commit {commit.hexsha[:8]}: {e}")
+                    continue
+            
+            if changed_files:
+                results.append(changed_files)
+                for file_path in changed_files:
+                    appearances[file_path] += 1
+        return results, appearances
+    
+    file_changes_per_commit, file_appearance_count = await asyncio.to_thread(_process_commits)
     
     if not file_changes_per_commit:
         logger.info("No file changes found in commit history")
@@ -125,8 +143,8 @@ def analyze_coupling(
             # Create bidirectional edges (A coupled with B, B coupled with A)
             edges.append(
                 Edge(
-                    from_id=f"file:{file_a}",
-                    to_id=f"file:{file_b}",
+                    from_id=f"{NodeKind.FILE.value}:{file_a}",
+                    to_id=f"{NodeKind.FILE.value}:{file_b}",
                     kind=EdgeType.COUPLED_WITH,
                     confidence=confidence,
                     metadata={
@@ -141,8 +159,8 @@ def analyze_coupling(
             
             edges.append(
                 Edge(
-                    from_id=f"file:{file_b}",
-                    to_id=f"file:{file_a}",
+                    from_id=f"{NodeKind.FILE.value}:{file_b}",
+                    to_id=f"{NodeKind.FILE.value}:{file_a}",
                     kind=EdgeType.COUPLED_WITH,
                     confidence=confidence,
                     metadata={

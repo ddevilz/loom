@@ -8,6 +8,7 @@ import igraph as ig
 import leidenalg
 
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
+from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +71,9 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
     # Query edges.
     # NOTE: edges are persisted with relationship *types* (e.g. :CALLS),
     # not via a r.kind property.
-    edge_query = """
-    MATCH (a)-[r:CALLS]->(b)
+    calls_rel_type = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
+    edge_query = f"""
+    MATCH (a)-[r:{calls_rel_type}]->(b)
     WHERE a.kind IN ['function', 'method']
       AND b.kind IN ['function', 'method']
     RETURN a.id AS from_id, b.id AS to_id, r.confidence AS confidence
@@ -122,6 +124,7 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
     
     if modularity < 0.3:
         logger.warning(f"Low modularity ({modularity:.4f}) - clustering may not be meaningful")
+        return {}
     
     # Group nodes by community
     communities: dict[int, list[int]] = {}

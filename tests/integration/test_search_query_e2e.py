@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 import loom.cli
 from loom.core import LoomGraph
-from loom.core.falkor import queries
+from loom.core.falkor import cypher
 from loom.search.searcher import search
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -39,7 +39,7 @@ async def test_search_e2e_returns_ranked_code_and_doc_results() -> None:
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     graph = LoomGraph(graph_name="loom_pytest_search_e2e")
-    await graph.query(queries.CLEAR_GRAPH)
+    await graph.query(cypher.CLEAR_GRAPH)
 
     fixture = build_searchable_sample_graph()
     await graph.bulk_create_nodes(fixture["nodes"])
@@ -62,7 +62,7 @@ def test_query_cli_e2e_prints_real_graph_results(monkeypatch) -> None:
     import asyncio
 
     async def _seed() -> None:
-        await graph.query(queries.CLEAR_GRAPH)
+        await graph.query(cypher.CLEAR_GRAPH)
         fixture = build_searchable_sample_graph()
         await graph.bulk_create_nodes(fixture["nodes"])
         await graph.bulk_create_edges(fixture["edges"])

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -105,3 +106,52 @@ def test_cli_help_shows_analyze_command():
     result = runner.invoke(loom.cli.app, ["--help"])
     assert result.exit_code == 0
     assert "analyze" in result.stdout
+
+
+def test_cli_analyze_prints_error_details(monkeypatch):
+    class FakeGraph:
+        def __init__(self, graph_name: str = "loom", *, gateway=None) -> None:
+            pass
+
+        async def query(self, cypher: str, params=None):
+            if cypher.startswith("MATCH (n) RETURN n.kind AS kind"):
+                return [{"kind": "file", "c": 1}]
+            return []
+
+    async def fake_index_repo(
+        path: str,
+        graph,
+        *,
+        force: bool = False,
+        exclude_tests: bool = False,
+        docs_path: str | None = None,
+        jira=None,
+    ):
+        return SimpleNamespace(
+            node_count=1,
+            edge_count=0,
+            file_count=1,
+            files_skipped=0,
+            files_updated=0,
+            files_added=1,
+            files_deleted=0,
+            error_count=1,
+            duration_ms=10.0,
+            errors=[
+                SimpleNamespace(
+                    phase="embed",
+                    path="repo",
+                    message="model.onnx missing",
+                )
+            ],
+        )
+
+    monkeypatch.setattr("loom.core.LoomGraph", FakeGraph)
+    monkeypatch.setattr("loom.ingest.pipeline.index_repo", fake_index_repo)
+
+    result = runner.invoke(loom.cli.app, ["analyze", "tests/fixtures/sample_repo"])
+
+    assert result.exit_code == 0
+    assert "Errors" in result.stdout
+    assert "embed" in result.stdout
+    assert "model.onnx missing" in result.stdout

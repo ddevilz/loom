@@ -3,12 +3,18 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Protocol
 
+from loom.config import LOOM_EMBED_DIM
+
 from .edge import Edge, EdgeType
 from .node import Node, NodeKind
 
 from .falkor.gateway import FalkorGateway
 from .falkor.repositories import EdgeRepository, NodeRepository, TraversalRepository
-from .falkor.schema import schema_init
+from .falkor.schema import invalidate_schema_init, schema_init
+
+
+_SCHEMA_LOCKS: dict[str, asyncio.Lock] = {}
+_SCHEMA_LOCKS_LOCK = asyncio.Lock()
 
 
 class _Gateway(Protocol):
@@ -31,39 +37,55 @@ class LoomGraph:
     def __init__(self, graph_name: str = "loom", *, gateway: _Gateway | None = None) -> None:
         self.graph_name = graph_name
         self._gw: _Gateway = gateway or FalkorGateway(graph_name=graph_name)
-        schema_init(self._gw)
         self._nodes = NodeRepository(self._gw)  # type: ignore[arg-type]
         self._edges = EdgeRepository(self._gw)  # type: ignore[arg-type]
         self._traversal = TraversalRepository(self._gw)  # type: ignore[arg-type]
 
     async def schema_init(self) -> None:
-        await asyncio.to_thread(schema_init, self._gw)
+        # Get or create a lock for this graph_name
+        async with _SCHEMA_LOCKS_LOCK:
+            if self.graph_name not in _SCHEMA_LOCKS:
+                _SCHEMA_LOCKS[self.graph_name] = asyncio.Lock()
+            lock = _SCHEMA_LOCKS[self.graph_name]
+        
+        # Use the shared lock to ensure schema init happens once per graph_name
+        async with lock:
+            await asyncio.to_thread(schema_init, self._gw, embedding_dim=LOOM_EMBED_DIM)
 
     async def delete(self) -> None:
+        await self.schema_init()
         await asyncio.to_thread(self._gw.run, "MATCH (n) DETACH DELETE n")
 
     def reconnect(self) -> None:
         self._gw.reconnect()
+        invalidate_schema_init(self.graph_name)
 
     async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        await self.schema_init()
         return await asyncio.to_thread(self._gw.query_rows, cypher, params)
 
     async def create_node(self, node: Node) -> None:
+        await self.schema_init()
         await asyncio.to_thread(self._nodes.upsert, node)
 
     async def get_node(self, node_id: str) -> Node | None:
+        await self.schema_init()
         return await asyncio.to_thread(self._nodes.get, node_id)
 
     async def delete_node(self, node_id: str) -> None:
+        await self.schema_init()
         await asyncio.to_thread(self._nodes.delete, node_id)
 
     async def create_edge(self, edge: Edge) -> None:
+        await self.schema_init()
         await asyncio.to_thread(self._edges.upsert, edge)
 
     async def bulk_create_nodes(self, nodes: list[Node]) -> None:
+        await self.schema_init()
         await asyncio.to_thread(self._nodes.bulk_upsert, nodes)
 
     async def bulk_create_edges(self, edges: list[Edge]) -> None:
+        await self.schema_init()
         await asyncio.to_thread(self._edges.bulk_upsert, edges)
 
     async def neighbors(
@@ -73,6 +95,7 @@ class LoomGraph:
         edge_types: list[EdgeType] | None = None,
         kind: NodeKind | None = None,
     ) -> list[Node]:
+        await self.schema_init()
         resolved_id = node_id
         if ":" not in node_id:
             label_clause = ":Node"

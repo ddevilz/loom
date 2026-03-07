@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 from loom.core import Node, NodeKind, NodeSource
@@ -20,6 +20,33 @@ class JiraConfig:
     project_key: str
     jql: str | None = None
     last_synced_at: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate configuration to prevent security issues."""
+        if not self.base_url:
+            raise ValueError("Jira base_url cannot be empty")
+        if not self.email:
+            raise ValueError("Jira email cannot be empty")
+        if not self.api_token:
+            raise ValueError("Jira api_token cannot be empty")
+        if not self.project_key:
+            raise ValueError("Jira project_key cannot be empty")
+
+        # Validate URL to prevent SSRF attacks
+        parsed = urlparse(self.base_url)
+        if parsed.scheme not in ("https", "http"):
+            raise ValueError(f"Jira base_url must use http or https scheme, got: {parsed.scheme}")
+        if not parsed.netloc:
+            raise ValueError("Jira base_url must have a valid domain")
+        # Warn if using http (not https)
+        if parsed.scheme == "http":
+            import warnings
+            warnings.warn(
+                f"Jira base_url uses insecure http:// scheme: {self.base_url}. "
+                "Consider using https:// for security.",
+                UserWarning,
+                stacklevel=2
+            )
 
 
 def _build_jql(config: JiraConfig) -> str:
@@ -87,7 +114,9 @@ def _fetch_search_results(config: JiraConfig) -> list[dict[str, Any]]:
         },
         method="GET",
     )
-    with urlopen(req) as resp:  # nosec - Jira URL is user-configured
+    # URL validation performed in JiraConfig.__post_init__
+    # User is responsible for configuring trusted Jira instances
+    with urlopen(req, timeout=30) as resp:  # nosec B310
         data = json.loads(resp.read().decode("utf-8"))
     issues = data.get("issues") or []
     return [issue for issue in issues if (issue.get("fields") or {}).get("status", {}).get("name") != "Won't Fix"]

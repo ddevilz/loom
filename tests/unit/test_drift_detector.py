@@ -63,9 +63,9 @@ def test_detect_ast_drift_reports_signature_return_param_and_side_effect_changes
         name="f",
         path="x",
         metadata={
-            "signature": "f(x) -> str",
+            "signature": "f(x, z) -> str",
             "return_type": "str",
-            "params": ["x"],
+            "params": ["x", "z"],
             "is_async": True,
         },
     )
@@ -76,4 +76,5 @@ def test_detect_ast_drift_reports_signature_return_param_and_side_effect_changes
     assert any("signature_changed" in reason for reason in report.reasons)
     assert any("return_type_changed" in reason for reason in report.reasons)
     assert any("removed_parameters" in reason for reason in report.reasons)
+    assert any("added_parameters" in reason for reason in report.reasons)
     assert any("added_side_effect_indicator" in reason for reason in report.reasons)

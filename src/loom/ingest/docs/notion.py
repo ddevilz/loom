@@ -14,6 +14,14 @@ class NotionConfig:
     api_token: str
     database_id: str
     notion_version: str = "2022-06-28"
+    
+    def __post_init__(self) -> None:
+        """Validate configuration to prevent security issues."""
+        if not self.api_token:
+            raise ValueError("Notion api_token cannot be empty")
+        if not self.database_id:
+            raise ValueError("Notion database_id cannot be empty")
+        # Notion API URL is fixed (https://api.notion.com) so no SSRF risk
 
 
 def _fetch_pages(config: NotionConfig) -> list[dict[str, Any]]:
@@ -29,7 +37,8 @@ def _fetch_pages(config: NotionConfig) -> list[dict[str, Any]]:
         data=b"{}",
         method="POST",
     )
-    with urlopen(req) as resp:  # nosec
+    # Notion API URL is hardcoded to https://api.notion.com (no SSRF risk)
+    with urlopen(req, timeout=30) as resp:  # nosec B310
         data = json.loads(resp.read().decode("utf-8"))
     return list(data.get("results") or [])
 

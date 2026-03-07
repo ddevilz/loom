@@ -5,7 +5,7 @@ import socket
 import pytest
 
 from loom.core import Node, NodeKind, NodeSource, LoomGraph
-from loom.core.falkor import queries
+from loom.core.falkor import cypher
 from loom.linker.linker import SemanticLinker
 
 
@@ -31,7 +31,7 @@ async def test_semantic_linker_rerank_persists_best_edge_to_real_graph() -> None
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     graph = LoomGraph(graph_name="loom_pytest_rerank_e2e")
-    await graph.query(queries.CLEAR_GRAPH)
+    await graph.query(cypher.CLEAR_GRAPH)
 
     code = Node(
         id="function:repo/auth.py:target",
