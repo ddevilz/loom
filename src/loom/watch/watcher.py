@@ -6,7 +6,8 @@ from typing import Any, AsyncIterable, Awaitable, Callable, Protocol
 
 from watchfiles import Change, awatch
 
-from loom.core import LoomGraph
+from loom.core import LoomGraph, EdgeType
+from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.ingest.pipeline import index_repo
 
 
@@ -27,9 +28,10 @@ async def _delete_nodes_by_path(graph: LoomGraph | _Graph, *, path: str) -> None
 
 
 async def _flag_changed_loom_edges(graph: LoomGraph | _Graph, *, path: str) -> None:
+    loom_impl_rel = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
     await graph.query(
-        """
-MATCH (n {path: $path})-[r:LOOM_IMPLEMENTS]->()
+        f"""
+MATCH (n {{path: $path}})-[r:{loom_impl_rel}]->()
 SET r.stale = true,
     r.stale_reason = 'source_changed'
 """,

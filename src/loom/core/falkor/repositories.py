@@ -5,7 +5,8 @@ from igraph import Graph
 
 from ..edge import Edge, EdgeType
 from ..node import Node
-from . import queries
+from . import cypher
+from .edge_type_adapter import EdgeTypeAdapter
 from .gateway import FalkorGateway
 from .mappers import (
     deserialize_node_props,
@@ -15,24 +16,26 @@ from .mappers import (
 
 
 class NodeRepository:
+    _CHUNK_SIZE = 500
+
     def __init__(self, gw: FalkorGateway) -> None:
         self._gw = gw
 
     def upsert(self, node: Node) -> None:
         props = serialize_node_props(node)
         label = node.kind.name.title()
-        cypher = queries.create_or_update_node_with_label(label)
-        self._gw.run(cypher, params={"id": node.id, "props": props})
+        query = cypher.create_or_update_node_with_label(label)
+        self._gw.run(query, params={"id": node.id, "props": props})
 
     def get(self, node_id: str) -> Node | None:
-        rows = self._gw.query_rows(queries.GET_NODE_BY_ID, params={"id": node_id})
+        rows = self._gw.query_rows(cypher.GET_NODE_BY_ID, params={"id": node_id})
         if not rows:
             return None
         props = deserialize_node_props(rows[0]["props"])
         return Node.model_validate(props)
 
     def delete(self, node_id: str) -> None:
-        self._gw.run(queries.DELETE_NODE_BY_ID, params={"id": node_id})
+        self._gw.run(cypher.DELETE_NODE_BY_ID, params={"id": node_id})
 
     def bulk_upsert(self, nodes: list[Node]) -> None:
         if not nodes:
@@ -43,8 +46,10 @@ class NodeRepository:
 
         for label, group in by_kind.items():
             payload = [{"id": n.id, "props": serialize_node_props(n)} for n in group]
-            cypher = queries.bulk_create_or_update_nodes_with_label(label)
-            self._gw.run(cypher, params={"nodes": payload})
+            query = cypher.bulk_create_or_update_nodes_with_label(label)
+            for i in range(0, len(payload), self._CHUNK_SIZE):
+                chunk = payload[i : i + self._CHUNK_SIZE]
+                self._gw.run(query, params={"nodes": chunk})
 
 
 class EdgeRepository:
@@ -52,11 +57,11 @@ class EdgeRepository:
         self._gw = gw
 
     def upsert(self, edge: Edge) -> None:
-        rel_type = edge.kind.name
-        cypher = queries.create_or_update_edge(rel_type)
+        rel_type = EdgeTypeAdapter.to_storage(edge.kind)
+        query = cypher.create_or_update_edge(rel_type)
         props = serialize_edge_props(edge)
         self._gw.run(
-            cypher,
+            query,
             params={"from_id": edge.from_id, "to_id": edge.to_id, "props": props},
         )
 
@@ -71,8 +76,8 @@ class EdgeRepository:
             by_kind[e.kind].append(e)
 
         for kind, group in by_kind.items():
-            rel_type = kind.name
-            cypher = queries.bulk_create_or_update_edges(rel_type)
+            rel_type = EdgeTypeAdapter.to_storage(kind)
+            query = cypher.bulk_create_or_update_edges(rel_type)
             payload = [
                 {
                     "from_id": e.from_id,
@@ -83,7 +88,7 @@ class EdgeRepository:
             ]
             for i in range(0, len(payload), self._CHUNK_SIZE):
                 chunk = payload[i : i + self._CHUNK_SIZE]
-                self._gw.run(cypher, params={"edges": chunk})
+                self._gw.run(query, params={"edges": chunk})
 
 
 class TraversalRepository:
@@ -94,7 +99,7 @@ class TraversalRepository:
         if depth < 1:
             return []
 
-        type_names = [t.name for t in edge_types]
+        type_names = EdgeTypeAdapter.to_storage_list(edge_types)
 
         frontier: set[str] = {node_id}
         visited: set[str] = {node_id}
@@ -107,7 +112,7 @@ class TraversalRepository:
                 break
 
             rows = self._gw.query_rows(
-                queries.NEIGHBORS_STEP_WITH_SOURCE,
+                cypher.NEIGHBORS_STEP_WITH_SOURCE,
                 params={"ids": list(frontier), "types": type_names},
             )
 

@@ -5,7 +5,7 @@ import pytest
 
 from loom.analysis.code.communities import detect_communities
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
-from loom.core.falkor import queries
+from loom.core.falkor import cypher
 
 
 def _falkordb_reachable(host: str = "127.0.0.1", port: int = 6379) -> bool:
@@ -23,7 +23,7 @@ async def test_detect_communities_creates_community_nodes():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     g = LoomGraph(graph_name="loom_pytest_communities")
-    await g.query(queries.CLEAR_GRAPH)
+    await g.query(cypher.CLEAR_GRAPH)
 
     # Create two clusters of functions with interconnected calls
     # Cluster 1: auth functions
@@ -133,7 +133,7 @@ async def test_detect_communities_filters_small_communities():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     g = LoomGraph(graph_name="loom_pytest_small_communities")
-    await g.query(queries.CLEAR_GRAPH)
+    await g.query(cypher.CLEAR_GRAPH)
 
     # Create a small graph with only 2 connected nodes
     nodes = [
@@ -177,7 +177,7 @@ async def test_detect_communities_handles_empty_graph():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     g = LoomGraph(graph_name="loom_pytest_empty")
-    await g.query(queries.CLEAR_GRAPH)
+    await g.query(cypher.CLEAR_GRAPH)
 
     # Run on empty graph
     node_to_community = await detect_communities(g)

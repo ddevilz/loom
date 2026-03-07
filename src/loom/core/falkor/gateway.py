@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from falkordb import FalkorDB
@@ -7,13 +8,27 @@ from falkordb import FalkorDB
 from loom.config import LOOM_DB_HOST, LOOM_DB_PORT
 
 _DB_SINGLETON: FalkorDB | None = None
+_DB_SINGLETON_LOCK = threading.Lock()
 
 
 def get_falkordb_singleton() -> FalkorDB:
+    """Get or create FalkorDB singleton with thread-safe double-checked locking.
+    
+    This prevents multiple threads from creating duplicate FalkorDB instances,
+    which could lead to connection pool exhaustion.
+    """
     global _DB_SINGLETON
-    if _DB_SINGLETON is None:
-        _DB_SINGLETON = FalkorDB(host=LOOM_DB_HOST, port=LOOM_DB_PORT)
-    return _DB_SINGLETON
+    
+    # Fast path: return if already initialized
+    if _DB_SINGLETON is not None:
+        return _DB_SINGLETON
+    
+    # Acquire lock for initialization
+    with _DB_SINGLETON_LOCK:
+        # Double-check after acquiring lock
+        if _DB_SINGLETON is None:
+            _DB_SINGLETON = FalkorDB(host=LOOM_DB_HOST, port=LOOM_DB_PORT)
+        return _DB_SINGLETON
 
 
 class FalkorGateway:
@@ -26,8 +41,13 @@ class FalkorGateway:
         self._graph = self._db.select_graph(self.graph_name)
 
     def reconnect(self) -> None:
+        """Reconnect to FalkorDB by resetting singleton and reconnecting.
+        
+        Thread-safe: acquires lock before resetting singleton.
+        """
         global _DB_SINGLETON
-        _DB_SINGLETON = None
+        with _DB_SINGLETON_LOCK:
+            _DB_SINGLETON = None
         self._connect()
 
     def run(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -10,6 +11,9 @@ from loom.linker.embed_match import link_by_embedding
 from loom.linker.llm_match import link_by_llm
 from loom.linker.name_match import link_by_name
 from loom.linker.reranker import PairReranker, rerank_edges
+
+
+logger = logging.getLogger(__name__)
 
 
 class _Graph(Protocol):
@@ -42,7 +46,12 @@ class SemanticLinker:
         unmatched_code = [n for n in summarized_code if n.id not in matched_code_ids]
         unmatched_doc = [n for n in doc_nodes if n.id not in matched_doc_ids]
 
-        tier2 = await link_by_embedding(unmatched_code, unmatched_doc, threshold=self.embedding_threshold)
+        tier2 = await link_by_embedding(
+            unmatched_code,
+            unmatched_doc,
+            threshold=self.embedding_threshold,
+            graph=graph,
+        )
         if self.reranker is not None and tier2:
             tier2 = rerank_edges(
                 tier2,
@@ -53,18 +62,21 @@ class SemanticLinker:
             )
         all_edges = self._dedupe_edges([*tier1, *tier2])
 
-        if self.llm_fallback and self.match_llm is not None:
-            matched_code_ids = {e.from_id for e in all_edges}
-            matched_doc_ids = {e.to_id for e in all_edges}
-            still_unmatched_code = [n for n in summarized_code if n.id not in matched_code_ids]
-            still_unmatched_doc = [n for n in doc_nodes if n.id not in matched_doc_ids]
-            tier3 = await link_by_llm(
-                still_unmatched_code,
-                still_unmatched_doc,
-                llm=self.match_llm,
-                threshold=self.llm_threshold,
-            )
-            all_edges = self._dedupe_edges([*all_edges, *tier3])
+        if self.llm_fallback:
+            if self.match_llm is not None:
+                matched_code_ids = {e.from_id for e in all_edges}
+                matched_doc_ids = {e.to_id for e in all_edges}
+                still_unmatched_code = [n for n in summarized_code if n.id not in matched_code_ids]
+                still_unmatched_doc = [n for n in doc_nodes if n.id not in matched_doc_ids]
+                tier3 = await link_by_llm(
+                    still_unmatched_code,
+                    still_unmatched_doc,
+                    llm=self.match_llm,
+                    threshold=self.llm_threshold,
+                )
+                all_edges = self._dedupe_edges([*all_edges, *tier3])
+            else:
+                logger.debug("LLM not configured — skipping LLM match tier. Set LOOM_LLM_MODEL to enable.")
 
         if all_edges:
             await graph.bulk_create_edges(all_edges)

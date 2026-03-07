@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from loom.core import EdgeType, LoomGraph
-from loom.core.falkor import queries
+from loom.core.falkor import cypher
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -27,7 +27,7 @@ async def test_graph_e2e_foundation():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     g = LoomGraph(graph_name="loom_pytest_e2e")
-    await g.query(queries.CLEAR_GRAPH)
+    await g.query(cypher.CLEAR_GRAPH)
 
     fixture = build_sample_graph()
     nodes = fixture["nodes"]
@@ -38,7 +38,7 @@ async def test_graph_e2e_foundation():
     await g.bulk_create_edges(edges)
 
     # 15 function nodes + 2 doc sections
-    count = (await g.query(queries.COUNT_NODES))[0]["c"]
+    count = (await g.query(cypher.COUNT_NODES))[0]["c"]
     assert count == 17
 
     # Blast radius (CALLS up to depth 3) from function x.
@@ -72,7 +72,7 @@ async def test_graph_e2e_foundation():
     }
 
     # Performance: bulk insert 100 nodes under 1 second
-    await g.query(queries.CLEAR_GRAPH)
+    await g.query(cypher.CLEAR_GRAPH)
     fixture2 = build_sample_graph()
     await g.bulk_create_nodes(fixture2["nodes"])
     await g.bulk_create_edges(fixture2["edges"])

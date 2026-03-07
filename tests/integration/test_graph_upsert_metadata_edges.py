@@ -3,7 +3,7 @@ import socket
 import pytest
 
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
-from loom.core.falkor import queries
+from loom.core.falkor import cypher
 
 
 def _falkordb_reachable(host: str = "127.0.0.1", port: int = 6379) -> bool:
@@ -20,7 +20,7 @@ async def test_node_merge_is_idempotent_and_updates_properties():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     g = LoomGraph(graph_name="loom_pytest_merge")
-    await g.query(queries.CLEAR_GRAPH)
+    await g.query(cypher.CLEAR_GRAPH)
 
     n1 = Node(
         id="function:src/x.py:f",
@@ -44,7 +44,7 @@ async def test_node_merge_is_idempotent_and_updates_properties():
     )
     await g.create_node(n1b)
 
-    count = (await g.query(queries.COUNT_NODES))[0]["c"]
+    count = (await g.query(cypher.COUNT_NODES))[0]["c"]
     assert count == 1
 
     loaded = await g.get_node(n1.id)
@@ -60,7 +60,7 @@ async def test_bulk_edges_mixed_types_and_neighbor_filtering():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     g = LoomGraph(graph_name="loom_pytest_edges")
-    await g.query(queries.CLEAR_GRAPH)
+    await g.query(cypher.CLEAR_GRAPH)
 
     nodes = [
         Node(
@@ -123,7 +123,7 @@ async def test_loom_edge_properties_persisted():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     g = LoomGraph(graph_name="loom_pytest_loomedge")
-    await g.query(queries.CLEAR_GRAPH)
+    await g.query(cypher.CLEAR_GRAPH)
 
     code = Node(
         id="function:src/a.py:fa",

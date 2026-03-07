@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 from loom.core import Node, NodeKind, NodeSource
@@ -17,10 +18,41 @@ class ConfluenceConfig:
     api_token: str
     space_key: str
     cql: str | None = None
+    
+    def __post_init__(self) -> None:
+        """Validate configuration to prevent security issues."""
+        if not self.base_url:
+            raise ValueError("Confluence base_url cannot be empty")
+        if not self.email:
+            raise ValueError("Confluence email cannot be empty")
+        if not self.api_token:
+            raise ValueError("Confluence api_token cannot be empty")
+        if not self.space_key:
+            raise ValueError("Confluence space_key cannot be empty")
+        
+        # Validate URL to prevent SSRF attacks
+        parsed = urlparse(self.base_url)
+        if parsed.scheme not in ("https", "http"):
+            raise ValueError(f"Confluence base_url must use http or https scheme, got: {parsed.scheme}")
+        if not parsed.netloc:
+            raise ValueError("Confluence base_url must have a valid domain")
+        if parsed.scheme == "http":
+            import warnings
+            warnings.warn(
+                f"Confluence base_url uses insecure http:// scheme: {self.base_url}. "
+                "Consider using https:// for security.",
+                UserWarning,
+                stacklevel=2
+            )
 
 
 def _build_cql(config: ConfluenceConfig) -> str:
     return config.cql or f'space = "{config.space_key}"'
+
+
+def _auth_header(config: ConfluenceConfig) -> str:
+    token = base64.b64encode(f"{config.email}:{config.api_token}".encode("utf-8")).decode("ascii")
+    return f"Basic {token}"
 
 
 def _fetch_pages(config: ConfluenceConfig) -> list[dict[str, Any]]:
@@ -32,12 +64,13 @@ def _fetch_pages(config: ConfluenceConfig) -> list[dict[str, Any]]:
     req = Request(
         url,
         headers={
-            "Authorization": f"Basic {config.email}:{config.api_token}",
+            "Authorization": _auth_header(config),
             "Accept": "application/json",
         },
         method="GET",
     )
-    with urlopen(req) as resp:  # nosec
+    # URL validation performed in ConfluenceConfig.__post_init__
+    with urlopen(req, timeout=30) as resp:  # nosec B310
         data = json.loads(resp.read().decode("utf-8"))
     return list(data.get("results") or [])
 

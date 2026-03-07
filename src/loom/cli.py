@@ -132,6 +132,22 @@ def analyze(
                 )
             )
 
+        if res.error_count:
+            console.print(
+                _render_table(
+                    title="Errors",
+                    columns=[("phase", None), ("path", None), ("message", None)],
+                    rows=[
+                        {
+                            "phase": err.phase,
+                            "path": err.path,
+                            "message": err.message,
+                        }
+                        for err in res.errors
+                    ],
+                )
+            )
+
     asyncio.run(_run())
 
 
@@ -221,7 +237,8 @@ def query(
     graph_name: str = typer.Option("loom", "--graph-name"),
     limit: int = typer.Option(10, "--limit"),
 ) -> None:
-    from loom.core import LoomGraph
+    from loom.core import EdgeType, LoomGraph
+    from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
     from loom.search.searcher import search
 
     console = Console()
@@ -260,10 +277,12 @@ def calls(
     ),
     limit: int = typer.Option(50, "--limit"),
 ) -> None:
-    from loom.core import LoomGraph
+    from loom.core import EdgeType, LoomGraph
+    from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
     from loom.core.node import NodeKind
 
     console = Console()
+    calls_rel = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
 
     async def _resolve_node_id(graph: LoomGraph, node: str) -> str | None:
         if ":" in node:
@@ -286,18 +305,22 @@ def calls(
             return None
         return rows[0].get("id")
 
+    async def _query_call_rows(graph: LoomGraph, query: str, params: dict[str, object]) -> list[dict[str, object]]:
+        return await graph.query(query, params)
+
     async def _run() -> None:
         graph = LoomGraph(graph_name=graph_name)
 
         if direction == "dump":
-            rows = await graph.query(
-                """
-MATCH (a)-[r:CALLS]->(b)
-RETURN a.name AS from_name, a.path AS from_path,
-       b.name AS to_name, b.path AS to_path,
-       r.confidence AS confidence
-LIMIT $limit
-""",
+            rows = await _query_call_rows(
+                graph,
+                f"""
+                    MATCH (a)-[r:{calls_rel}]->(b)
+                    RETURN a.name AS from_name, a.path AS from_path,
+                        b.name AS to_name, b.path AS to_path,
+                        r.confidence AS confidence
+                    LIMIT $limit
+                    """,
                 {"limit": limit},
             )
             formatted_rows = [
@@ -326,9 +349,10 @@ LIMIT $limit
             raise typer.Exit(code=1)
 
         if direction in {"callees", "both"}:
-            rows = await graph.query(
-                """
-MATCH (a {id: $id})-[r:CALLS]->(b)
+            rows = await _query_call_rows(
+                graph,
+                f"""
+MATCH (a {{id: $id}})-[r:{calls_rel}]->(b)
 RETURN b.kind AS kind, b.name AS name, b.path AS path, r.confidence AS confidence
 ORDER BY confidence DESC
 LIMIT $limit
@@ -338,9 +362,10 @@ LIMIT $limit
             _print_call_rows(console, heading="=== callees ===", rows=rows)
 
         if direction in {"callers", "both"}:
-            rows = await graph.query(
-                """
-MATCH (a)-[r:CALLS]->(b {id: $id})
+            rows = await _query_call_rows(
+                graph,
+                f"""
+MATCH (a)-[r:{calls_rel}]->(b {{id: $id}})
 RETURN a.kind AS kind, a.name AS name, a.path AS path, r.confidence AS confidence
 ORDER BY confidence DESC
 LIMIT $limit
@@ -357,9 +382,11 @@ def entrypoints(
     graph_name: str = typer.Option("loom", "--graph-name"),
     limit: int = typer.Option(30, "--limit"),
 ) -> None:
-    from loom.core import LoomGraph
+    from loom.core import EdgeType, LoomGraph
+    from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 
     console = Console()
+    calls_rel = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
 
     async def _run() -> None:
         graph = LoomGraph(graph_name=graph_name)
@@ -373,13 +400,13 @@ def entrypoints(
         r1 = await graph.query(q1, {"limit": limit})
 
         q2 = (
-            "MATCH (n) "
-            "WHERE NOT ( ()-[:calls]->(n) ) "
-            "WITH n "
-            "MATCH (n)-[:calls]->(m) "
-            "RETURN n.kind AS kind, n.name AS name, n.path AS path, count(m) AS out_calls "
-            "ORDER BY out_calls DESC "
-            "LIMIT $limit"
+            f"MATCH (n) "
+            f"WHERE NOT ( ()-[:{calls_rel}]->(n) ) "
+            f"WITH n "
+            f"MATCH (n)-[:{calls_rel}]->(m) "
+            f"RETURN n.kind AS kind, n.name AS name, n.path AS path, count(m) AS out_calls "
+            f"ORDER BY out_calls DESC "
+            f"LIMIT $limit"
         )
         r2 = await graph.query(q2, {"limit": limit})
 

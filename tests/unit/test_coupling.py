@@ -12,27 +12,39 @@ from loom.analysis.code.coupling import analyze_coupling
 from loom.core import EdgeType
 
 
-def test_analyze_coupling_invalid_repo(tmp_path: Path):
+async def test_analyze_coupling_invalid_repo(tmp_path: Path):
     """Test that invalid repos return empty list."""
     non_repo = tmp_path / "not_a_repo"
     non_repo.mkdir()
     
-    edges = analyze_coupling(str(non_repo))
+    edges = await analyze_coupling(str(non_repo))
     assert edges == []
 
 
-def test_analyze_coupling_no_commits():
+async def test_analyze_coupling_resolves_parent_git_repo_for_subfolder():
+    """Test that coupling analysis can resolve the nearest parent git repo."""
+    mock_repo = Mock(spec=git.Repo)
+    mock_repo.iter_commits.return_value = []
+
+    with patch("git.Repo", return_value=mock_repo) as repo_ctor:
+        edges = await analyze_coupling("/fake/repo/subdir")
+
+    assert edges == []
+    repo_ctor.assert_called_once_with("/fake/repo/subdir", search_parent_directories=True)
+
+
+async def test_analyze_coupling_no_commits():
     """Test that repos with no commits return empty list."""
     mock_repo = Mock(spec=git.Repo)
     mock_repo.iter_commits.return_value = []
     
     with patch("git.Repo", return_value=mock_repo):
-        edges = analyze_coupling("/fake/path")
+        edges = await analyze_coupling("/fake/path")
     
     assert edges == []
 
 
-def test_analyze_coupling_detects_coupled_files():
+async def test_analyze_coupling_detects_coupled_files():
     """Test that files changing together create COUPLED_WITH edges."""
     # Mock repo with commits
     mock_repo = Mock(spec=git.Repo)
@@ -79,7 +91,7 @@ def test_analyze_coupling_detects_coupled_files():
     mock_repo.iter_commits.return_value = commits
     
     with patch("git.Repo", return_value=mock_repo):
-        edges = analyze_coupling("/fake/path", threshold=0.5)
+        edges = await analyze_coupling("/fake/path", threshold=0.5)
     
     # file_a and file_b appear together 2 out of 3 times file_a appears
     # coupling_frequency = 2/3 = 0.667 > 0.5 threshold
@@ -96,7 +108,7 @@ def test_analyze_coupling_detects_coupled_files():
         assert "cooccurrence_count" in edge.metadata
 
 
-def test_analyze_coupling_threshold_filtering():
+async def test_analyze_coupling_threshold_filtering():
     """Test that threshold filters out low-coupling pairs."""
     mock_repo = Mock(spec=git.Repo)
     
@@ -130,12 +142,12 @@ def test_analyze_coupling_threshold_filtering():
     
     with patch("git.Repo", return_value=mock_repo):
         # coupling_frequency = 1/10 = 0.1 < 0.3 threshold
-        edges = analyze_coupling("/fake/path", threshold=0.3)
+        edges = await analyze_coupling("/fake/path", threshold=0.3)
     
     assert len(edges) == 0
 
 
-def test_analyze_coupling_initial_commit():
+async def test_analyze_coupling_initial_commit():
     """Test handling of initial commit (no parents)."""
     mock_repo = Mock(spec=git.Repo)
     
@@ -160,13 +172,13 @@ def test_analyze_coupling_initial_commit():
     mock_repo.iter_commits.return_value = [commit]
     
     with patch("git.Repo", return_value=mock_repo):
-        edges = analyze_coupling("/fake/path", threshold=0.9)
+        edges = await analyze_coupling("/fake/path", threshold=0.9)
     
     # Initial commit: both files appear together once (100% coupling)
     assert len(edges) == 2  # Bidirectional
 
 
-def test_analyze_coupling_handles_diff_errors():
+async def test_analyze_coupling_handles_diff_errors():
     """Test that diff errors are handled gracefully."""
     mock_repo = Mock(spec=git.Repo)
     
@@ -188,13 +200,13 @@ def test_analyze_coupling_handles_diff_errors():
     mock_repo.iter_commits.return_value = [commit1, commit2]
     
     with patch("git.Repo", return_value=mock_repo):
-        edges = analyze_coupling("/fake/path")
+        edges = await analyze_coupling("/fake/path")
     
     # Should handle error and continue
     assert isinstance(edges, list)
 
 
-def test_analyze_coupling_confidence_mapping():
+async def test_analyze_coupling_confidence_mapping():
     """Test that coupling frequency maps correctly to confidence."""
     mock_repo = Mock(spec=git.Repo)
     
@@ -228,7 +240,7 @@ def test_analyze_coupling_confidence_mapping():
     mock_repo.iter_commits.return_value = commits
     
     with patch("git.Repo", return_value=mock_repo):
-        edges = analyze_coupling("/fake/path", threshold=0.3)
+        edges = await analyze_coupling("/fake/path", threshold=0.3)
     
     # coupling_frequency = 7/10 = 0.7
     assert len(edges) == 2
@@ -237,7 +249,7 @@ def test_analyze_coupling_confidence_mapping():
         assert abs(edge.metadata["coupling_frequency"] - 0.7) < 0.01
 
 
-def test_analyze_coupling_multiple_file_pairs():
+async def test_analyze_coupling_multiple_file_pairs():
     """Test detection of multiple coupled pairs."""
     mock_repo = Mock(spec=git.Repo)
     
@@ -268,7 +280,7 @@ def test_analyze_coupling_multiple_file_pairs():
     mock_repo.iter_commits.return_value = commits
     
     with patch("git.Repo", return_value=mock_repo):
-        edges = analyze_coupling("/fake/path", threshold=0.9)
+        edges = await analyze_coupling("/fake/path", threshold=0.9)
     
     # Should create edges for: A-B, B-A, A-C, C-A, B-C, C-B
     assert len(edges) == 6
@@ -283,7 +295,7 @@ def test_analyze_coupling_multiple_file_pairs():
 
 
 @pytest.mark.slow
-def test_analyze_coupling_performance():
+async def test_analyze_coupling_performance():
     """Test that analysis completes in < 5s for 1000 commits."""
     mock_repo = Mock(spec=git.Repo)
     
@@ -309,7 +321,7 @@ def test_analyze_coupling_performance():
     
     with patch("git.Repo", return_value=mock_repo):
         start = time.time()
-        edges = analyze_coupling("/fake/path", threshold=0.3)
+        edges = await analyze_coupling("/fake/path", threshold=0.3)
         elapsed = time.time() - start
     
     assert elapsed < 5.0, f"Analysis took {elapsed:.2f}s, expected < 5s"

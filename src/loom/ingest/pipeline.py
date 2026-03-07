@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
 from inspect import isawaitable
 from pathlib import Path
@@ -8,15 +9,28 @@ from time import perf_counter
 from typing import Any, Callable, Protocol
 
 from loom.analysis.code.communities import detect_communities
+from loom.analysis.code.coupling import analyze_coupling
 from loom.analysis.code.parser import parse_code
+from loom.analysis.code.summarizer import extract_summaries
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.embed.embedder import embed_nodes
 from loom.ingest.code.walker import walk_repo
+from loom.ingest.errors import append_index_error
 from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
+from loom.ingest.utils import invalidate_edges_for_file
 from loom.linker.linker import SemanticLinker
 
 from loom.ingest.result import IndexError, IndexResult
+
+
+def _merge_file_result(batch: _IndexBatch, file_result: _FileProcessResult) -> None:
+    batch.files_skipped += file_result.files_skipped
+    batch.files_updated += file_result.files_updated
+    batch.files_added += file_result.files_added
+    batch.nodes_to_upsert.extend(file_result.nodes_to_upsert)
+    batch.edges_to_upsert.extend(file_result.edges_to_upsert)
+    batch.errors.extend(file_result.errors)
 
 
 class _Graph(Protocol):
@@ -29,22 +43,10 @@ class _Graph(Protocol):
 
 _GET_FILE_NODES = "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash"
 
-_DELETE_NON_HUMAN_EDGES_FOR_FILE = """
-MATCH (a {path: $path})-[r]->()
-WHERE r.origin IS NULL OR r.origin <> 'human'
-DELETE r
-"""
-
-_MARK_HUMAN_EDGES_STALE_FOR_FILE = """
-MATCH (a {path: $path})-[r]->()
-WHERE r.origin = 'human'
-SET r.stale = true,
-    r.stale_reason = 'source_changed'
-"""
-
 _DELETE_NODE_BY_ID = "MATCH (n {id: $id}) DETACH DELETE n"
 _COUNT_NODES = "MATCH (n) RETURN count(n) AS c"
 _COUNT_EDGES = "MATCH ()-[r]->() RETURN count(r) AS c"
+_DEFAULT_INGEST_CONCURRENCY = 8
 
 
 @dataclass
@@ -63,6 +65,16 @@ class _IndexBatch:
             self.edges_to_upsert = []
         if self.errors is None:
             self.errors = []
+
+
+@dataclass
+class _FileProcessResult:
+    files_skipped: int = 0
+    files_updated: int = 0
+    files_added: int = 0
+    nodes_to_upsert: list[Node] = field(default_factory=list)
+    edges_to_upsert: list[Edge] = field(default_factory=list)
+    errors: list[IndexError] = field(default_factory=list)
 
 
 CallTracer = Callable[[str, list[Node]], list[Edge]]
@@ -120,11 +132,6 @@ def _collect_repo_files(root: str) -> list[str]:
     return sorted(set(all_files))
 
 
-async def _invalidate_edges_for_file(graph: _Graph, *, path: str) -> None:
-    await graph.query(_DELETE_NON_HUMAN_EDGES_FOR_FILE, {"path": path})
-    await graph.query(_MARK_HUMAN_EDGES_STALE_FOR_FILE, {"path": path})
-
-
 def _get_call_tracer(path: str) -> tuple[CallTracer | None, str | None]:
     lower = path.lower()
     if lower.endswith(".py"):
@@ -150,7 +157,7 @@ def _append_docs_batch(docs_path: str, batch: _IndexBatch) -> None:
         batch.nodes_to_upsert.extend(doc_nodes)
         batch.edges_to_upsert.extend(doc_edges)
     except Exception as e:
-        batch.errors.append(IndexError(path=str(docs_path), phase="parse", message=str(e)))
+        append_index_error(batch.errors, path=str(docs_path), phase="parse", error=e)
 
 
 async def _append_jira_batch(jira: JiraConfig, batch: _IndexBatch) -> None:
@@ -159,7 +166,7 @@ async def _append_jira_batch(jira: JiraConfig, batch: _IndexBatch) -> None:
         jira_nodes = await jira_nodes_result if isawaitable(jira_nodes_result) else jira_nodes_result
         batch.nodes_to_upsert.extend(jira_nodes)
     except Exception as e:
-        batch.errors.append(IndexError(path=jira.project_key, phase="jira", message=str(e)))
+        append_index_error(batch.errors, path=jira.project_key, phase="jira", error=e)
 
 
 async def _process_file(
@@ -168,37 +175,54 @@ async def _process_file(
     fp: str,
     stored_hash: str | None,
     exclude_tests: bool,
-    batch: _IndexBatch,
-) -> None:
-    file_hash = _compute_file_hash(fp)
+    batch: _FileProcessResult,
+) -> _FileProcessResult:
+    try:
+        file_hash = _compute_file_hash(fp)
+    except Exception as e:
+        append_index_error(batch.errors, path=fp, phase="hash", error=e)
+        return batch
+
     if stored_hash is not None and stored_hash == file_hash:
         batch.files_skipped += 1
-        return
+        return batch
 
-    if stored_hash is None:
+    is_new_file = stored_hash is None
+
+    # Parse code first - don't commit any state changes until this succeeds
+    try:
+        nodes = await asyncio.to_thread(parse_code, fp, exclude_tests=exclude_tests)
+    except Exception as e:
+        append_index_error(batch.errors, path=fp, phase="parse", error=e)
+        return batch
+
+    # Parse succeeded - now we can safely update counters and invalidate edges
+    if is_new_file:
         batch.files_added += 1
     else:
         batch.files_updated += 1
-        await _invalidate_edges_for_file(graph, path=fp)
+        try:
+            await invalidate_edges_for_file(graph, path=fp)
+        except Exception as e:
+            append_index_error(batch.errors, path=fp, phase="invalidate", error=e)
+            return batch
 
+    # Add file node with new hash and parsed code nodes
     batch.nodes_to_upsert.append(_make_file_node(fp, content_hash=file_hash))
+    batch.nodes_to_upsert.extend(nodes)
 
-    try:
-        nodes = await asyncio.to_thread(parse_code, fp, exclude_tests=exclude_tests)
-        batch.nodes_to_upsert.extend(nodes)
-    except Exception as e:
-        batch.errors.append(IndexError(path=fp, phase="parse", message=str(e)))
-        return
-
-    tracer, error_message = _get_call_tracer(fp)
-    if tracer is None or error_message is None:
-        return
+    # Trace calls (failure here is non-fatal - we still have valid parsed nodes)
+    tracer, _ = _get_call_tracer(fp)
+    if tracer is None:
+        return batch
 
     try:
         edges = await asyncio.to_thread(tracer, fp, nodes)
         batch.edges_to_upsert.extend(edges)
-    except Exception:
-        batch.errors.append(IndexError(path=fp, phase="calls", message=error_message))
+    except Exception as e:
+        append_index_error(batch.errors, path=fp, phase="calls", error=e)
+
+    return batch
 
 
 async def _delete_missing_files(graph: _Graph, deleted_file_ids: set[str], errors: list[IndexError]) -> None:
@@ -206,7 +230,7 @@ async def _delete_missing_files(graph: _Graph, deleted_file_ids: set[str], error
         try:
             await graph.query(_DELETE_NODE_BY_ID, {"id": file_id})
         except Exception as e:
-            errors.append(IndexError(path=file_id, phase="persist", message=str(e)))
+            append_index_error(errors, path=file_id, phase="persist", error=e)
 
 
 async def _persist_batch(graph: _Graph, root: str, batch: _IndexBatch) -> None:
@@ -214,13 +238,13 @@ async def _persist_batch(graph: _Graph, root: str, batch: _IndexBatch) -> None:
         try:
             await graph.bulk_create_nodes(batch.nodes_to_upsert)
         except Exception as e:
-            batch.errors.append(IndexError(path=root, phase="persist", message=str(e)))
+            append_index_error(batch.errors, path=root, phase="persist", error=e)
 
     if batch.edges_to_upsert:
         try:
             await graph.bulk_create_edges(batch.edges_to_upsert)
         except Exception as e:
-            batch.errors.append(IndexError(path=root, phase="persist", message=str(e)))
+            append_index_error(batch.errors, path=root, phase="persist", error=e)
 
 
 async def _query_graph_counts(graph: _Graph, root: str, errors: list[IndexError]) -> tuple[int, int]:
@@ -232,7 +256,7 @@ async def _query_graph_counts(graph: _Graph, root: str, errors: list[IndexError]
         rows = await graph.query(_COUNT_EDGES)
         edge_count = int(rows[0]["c"]) if rows else 0
     except Exception as e:
-        errors.append(IndexError(path=root, phase="summarize", message=str(e)))
+        append_index_error(errors, path=root, phase="summarize", error=e)
     return node_count, edge_count
 
 
@@ -270,16 +294,43 @@ async def index_repo(
     if jira is not None:
         await _append_jira_batch(jira, batch)
 
-    for fp in current_files:
+    semaphore = asyncio.Semaphore(_DEFAULT_INGEST_CONCURRENCY)
+
+    async def _process_file_bounded(fp: str) -> _FileProcessResult:
         file_id = _file_node_id(fp)
         stored_hash = stored_hash_by_file_id.get(file_id)
-        await _process_file(
-            graph,
-            fp=fp,
-            stored_hash=stored_hash,
-            exclude_tests=exclude_tests,
-            batch=batch,
-        )
+        async with semaphore:
+            return await _process_file(
+                graph,
+                fp=fp,
+                stored_hash=stored_hash,
+                exclude_tests=exclude_tests,
+                batch=_FileProcessResult(),
+            )
+
+    async def _process_file_tagged(fp: str) -> tuple[str, _FileProcessResult | None, Exception | None]:
+        try:
+            return fp, await _process_file_bounded(fp), None
+        except Exception as e:
+            return fp, None, e
+
+    file_tasks = [asyncio.create_task(_process_file_tagged(fp)) for fp in current_files]
+    try:
+        for completed_task in asyncio.as_completed(file_tasks):
+            fp, file_result, task_error = await completed_task
+            if task_error is not None:
+                append_index_error(batch.errors, path=fp, phase="process", error=task_error)
+                continue
+            if file_result is None:
+                continue
+            _merge_file_result(batch, file_result)
+    finally:
+        for task in file_tasks:
+            if not task.done():
+                task.cancel()
+        for task in file_tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     # Handle deleted files (present in graph, missing on disk)
     deleted_file_ids = stored_file_ids - current_file_ids
@@ -288,23 +339,54 @@ async def index_repo(
     if deleted_file_ids:
         await _delete_missing_files(graph, deleted_file_ids, batch.errors)
 
-    await _persist_batch(graph, root, batch)
+    # Extract static summaries for all nodes (no LLM calls)
+    try:
+        batch.nodes_to_upsert = await extract_summaries(batch.nodes_to_upsert)
+    except Exception as e:
+        append_index_error(batch.errors, path=root, phase="summarize", error=e)
+        await _persist_batch(graph, root, batch)
+        # Don't continue with embedding/linking if summarization failed
+        node_count, edge_count = await _query_graph_counts(graph, root, batch.errors)
+        duration_ms = (perf_counter() - t0) * 1000.0
+        return IndexResult(
+            node_count=node_count,
+            edge_count=edge_count,
+            file_count=len(current_files),
+            files_skipped=batch.files_skipped,
+            files_updated=batch.files_updated,
+            files_added=batch.files_added,
+            files_deleted=files_deleted,
+            error_count=len(batch.errors),
+            duration_ms=duration_ms,
+            errors=batch.errors,
+        )
 
-    # Compute and persist embeddings for all nodes with summaries
+    # Compute embeddings for nodes with summaries before persisting nodes,
+    # so we avoid a second full node upsert pass when embedding succeeds.
     nodes_with_summaries = [n for n in batch.nodes_to_upsert if n.summary]
     if nodes_with_summaries:
         try:
             embedded_nodes = await embed_nodes(nodes_with_summaries)
-            # Update nodes in graph with embeddings
-            await graph.bulk_create_nodes(embedded_nodes)
+            embedded_by_id = {node.id: node for node in embedded_nodes}
+            batch.nodes_to_upsert = [embedded_by_id.get(node.id, node) for node in batch.nodes_to_upsert]
         except Exception as e:
-            batch.errors.append(IndexError(path=root, phase="embed", message=str(e)))
+            append_index_error(batch.errors, path=root, phase="embed", error=e)
+            # Continue without embeddings - nodes are still valid
+
+    await _persist_batch(graph, root, batch)
 
     # Detect communities - this creates community nodes and MEMBER_OF edges directly in the graph
     try:
         await detect_communities(graph)
     except Exception as e:
-        batch.errors.append(IndexError(path=root, phase="communities", message=str(e)))
+        append_index_error(batch.errors, path=root, phase="communities", error=e)
+
+    try:
+        coupling_edges = await analyze_coupling(root)
+        if coupling_edges:
+            await graph.bulk_create_edges(coupling_edges)
+    except Exception as e:
+        append_index_error(batch.errors, path=root, phase="coupling", error=e)
 
     if docs_path is not None or jira is not None:
         code_nodes = _collect_code_nodes_for_linking(batch)
@@ -314,7 +396,7 @@ async def index_repo(
                 await SemanticLinker().link(code_nodes, doc_nodes, graph)
             except Exception as e:
                 link_path = str(docs_path) if docs_path is not None else (jira.project_key if jira is not None else root)
-                batch.errors.append(IndexError(path=link_path, phase="link", message=str(e)))
+                append_index_error(batch.errors, path=link_path, phase="link", error=e)
 
     node_count, edge_count = await _query_graph_counts(graph, root, batch.errors)
 

@@ -7,13 +7,15 @@ from loom.linker.embed_match import link_by_embedding
 
 class _FakeEmbedder:
     def embed(self, texts: list[str]) -> list[list[float]]:
-        # Very small deterministic vectors.
+        # 768-dimensional vectors to match LOOM_EMBED_DIM
         out = []
         for t in texts:
             if "password" in t.lower():
-                out.append([1.0, 0.0])
+                # First dimension is 1.0, rest are 0.0
+                out.append([1.0] + [0.0] * 767)
             else:
-                out.append([0.0, 1.0])
+                # First dimension is 0.0, second is 1.0, rest are 0.0
+                out.append([0.0, 1.0] + [0.0] * 766)
         return out
 
 
@@ -32,7 +34,7 @@ async def test_embed_nodes_sets_embedding(tmp_path):
         metadata={},
     )
     out = await embed_nodes([n], embedder=_FakeEmbedder())
-    assert out[0].embedding == [1.0, 0.0]
+    assert out[0].embedding == [1.0] + [0.0] * 767
 
 
 @pytest.mark.asyncio

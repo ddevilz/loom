@@ -5,13 +5,36 @@ from time import perf_counter
 from typing import Any, Protocol
 
 from loom.analysis.code.parser import parse_code
-from loom.core import Edge, EdgeOrigin, EdgeType, LoomGraph, Node
+from loom.analysis.code.summarizer import extract_summaries
+from loom.core import Edge, EdgeOrigin, EdgeType, LoomGraph, Node, NodeKind, NodeSource
+from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_node_props
 from loom.drift.detector import detect_ast_drift
+from loom.embed.embedder import embed_nodes
 from loom.ingest.differ import diff_nodes
+from loom.ingest.errors import append_index_error
 from loom.ingest.git import FileChange, get_changed_files
-from loom.ingest.pipeline import _invalidate_edges_for_file  # type: ignore[attr-defined]
 from loom.ingest.result import IndexError, IndexResult
+from loom.ingest.utils import invalidate_edges_for_file
+from loom.linker.linker import SemanticLinker
+
+
+_LOOM_IMPL_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
+
+
+async def _run_or_append_error(
+    errors: list[IndexError],
+    *,
+    path: str,
+    phase: str,
+    op,
+    default=None,
+):
+    try:
+        return await op()
+    except Exception as e:
+        append_index_error(errors, path=path, phase=phase, error=e)
+        return default
 
 
 async def _get_outgoing_human_edges(graph: _Graph, *, path: str) -> list[dict[str, Any]]:
@@ -46,6 +69,25 @@ class _Graph(Protocol):
     async def bulk_create_nodes(self, nodes: list[Node]) -> None: ...
 
     async def bulk_create_edges(self, edges: list[Edge]) -> None: ...
+
+
+async def _get_doc_nodes_for_linking(graph: _Graph) -> list[Node]:
+    rows = await graph.query(
+        "MATCH (n) WHERE n.id STARTS WITH 'doc:' RETURN properties(n) AS props"
+    )
+    out: list[Node] = []
+    for row in rows:
+        props = row.get("props")
+        if not isinstance(props, dict):
+            continue
+        props = deserialize_node_props(props)
+        try:
+            node = Node.model_validate(props)
+        except Exception:
+            continue
+        if node.source == NodeSource.DOC:
+            out.append(node)
+    return out
 
 
 async def _get_nodes_by_path(graph: _Graph, *, path: str) -> list[Node]:
@@ -109,7 +151,7 @@ async def _delete_nodes_by_path(graph: _Graph, *, path: str) -> None:
 
 async def _get_loom_implements_targets(graph: _Graph, *, node_id: str) -> list[str]:
     rows = await graph.query(
-        "MATCH (n {id: $id})-[:LOOM_IMPLEMENTS]->(d) RETURN d.id AS id",
+        f"MATCH (n {{id: $id}})-[:{_LOOM_IMPL_REL}]->(d) RETURN d.id AS id",
         {"id": node_id},
     )
     return [row.get("id") for row in rows if isinstance(row.get("id"), str)]
@@ -168,20 +210,22 @@ async def sync_commits(
             try:
                 nodes_to_upsert.extend(parse_code(abs_path))
             except Exception as e:
-                errors.append(IndexError(path=abs_path, phase="parse", message=str(e)))
+                append_index_error(errors, path=abs_path, phase="parse", error=e)
 
         elif ch.status == "M":
             files_updated += 1
-            try:
-                old_nodes = await _get_nodes_by_path(graph, path=abs_path)
-            except Exception as e:
-                old_nodes = []
-                errors.append(IndexError(path=abs_path, phase="persist", message=str(e)))
+            old_nodes = await _run_or_append_error(
+                errors,
+                path=abs_path,
+                phase="persist",
+                op=lambda p=abs_path: _get_nodes_by_path(graph, path=p),
+                default=[],
+            )
 
             try:
                 new_nodes = parse_code(abs_path)
             except Exception as e:
-                errors.append(IndexError(path=abs_path, phase="parse", message=str(e)))
+                append_index_error(errors, path=abs_path, phase="parse", error=e)
                 continue
 
             d = diff_nodes(old_nodes, new_nodes)
@@ -191,11 +235,13 @@ async def sync_commits(
                 drift = detect_ast_drift(old_node, new_node)
                 if not drift.changed:
                     continue
-                try:
-                    doc_ids = await _get_loom_implements_targets(graph, node_id=old_node.id)
-                except Exception as e:
-                    errors.append(IndexError(path=abs_path, phase="persist", message=str(e)))
-                    doc_ids = []
+                doc_ids = await _run_or_append_error(
+                    errors,
+                    path=abs_path,
+                    phase="persist",
+                    op=lambda nid=old_node.id: _get_loom_implements_targets(graph, node_id=nid),
+                    default=[],
+                )
                 if not doc_ids:
                     continue
                 warning = f"AST drift detected for {new_node.id}: {'; '.join(drift.reasons)}"
@@ -226,7 +272,7 @@ async def sync_commits(
                     deletable.append(n.id)
                 await _delete_nodes_by_ids(graph, deletable)
             except Exception as e:
-                errors.append(IndexError(path=abs_path, phase="persist", message=str(e)))
+                append_index_error(errors, path=abs_path, phase="persist", error=e)
 
             # Upsert new/changed nodes.
             nodes_to_upsert.extend(d.added)
@@ -235,9 +281,9 @@ async def sync_commits(
 
             # Invalidate edges based on origin rules for this file.
             try:
-                await _invalidate_edges_for_file(graph, path=abs_path)
+                await invalidate_edges_for_file(graph, path=abs_path)
             except Exception as e:
-                errors.append(IndexError(path=abs_path, phase="persist", message=str(e)))
+                append_index_error(errors, path=abs_path, phase="persist", error=e)
 
         elif ch.status == "D":
             files_deleted += 1
@@ -258,7 +304,7 @@ async def sync_commits(
                 deletable = [i for i in ids if i not in set(preserved)]
                 await _delete_nodes_by_ids(graph, deletable)
             except Exception as e:
-                errors.append(IndexError(path=abs_path, phase="persist", message=str(e)))
+                append_index_error(errors, path=abs_path, phase="persist", error=e)
 
         elif ch.status == "R":
             files_deleted += 1
@@ -266,25 +312,32 @@ async def sync_commits(
 
             old_abs = str(Path(repo_path) / (ch.old_path or ""))
 
-            try:
-                old_nodes = await _get_nodes_by_path(graph, path=old_abs)
-                old_edges = await _get_outgoing_human_edges(graph, path=old_abs)
-            except Exception as e:
-                old_nodes = []
-                old_edges = []
-                errors.append(IndexError(path=old_abs, phase="persist", message=str(e)))
+            old_nodes = await _run_or_append_error(
+                errors,
+                path=old_abs,
+                phase="persist",
+                op=lambda p=old_abs: _get_nodes_by_path(graph, path=p),
+                default=[],
+            )
+            old_edges = await _run_or_append_error(
+                errors,
+                path=old_abs,
+                phase="persist",
+                op=lambda p=old_abs: _get_outgoing_human_edges(graph, path=p),
+                default=[],
+            )
 
             try:
                 new_nodes = parse_code(abs_path)
             except Exception as e:
-                errors.append(IndexError(path=abs_path, phase="parse", message=str(e)))
+                append_index_error(errors, path=abs_path, phase="parse", error=e)
                 continue
 
             # Upsert new nodes immediately so we can recreate migrated edges.
             try:
                 await graph.bulk_create_nodes(new_nodes)
             except Exception as e:
-                errors.append(IndexError(path=abs_path, phase="persist", message=str(e)))
+                append_index_error(errors, path=abs_path, phase="persist", error=e)
                 continue
 
             old_by_id = {n.id: n for n in old_nodes}
@@ -336,26 +389,56 @@ async def sync_commits(
                             props=props,
                         )
                     except Exception as e:
-                        errors.append(IndexError(path=abs_path, phase="persist", message=str(e)))
+                        append_index_error(errors, path=abs_path, phase="persist", error=e)
 
             # Remove old nodes after migration.
             try:
                 if ch.old_path:
                     await _delete_nodes_by_path(graph, path=old_abs)
             except Exception as e:
-                errors.append(IndexError(path=old_abs, phase="persist", message=str(e)))
+                append_index_error(errors, path=old_abs, phase="persist", error=e)
 
     if nodes_to_upsert:
+        # Extract static summaries for changed/added nodes (no LLM calls)
+        try:
+            nodes_to_upsert = await extract_summaries(nodes_to_upsert)
+        except Exception as e:
+            append_index_error(errors, path=repo_path, phase="summarize", error=e)
+
+        try:
+            nodes_to_upsert = await embed_nodes(nodes_to_upsert)
+        except Exception as e:
+            append_index_error(errors, path=repo_path, phase="embed", error=e)
+        
         try:
             await graph.bulk_create_nodes(nodes_to_upsert)
         except Exception as e:
-            errors.append(IndexError(path=repo_path, phase="persist", message=str(e)))
+            append_index_error(errors, path=repo_path, phase="persist", error=e)
+
+        code_nodes = [
+            node
+            for node in nodes_to_upsert
+            if node.source == NodeSource.CODE and node.kind != NodeKind.FILE
+        ]
+        if code_nodes:
+            doc_nodes = await _run_or_append_error(
+                errors,
+                path=repo_path,
+                phase="link",
+                op=lambda g=graph: _get_doc_nodes_for_linking(g),
+                default=[],
+            )
+            if doc_nodes:
+                try:
+                    await SemanticLinker().link(code_nodes, doc_nodes, graph)
+                except Exception as e:
+                    append_index_error(errors, path=repo_path, phase="link", error=e)
 
     if edges_to_upsert:
         try:
             await graph.bulk_create_edges(edges_to_upsert)
         except Exception as e:
-            errors.append(IndexError(path=repo_path, phase="persist", message=str(e)))
+            append_index_error(errors, path=repo_path, phase="persist", error=e)
 
     node_count = 0
     edge_count = 0
@@ -365,7 +448,7 @@ async def sync_commits(
         rows = await graph.query("MATCH ()-[r]->() RETURN count(r) AS c")
         edge_count = int(rows[0]["c"]) if rows else 0
     except Exception as e:
-        errors.append(IndexError(path=repo_path, phase="summarize", message=str(e)))
+        append_index_error(errors, path=repo_path, phase="summarize", error=e)
 
     return IndexResult(
         node_count=node_count,

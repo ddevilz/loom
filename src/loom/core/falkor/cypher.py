@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-# Keeping Cypher in one place for readability. (For now!)
-
 GET_NODE_BY_ID = "MATCH (n:Node {id: $id}) RETURN properties(n) AS props LIMIT 1"
 DELETE_NODE_BY_ID = "MATCH (n:Node {id: $id}) DETACH DELETE n"
 COUNT_NODES = "MATCH (n) RETURN count(n) AS c"

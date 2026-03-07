@@ -61,6 +61,13 @@ class FakeGraph:
         if q == "MATCH ()-[r]->() RETURN count(r) AS c":
             return [{"c": len(self.edges)}]
 
+        if q == "MATCH (n) WHERE n.id STARTS WITH 'doc:' RETURN properties(n) AS props":
+            rows = []
+            for props in self.nodes.values():
+                if str(props.get("id", "")).startswith("doc:"):
+                    rows.append({"props": dict(props)})
+            return rows
+
         raise AssertionError(f"Unexpected cypher: {cypher}")
 
     async def bulk_create_nodes(self, nodes: list[Node]) -> None:
@@ -167,3 +174,69 @@ async def test_sync_commits_emits_ast_drift_warning_and_violation_edge(tmp_path:
     assert res.warnings
     assert any("AST drift detected" in warning for warning in res.warnings)
     assert any(edge["kind"] == EdgeType.LOOM_VIOLATES for edge in g.edges)
+
+
+@pytest.mark.asyncio
+async def test_sync_commits_relinks_changed_code_nodes_against_existing_doc_nodes(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    p = repo / "a.py"
+    p.write_text("def f():\n    return 1\n", encoding="utf-8")
+    abs_path = p.resolve().as_posix()
+
+    doc_node = Node(
+        id="doc:spec.md:s1",
+        kind=NodeKind.SECTION,
+        source=NodeSource.DOC,
+        name="Req",
+        path="spec.md",
+        summary="return value requirement",
+        embedding=[1.0, 0.0],
+        metadata={},
+    )
+
+    old_node = Node(
+        id="function:" + abs_path + ":f",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="f",
+        path=abs_path,
+        content_hash="old",
+        start_line=1,
+        end_line=2,
+        metadata={},
+    )
+
+    g = FakeGraph(nodes={old_node.id: old_node.model_dump(), doc_node.id: doc_node.model_dump()})
+
+    class FC:
+        def __init__(self, status: str, path: str, old_path: str | None = None) -> None:
+            self.status = status
+            self.path = path
+            self.old_path = old_path
+
+    async def fake_changed(repo_path: str, old_sha: str, new_sha: str):
+        return [FC("M", "a.py")]
+
+    async def fake_embed_nodes(nodes: list[Node]):
+        return nodes
+
+    class _FakeSemanticLinker:
+        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+            await graph.bulk_create_edges(
+                [
+                    type("_EdgeLike", (), {"from_id": code_nodes[0].id, "to_id": doc_nodes[0].id, "kind": EdgeType.LOOM_IMPLEMENTS})()
+                ]
+            )
+            return []
+
+    monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
+    monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
+    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+
+    p.write_text("def f():\n    return 2\n", encoding="utf-8")
+
+    res = await sync_commits(str(repo), "old", "new", g)
+
+    assert res.error_count == 0
+    assert any(edge["kind"] == EdgeType.LOOM_IMPLEMENTS for edge in g.edges)

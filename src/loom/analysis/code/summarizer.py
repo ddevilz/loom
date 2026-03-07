@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from loom.core import Node
+from loom.analysis.code.extractor import extract_summary
 
 
 _LOG = logging.getLogger(__name__)
@@ -280,4 +281,28 @@ async def summarize_nodes(
         stats.cloud,
     )
 
+    return out
+
+
+async def extract_summaries(nodes: list[Node]) -> list[Node]:
+    """
+    Assign structured static summaries to all code nodes.
+    No LLM calls. Uses extract_summary() from extractor.py.
+    Nodes that already have a summary are skipped.
+    Returns new Node objects with summary field populated.
+    """
+    if not nodes:
+        return []
+    
+    out: list[Node] = []
+    for node in nodes:
+        # Skip nodes that already have summaries
+        if node.summary:
+            out.append(node)
+            continue
+        
+        # Extract static summary
+        summary = extract_summary(node)
+        out.append(node.model_copy(update={"summary": summary}))
+    
     return out

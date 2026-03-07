@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from loom.ingest.code.registry import get_registry
+
+logger = logging.getLogger(__name__)
+
+# Timeout for git operations (in seconds)
+_GIT_TIMEOUT = 60
 
 
 @dataclass(frozen=True)
@@ -17,15 +23,42 @@ class FileChange:
 
 
 def _run_git(repo_path: str, args: list[str]) -> str:
-    p = subprocess.run(
-        ["git", *args],
-        cwd=repo_path,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=True,
-    )
-    return p.stdout
+    """Run git command with timeout and error handling.
+    
+    Args:
+        repo_path: Path to git repository
+        args: Git command arguments
+        
+    Returns:
+        Command stdout output
+        
+    Raises:
+        subprocess.TimeoutExpired: If command exceeds timeout
+        subprocess.CalledProcessError: If git command fails
+    """
+    try:
+        p = subprocess.run(
+            ["git", *args],
+            cwd=repo_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+            timeout=_GIT_TIMEOUT,
+        )
+        return p.stdout
+    except subprocess.TimeoutExpired as e:
+        logger.error(
+            f"Git command timed out after {_GIT_TIMEOUT}s: git {' '.join(args)} "
+            f"in {repo_path}"
+        )
+        raise
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            f"Git command failed: git {' '.join(args)} in {repo_path}. "
+            f"Exit code: {e.returncode}, stderr: {e.stderr}"
+        )
+        raise
 
 
 def _is_supported(path: str) -> bool:

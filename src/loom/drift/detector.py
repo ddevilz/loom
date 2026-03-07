@@ -57,8 +57,11 @@ def detect_ast_drift(old_node: Node, new_node: Node) -> AstDriftReport:
     new_params = new_node.metadata.get("params")
     if isinstance(old_params, list) and isinstance(new_params, list):
         removed = [param for param in old_params if param not in new_params]
+        added = [param for param in new_params if param not in old_params]
         if removed:
             reasons.append(f"removed_parameters: {removed}")
+        if added:
+            reasons.append(f"added_parameters: {added}")
 
     for key in sorted(_SIDE_EFFECT_KEYS):
         old_value = old_node.metadata.get(key)

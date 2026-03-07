@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from loom.query.traceability import impact_of_ticket, sprint_code_coverage, tickets_for_function, unimplemented_tickets, untraced_functions
+from loom.query.traceability import impact_of_ticket, sprint_code_coverage, tickets_for_function, unimplemented_tickets, untraced_functions, untraced_functions_limited
 
 
 class _FakeGraph:
@@ -34,9 +34,20 @@ async def test_impact_of_ticket_and_tickets_for_function() -> None:
     code_graph = _FakeGraph([{"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": {}}])
     doc_graph = _FakeGraph([{"id": "doc:jira:PROJ-1", "name": "PROJ-1", "summary": "s", "path": "jira://PROJ/PROJ-1", "metadata": {}}])
     impact = await impact_of_ticket("PROJ-1", code_graph)
+    impact_by_id = await impact_of_ticket("doc:jira:PROJ-1", code_graph)
     tickets = await tickets_for_function("function:x:f", doc_graph)
     assert impact[0].name == "f"
+    assert impact_by_id[0].name == "f"
     assert tickets[0].name == "PROJ-1"
+
+
+@pytest.mark.asyncio
+async def test_untraced_functions_limited_passes_limit_and_path_prefix() -> None:
+    graph = _FakeGraph([{"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": {}}])
+    rows = await untraced_functions_limited(graph, limit=25, path_prefix="src/")
+    assert rows[0].name == "f"
+    _, params = graph.calls[-1]
+    assert params == {"limit": 25, "path_prefix": "src/"}
 
 
 @pytest.mark.asyncio

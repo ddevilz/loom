@@ -3,7 +3,7 @@ import socket
 import pytest
 
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
-from loom.core.falkor import queries
+from loom.core.falkor import cypher
 
 
 def _falkordb_reachable(host: str = "127.0.0.1", port: int = 6379) -> bool:
@@ -20,7 +20,7 @@ async def test_graph_bulk_and_query_roundtrip():
         pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
 
     g = LoomGraph(graph_name="loom_pytest")
-    await g.query(queries.CLEAR_GRAPH)
+    await g.query(cypher.CLEAR_GRAPH)
 
     nodes = [
         Node(
@@ -51,12 +51,11 @@ async def test_graph_bulk_and_query_roundtrip():
     await g.bulk_create_edges(edges)
 
     labeled = await g.query(
-        "MATCH (n:Function {id: $id}) RETURN count(n) AS c",
-        params={"id": nodes[0].id},
+        "MATCH (n:Function) RETURN count(n) AS c"
     )
-    assert labeled[0]["c"] == 1
+    assert labeled[0]["c"] == 10
 
-    count_rows = await g.query(queries.COUNT_NODES)
+    count_rows = await g.query(cypher.COUNT_NODES)
     assert count_rows[0]["c"] == 10
 
     n0 = await g.get_node(nodes[0].id)
