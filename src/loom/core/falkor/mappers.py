@@ -11,6 +11,9 @@ def serialize_node_props(node: Node) -> dict[str, Any]:
     props = {k: v for k, v in node.model_dump().items() if v is not None}
     # FalkorDB only allows primitive property values or arrays of primitives.
     props["metadata"] = json.dumps(props.get("metadata", {}), ensure_ascii=False)
+    ch = props.get("content_hash")
+    if ch is not None and not isinstance(ch, str):
+        props["content_hash"] = str(ch)
     return props
 
 

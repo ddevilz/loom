@@ -10,6 +10,8 @@ from tree_sitter_rust import language as rust_language
 
 from loom.core import Node, NodeKind, NodeSource
 
+from loom.core.content_hash import content_hash_for_line_span
+
 from loom.ingest.code.languages.constants import (
     LANG_RUST,
     META_IMPL_TYPE,
@@ -83,6 +85,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_RUST,
@@ -109,6 +112,7 @@ def _extract_from_def(
                 source=NodeSource.CODE,
                 name=name,
                 path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_RUST,
@@ -144,6 +148,7 @@ def _extract_from_def(
                             source=NodeSource.CODE,
                             name=method_name,
                             path=path,
+                            content_hash=content_hash_for_line_span(src, start_line, end_line),
                             start_line=start_line,
                             end_line=end_line,
                             language=LANG_RUST,

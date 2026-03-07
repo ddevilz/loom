@@ -4,7 +4,7 @@ import asyncio
 from typing import Any, Protocol
 
 from .edge import Edge, EdgeType
-from .node import Node
+from .node import Node, NodeKind
 
 from .falkor.gateway import FalkorGateway
 from .falkor.repositories import EdgeRepository, NodeRepository, TraversalRepository
@@ -71,11 +71,15 @@ class LoomGraph:
         node_id: str,
         depth: int = 1,
         edge_types: list[EdgeType] | None = None,
+        kind: NodeKind | None = None,
     ) -> list[Node]:
         resolved_id = node_id
         if ":" not in node_id:
+            label_clause = ":Node"
+            if kind is not None:
+                label_clause = f":`{kind.name.title()}`"
             rows = await self.query(
-                "MATCH (n:Node {name: $name}) RETURN n.id AS id LIMIT 1",
+                f"MATCH (n{label_clause} {{name: $name}}) RETURN n.id AS id LIMIT 1",
                 params={"name": node_id},
             )
             if not rows:

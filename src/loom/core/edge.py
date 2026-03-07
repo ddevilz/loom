@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -9,9 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class EdgeType(StrEnum):
     # code → code
     CALLS = "calls"
-    IMPORTS = "imports"
+    IMPORTS = "imports"  # Reserved: not yet created by any parser
     EXTENDS = "extends"
-    IMPLEMENTS = "implements"
+    IMPLEMENTS = "implements"  # Reserved: for Java-style interface implementation (not yet implemented)
     USES_TYPE = "uses_type"
     MEMBER_OF = "member_of"
     STEP_IN = "step_in"
@@ -34,7 +35,15 @@ class EdgeType(StrEnum):
     LOOM_VIOLATES = "loom_violates"
 
 
-LinkMethod = Literal["name_match", "embed_match", "llm_match"]
+LinkMethod = Literal["name_match", "embed_match", "llm_match", "ast_diff"]
+
+
+class EdgeOrigin(str, Enum):
+    COMPUTED = "computed"
+    NAME_MATCH = "name_match"
+    EMBED_MATCH = "embed_match"
+    LLM_MATCH = "llm_match"
+    HUMAN = "human"
 
 
 class Edge(BaseModel):
@@ -46,6 +55,8 @@ class Edge(BaseModel):
 
     confidence: float = 1.0
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    origin: EdgeOrigin = EdgeOrigin.COMPUTED
 
     link_method: LinkMethod | None = None
     link_reason: str | None = None

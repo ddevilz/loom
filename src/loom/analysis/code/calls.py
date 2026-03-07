@@ -8,7 +8,7 @@ from tree_sitter import Node as TSNode
 from tree_sitter_python import language as python_language
 
 from loom.analysis.code.noise_filter import should_ignore_call
-from loom.core import Edge, EdgeType, Node, NodeKind
+from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind
 from loom.ingest.code.languages.constants import (
     TS_PY_CALL,
     TS_PY_ATTRIBUTE,
@@ -130,6 +130,7 @@ def trace_calls(
                 from_id=function_node.id,
                 to_id=callee_node.id if callee_node else f"unresolved:{callee_name}",
                 kind=EdgeType.CALLS,
+                origin=EdgeOrigin.COMPUTED,
                 confidence=confidence,
                 metadata=metadata,
             )
@@ -151,8 +152,7 @@ def trace_calls_for_file(path: str, nodes: list[Node]) -> list[Edge]:
     p = Path(path)
     src = p.read_bytes()
     
-    parser = Parser()
-    parser.language = _PY_LANGUAGE
+    parser = Parser(_PY_LANGUAGE)
     tree = parser.parse(src)
     
     symbol_map: dict[str, list[Node]] = {}

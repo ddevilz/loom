@@ -68,10 +68,10 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
     idx_to_name: dict[int, str] = {idx: row["name"] for idx, row in enumerate(node_rows)}
     
     # Query edges.
-    # NOTE: edges are persisted with relationship *types* (e.g. :CALLS, :IMPORTS),
+    # NOTE: edges are persisted with relationship *types* (e.g. :CALLS),
     # not via a r.kind property.
     edge_query = """
-    MATCH (a)-[r:CALLS|IMPORTS]->(b)
+    MATCH (a)-[r:CALLS]->(b)
     WHERE a.kind IN ['function', 'method']
       AND b.kind IN ['function', 'method']
     RETURN a.id AS from_id, b.id AS to_id, r.confidence AS confidence
