@@ -7,7 +7,7 @@ from typing import Literal
 @dataclass(frozen=True)
 class IndexError:
     path: str
-    phase: Literal["parse", "calls", "persist", "summarize", "link"]
+    phase: Literal["parse", "calls", "persist", "summarize", "link", "embed", "communities"]
     message: str
 
 

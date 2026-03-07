@@ -7,9 +7,11 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Callable, Protocol
 
+from loom.analysis.code.communities import detect_communities
 from loom.analysis.code.parser import parse_code
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
+from loom.embed.embedder import embed_nodes
 from loom.ingest.code.walker import walk_repo
 from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
 from loom.linker.linker import SemanticLinker
@@ -287,6 +289,22 @@ async def index_repo(
         await _delete_missing_files(graph, deleted_file_ids, batch.errors)
 
     await _persist_batch(graph, root, batch)
+
+    # Compute and persist embeddings for all nodes with summaries
+    nodes_with_summaries = [n for n in batch.nodes_to_upsert if n.summary]
+    if nodes_with_summaries:
+        try:
+            embedded_nodes = await embed_nodes(nodes_with_summaries)
+            # Update nodes in graph with embeddings
+            await graph.bulk_create_nodes(embedded_nodes)
+        except Exception as e:
+            batch.errors.append(IndexError(path=root, phase="embed", message=str(e)))
+
+    # Detect communities - this creates community nodes and MEMBER_OF edges directly in the graph
+    try:
+        await detect_communities(graph)
+    except Exception as e:
+        batch.errors.append(IndexError(path=root, phase="communities", message=str(e)))
 
     if docs_path is not None or jira is not None:
         code_nodes = _collect_code_nodes_for_linking(batch)

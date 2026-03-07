@@ -8,6 +8,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from loom.config import LOOM_DB_HOST, LOOM_DB_PORT
+
 
 app = typer.Typer(add_completion=False)
 
@@ -410,6 +412,51 @@ def entrypoints(
         )
 
     asyncio.run(_run())
+
+
+@app.command()
+def serve(
+    graph_name: str = typer.Option("loom", "--graph-name"),
+    host: str = typer.Option("localhost", "--host"),
+    port: int = typer.Option(8000, "--port"),
+) -> None:
+    """Start the MCP server for Claude Code integration."""
+    from loom.mcp.server import build_server
+
+    console = Console()
+    console.print(f"[bold green]Starting Loom MCP server...[/bold green]")
+    console.print(f"Graph: {graph_name}")
+    console.print(f"Database: {LOOM_DB_HOST}:{LOOM_DB_PORT}")
+    console.print(f"Server: http://{host}:{port}")
+
+    mcp = build_server(graph_name=graph_name)
+    mcp.run(transport="stdio")
+
+
+@app.command()
+def watch(
+    path: str = typer.Argument(".", help="Path to watch"),
+    graph_name: str = typer.Option("loom", "--graph-name"),
+    debounce_ms: int = typer.Option(500, "--debounce"),
+) -> None:
+    """Watch a repository for changes and incrementally sync."""
+    from loom.core import LoomGraph
+    from loom.watch.watcher import watch_repo
+
+    console = Console()
+    console.print(f"[bold green]Watching {path} for changes...[/bold green]")
+    console.print(f"Graph: {graph_name}")
+    console.print(f"Debounce: {debounce_ms}ms")
+    console.print("Press Ctrl+C to stop")
+
+    async def _run() -> None:
+        graph = LoomGraph(graph_name=graph_name)
+        await watch_repo(path, graph, debounce_ms=debounce_ms)
+
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Stopped watching[/yellow]")
 
 
 @app.command()

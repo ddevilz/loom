@@ -33,6 +33,7 @@ dependencies = [
     "tree-sitter-ruby>=0.23.1",
     "pathspec>=1.0.4",
     "pypdf>=5.1.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.scripts]
