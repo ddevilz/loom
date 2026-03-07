@@ -128,6 +128,31 @@ def _extract_export_info(src: bytes, n: TSNode) -> dict:
     return export_info
 
 
+def _split_params(text: str) -> list[str]:
+    raw = text.strip()
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1]
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
+    params_node = n.child_by_field_name("parameters")
+    return_node = n.child_by_field_name("return_type")
+    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
+    return_type = _node_text(src, return_node).strip() if return_node is not None else None
+    if isinstance(return_type, str) and return_type.startswith(":"):
+        return_type = return_type[1:].strip()
+    signature = f"{name}({', '.join(params)})"
+    if return_type:
+        signature = f"{signature} -> {return_type}"
+    return {
+        "params": params,
+        "return_type": return_type,
+        "signature": signature,
+        "source_text": _node_text(src, n),
+    }
+
+
 def _detect_dynamic_metadata(body: TSNode | None) -> dict:
     if body is None:
         return {}
@@ -194,9 +219,10 @@ def _extract_from_def(
             # Mark the last added node as exported
             if len(out) > prev_len:
                 export_info = _extract_export_info(src, n)
-                out[-1].metadata['is_exported'] = True
+                updated_metadata = {**out[-1].metadata, 'is_exported': True}
                 if export_info.get('default'):
-                    out[-1].metadata['is_default_export'] = True
+                    updated_metadata['is_default_export'] = True
+                out[-1] = out[-1].model_copy(update={'metadata': updated_metadata})
         return
     
     # TypeScript/JavaScript: class_declaration, function_declaration, method_definition
@@ -245,6 +271,7 @@ def _extract_from_def(
         
         # Extract decorators and check for async
         metadata = {}
+        metadata.update(_function_metadata(src, n, name=name))
         decorators = _extract_decorators(src, n)
         if decorators:
             metadata['decorators'] = decorators
@@ -284,7 +311,8 @@ def _extract_from_def(
         start_line, end_line = _lines(n)
         symbol = ctx.qualname(name)
         body = n.child_by_field_name("body")
-        metadata = _detect_dynamic_metadata(body)
+        metadata = _function_metadata(src, n, name=name)
+        metadata.update(_detect_dynamic_metadata(body))
 
         out.append(
             Node(

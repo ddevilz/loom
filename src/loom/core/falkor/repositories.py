@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from igraph import Graph
 
 from ..edge import Edge, EdgeType
 from ..node import Node
@@ -98,20 +99,28 @@ class TraversalRepository:
         frontier: set[str] = {node_id}
         visited: set[str] = {node_id}
         results: dict[str, Node] = {}
+        graph_nodes: set[str] = {node_id}
+        graph_edges: list[tuple[str, str]] = []
 
         for _ in range(depth):
             if not frontier:
                 break
 
             rows = self._gw.query_rows(
-                queries.NEIGHBORS_STEP,
+                queries.NEIGHBORS_STEP_WITH_SOURCE,
                 params={"ids": list(frontier), "types": type_names},
             )
 
             next_frontier: set[str] = set()
             for row in rows:
+                from_id = row.get("from_id")
+                to_id = row.get("to_id")
                 props = deserialize_node_props(row["props"])
                 node = Node.model_validate(props)
+                if isinstance(from_id, str) and isinstance(to_id, str):
+                    graph_nodes.add(from_id)
+                    graph_nodes.add(to_id)
+                    graph_edges.append((from_id, to_id))
                 if node.id not in visited:
                     visited.add(node.id)
                     next_frontier.add(node.id)
@@ -119,4 +128,34 @@ class TraversalRepository:
 
             frontier = next_frontier
 
-        return list(results.values())
+        if not results:
+            return []
+
+        ordered_ids = self._rank_by_personalized_pagerank(node_id, graph_nodes, graph_edges)
+        ranked_nodes = [results[node_id] for node_id in ordered_ids if node_id in results]
+        remaining = [node for node_id, node in results.items() if node_id not in set(ordered_ids)]
+        return ranked_nodes + remaining
+
+    @staticmethod
+    def _rank_by_personalized_pagerank(
+        seed_id: str,
+        node_ids: set[str],
+        edges: list[tuple[str, str]],
+    ) -> list[str]:
+        ordered_node_ids = sorted(node_ids)
+        index_by_id = {node_id: index for index, node_id in enumerate(ordered_node_ids)}
+        graph = Graph(directed=True)
+        graph.add_vertices(len(ordered_node_ids))
+        if edges:
+            graph.add_edges([(index_by_id[source], index_by_id[target]) for source, target in edges])
+
+        reset = [0.0] * len(ordered_node_ids)
+        reset[index_by_id[seed_id]] = 1.0
+        scores = graph.personalized_pagerank(directed=True, reset=reset)
+
+        ranked = sorted(
+            ((node_id, scores[index_by_id[node_id]]) for node_id in ordered_node_ids if node_id != seed_id),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        return [node_id for node_id, _ in ranked]

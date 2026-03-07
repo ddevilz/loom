@@ -5,8 +5,9 @@ from time import perf_counter
 from typing import Any, Protocol
 
 from loom.analysis.code.parser import parse_code
-from loom.core import Edge, LoomGraph, Node
+from loom.core import Edge, EdgeOrigin, EdgeType, LoomGraph, Node
 from loom.core.falkor.mappers import deserialize_node_props
+from loom.drift.detector import detect_ast_drift
 from loom.ingest.differ import diff_nodes
 from loom.ingest.git import FileChange, get_changed_files
 from loom.ingest.pipeline import _invalidate_edges_for_file  # type: ignore[attr-defined]
@@ -106,6 +107,14 @@ async def _delete_nodes_by_path(graph: _Graph, *, path: str) -> None:
     await graph.query("MATCH (n {path: $path}) DETACH DELETE n", {"path": path})
 
 
+async def _get_loom_implements_targets(graph: _Graph, *, node_id: str) -> list[str]:
+    rows = await graph.query(
+        "MATCH (n {id: $id})-[:LOOM_IMPLEMENTS]->(d) RETURN d.id AS id",
+        {"id": node_id},
+    )
+    return [row.get("id") for row in rows if isinstance(row.get("id"), str)]
+
+
 async def sync_commits(
     repo_path: str,
     old_sha: str,
@@ -125,6 +134,7 @@ async def sync_commits(
 
     t0 = perf_counter()
     errors: list[IndexError] = []
+    warnings: list[str] = []
 
     try:
         changes = await get_changed_files(repo_path, old_sha, new_sha)
@@ -140,6 +150,7 @@ async def sync_commits(
             error_count=1,
             duration_ms=(perf_counter() - t0) * 1000.0,
             errors=[IndexError(path=repo_path, phase="summarize", message=str(e))],
+            warnings=[],
         )
 
     files_added = 0
@@ -175,6 +186,34 @@ async def sync_commits(
 
             d = diff_nodes(old_nodes, new_nodes)
 
+            drift_edges: list[Edge] = []
+            for old_node, new_node in d.changed:
+                drift = detect_ast_drift(old_node, new_node)
+                if not drift.changed:
+                    continue
+                try:
+                    doc_ids = await _get_loom_implements_targets(graph, node_id=old_node.id)
+                except Exception as e:
+                    errors.append(IndexError(path=abs_path, phase="persist", message=str(e)))
+                    doc_ids = []
+                if not doc_ids:
+                    continue
+                warning = f"AST drift detected for {new_node.id}: {'; '.join(drift.reasons)}"
+                warnings.append(warning)
+                for doc_id in doc_ids:
+                    drift_edges.append(
+                        Edge(
+                            from_id=new_node.id,
+                            to_id=doc_id,
+                            kind=EdgeType.LOOM_VIOLATES,
+                            origin=EdgeOrigin.COMPUTED,
+                            confidence=1.0,
+                            link_method="ast_diff",
+                            link_reason="; ".join(drift.reasons),
+                            metadata={"reasons": drift.reasons},
+                        )
+                    )
+
             # Remove deleted nodes.
             try:
                 deletable: list[str] = []
@@ -192,6 +231,7 @@ async def sync_commits(
             # Upsert new/changed nodes.
             nodes_to_upsert.extend(d.added)
             nodes_to_upsert.extend([n for (_, n) in d.changed])
+            edges_to_upsert.extend(drift_edges)
 
             # Invalidate edges based on origin rules for this file.
             try:
@@ -338,4 +378,5 @@ async def sync_commits(
         error_count=len(errors),
         duration_ms=(perf_counter() - t0) * 1000.0,
         errors=errors,
+        warnings=warnings,
     )

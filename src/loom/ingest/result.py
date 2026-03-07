@@ -7,7 +7,7 @@ from typing import Literal
 @dataclass(frozen=True)
 class IndexError:
     path: str
-    phase: Literal["parse", "calls", "persist", "summarize"]
+    phase: Literal["parse", "calls", "persist", "summarize", "link", "embed", "communities"]
     message: str
 
 
@@ -23,3 +23,4 @@ class IndexResult:
     error_count: int
     duration_ms: float
     errors: list[IndexError] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)

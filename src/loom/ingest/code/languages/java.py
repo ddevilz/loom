@@ -121,6 +121,29 @@ def _extract_type_parameters(src: bytes, n: TSNode) -> str | None:
     return None
 
 
+def _split_params(text: str) -> list[str]:
+    raw = text.strip()
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1]
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _method_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
+    params_node = n.child_by_field_name("parameters")
+    return_node = n.child_by_field_name("type")
+    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
+    return_type = _node_text(src, return_node).strip() if return_node is not None else None
+    signature = f"{name}({', '.join(params)})"
+    if return_type:
+        signature = f"{signature} -> {return_type}"
+    return {
+        "params": params,
+        "return_type": return_type,
+        "signature": signature,
+        "source_text": _node_text(src, n),
+    }
+
+
 def _count_lambdas_and_refs(src: bytes, n: TSNode) -> dict[str, int]:
     """Count lambda expressions and method references in a node tree."""
     counts = {'lambda_count': 0, 'method_ref_count': 0}
@@ -187,7 +210,7 @@ def _extract_from_def(
 
         # Extract metadata
         metadata = {}
-        
+
         annotations = _extract_annotations(src, n)
         if annotations:
             metadata["annotations"] = annotations
@@ -247,7 +270,8 @@ def _extract_from_def(
 
         # Extract metadata
         metadata = {}
-        
+        metadata.update(_method_metadata(src, n, name=name))
+
         annotations = _extract_annotations(src, n)
         if annotations:
             metadata["annotations"] = annotations
