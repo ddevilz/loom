@@ -152,8 +152,7 @@ def trace_calls_for_file(path: str, nodes: list[Node]) -> list[Edge]:
     p = Path(path)
     src = p.read_bytes()
     
-    parser = Parser()
-    parser.language = _PY_LANGUAGE
+    parser = Parser(_PY_LANGUAGE)
     tree = parser.parse(src)
     
     symbol_map: dict[str, list[Node]] = {}

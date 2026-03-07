@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import Protocol
 
 from loom.core import Node
@@ -46,7 +47,6 @@ SKIP_EXTENSIONS: frozenset[str] = frozenset({
     ".mp3", ".mp4", ".wav", ".avi", ".mov", ".mkv",  # media
     ".pyc", ".pyo", ".so", ".dll", ".dylib", ".o", ".a",  # compiled
     ".lock", ".map",  # build artifacts
-    ".min.js", ".min.css",  # minified (parse source instead)
 })
 
 
@@ -78,9 +78,11 @@ class LanguageRegistry:
             return True
         return dirname in DEFAULT_SKIP_DIRS or dirname.endswith(".egg-info")
 
-    def should_skip_file(self, extension: str) -> bool:
+    def should_skip_file(self, extension: str, filename: str = "") -> bool:
         ext = extension.lower()
         if ext in SKIP_EXTENSIONS:
+            return True
+        if filename.endswith((".min.js", ".min.css")):
             return True
         if ext not in self._parsers:
             return True
@@ -89,13 +91,16 @@ class LanguageRegistry:
 
 # ── singleton ───────────────────────────────────────────────────────
 _registry: LanguageRegistry | None = None
+_registry_lock = threading.Lock()
 
 
 def get_registry() -> LanguageRegistry:
     global _registry
     if _registry is None:
-        _registry = LanguageRegistry()
-        _register_defaults(_registry)
+        with _registry_lock:
+            if _registry is None:
+                _registry = LanguageRegistry()
+                _register_defaults(_registry)
     return _registry
 
 

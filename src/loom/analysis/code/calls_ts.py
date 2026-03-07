@@ -84,8 +84,8 @@ def trace_calls_for_ts_file(path: str, nodes: list[Node]) -> list[Edge]:
     p = Path(path)
     src = p.read_bytes()
 
-    parser = Parser()
-    parser.language = _TSX_LANGUAGE if p.suffix.lower() == ".tsx" else _TS_LANGUAGE
+    lang = _TSX_LANGUAGE if p.suffix.lower() == ".tsx" else _TS_LANGUAGE
+    parser = Parser(lang)
     tree = parser.parse(src)
 
     symbol_map: dict[str, list[Node]] = {}

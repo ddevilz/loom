@@ -22,6 +22,13 @@ NEIGHBORS_STEP = (
     "RETURN DISTINCT properties(m) AS props"
 )
 
+NEIGHBORS_STEP_WITH_SOURCE = (
+    "UNWIND $ids AS id "
+    "MATCH (n:Node {id: id})-[r]->(m:Node) "
+    "WHERE type(r) IN $types "
+    "RETURN DISTINCT n.id AS from_id, m.id AS to_id, properties(m) AS props"
+)
+
 
 def create_or_update_edge(rel_type: str) -> str:
     return (

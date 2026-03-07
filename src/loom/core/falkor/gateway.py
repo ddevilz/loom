@@ -4,13 +4,15 @@ from typing import Any
 
 from falkordb import FalkorDB
 
+from loom.config import LOOM_DB_HOST, LOOM_DB_PORT
+
 _DB_SINGLETON: FalkorDB | None = None
 
 
 def get_falkordb_singleton() -> FalkorDB:
     global _DB_SINGLETON
     if _DB_SINGLETON is None:
-        _DB_SINGLETON = FalkorDB()
+        _DB_SINGLETON = FalkorDB(host=LOOM_DB_HOST, port=LOOM_DB_PORT)
     return _DB_SINGLETON
 
 
@@ -24,6 +26,8 @@ class FalkorGateway:
         self._graph = self._db.select_graph(self.graph_name)
 
     def reconnect(self) -> None:
+        global _DB_SINGLETON
+        _DB_SINGLETON = None
         self._connect()
 
     def run(

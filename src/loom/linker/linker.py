@@ -9,6 +9,7 @@ from loom.core import Edge, Node
 from loom.linker.embed_match import link_by_embedding
 from loom.linker.llm_match import link_by_llm
 from loom.linker.name_match import link_by_name
+from loom.linker.reranker import PairReranker, rerank_edges
 
 
 class _Graph(Protocol):
@@ -23,6 +24,8 @@ class SemanticLinker:
     llm_fallback: bool = False
     summary_llm: SummaryLLMClient | None = None
     match_llm: object | None = None
+    reranker: PairReranker | None = None
+    rerank_threshold: float = 0.0
 
     async def link(
         self,
@@ -40,6 +43,14 @@ class SemanticLinker:
         unmatched_doc = [n for n in doc_nodes if n.id not in matched_doc_ids]
 
         tier2 = await link_by_embedding(unmatched_code, unmatched_doc, threshold=self.embedding_threshold)
+        if self.reranker is not None and tier2:
+            tier2 = rerank_edges(
+                tier2,
+                code_nodes=unmatched_code,
+                doc_nodes=unmatched_doc,
+                reranker=self.reranker,
+                threshold=self.rerank_threshold,
+            )
         all_edges = self._dedupe_edges([*tier1, *tier2])
 
         if self.llm_fallback and self.match_llm is not None:

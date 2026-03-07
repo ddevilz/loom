@@ -7,6 +7,7 @@ from typing import Iterable
 from pathspec import PathSpec
 
 from loom.config import DEFAULT_SKIP_DIRS
+from loom.ingest.code.registry import get_registry
 from loom.ingest.code.languages.constants import (
     EXT_CSS,
     EXT_CXML,
@@ -115,6 +116,7 @@ def walk_repo(
 
     root = Path(path).resolve()
     spec = _load_gitignore(root)
+    registry = get_registry()
 
     results: dict[str, list[str]] = {}
 
@@ -156,6 +158,9 @@ def walk_repo(
                         continue
 
                     ext = entry_path.suffix.lower()
+                    if registry.should_skip_file(ext, filename=name):
+                        continue
+
                     lang = _EXT_TO_LANGUAGE.get(ext)
                     if lang is None:
                         continue

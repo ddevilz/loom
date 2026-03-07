@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import logging
 from dataclasses import dataclass
@@ -47,15 +48,14 @@ _COMMENT_PREFIXES = ("#", "//")
 
 def is_trivial_change(old_source: str, new_source: str) -> bool:
     def norm(s: str) -> str:
+        # Remove block comments first
+        s_no_block = re.sub(r'/\*.*?\*/', '', s, flags=re.DOTALL)
         out: list[str] = []
-        for line in s.splitlines():
+        for line in s_no_block.splitlines():
             t = line.strip()
             if not t:
                 continue
             if t.startswith(_COMMENT_PREFIXES):
-                continue
-            # drop block comment single-line markers
-            if t.startswith("/*") and t.endswith("*/"):
                 continue
             out.append(re.sub(r"\s+", "", t))
         return "\n".join(out)
@@ -192,63 +192,84 @@ async def summarize_nodes(
     cloud_model: str = _DEFAULT_CLOUD_MODEL,
     cloud_threshold: float = 0.0,
     max_tokens_per_function: int = 200,
+    max_concurrent_llm_calls: int = 10,
 ) -> list[Node]:
     stats = SummarizationStats()
-    out: list[Node] = []
-
     prev_by_id: dict[str, Node] = {n.id: n for n in (previous_nodes or [])}
-
-    for n in nodes:
+    
+    # Separate nodes into those needing LLM and those that don't
+    immediate: list[Node] = []
+    needs_llm: list[tuple[int, Node]] = []
+    
+    for idx, n in enumerate(nodes):
         reused = _reusable_previous_summary(n, prev_by_id.get(n.id))
         if reused is not None:
-            out.append(n.model_copy(update={"summary": reused}))
+            immediate.append(n.model_copy(update={"summary": reused}))
             continue
 
         if n.summary:
-            out.append(n)
+            immediate.append(n)
             continue
 
         doc = _docstring_from_metadata(n)
         sig = _signature_from_metadata(n)
 
-        chosen: str | None = None
-        used_llm = False
-
         if doc is not None:
-            chosen = doc
+            immediate.append(n.model_copy(update={"summary": doc}))
             stats = _record_docstring(stats)
         elif strategy == SummarizationStrategy.DOCSTRING_ONLY:
-            chosen = None
+            immediate.append(n)
         elif sig is not None and strategy in {
             SummarizationStrategy.AUTO,
             SummarizationStrategy.SIGNATURE_ONLY,
         }:
-            chosen = sig
+            immediate.append(n.model_copy(update={"summary": sig}))
             stats = _record_signature(stats)
         else:
             if llm is None:
-                chosen = _fallback_summary(n)
+                immediate.append(n.model_copy(update={"summary": _fallback_summary(n)}))
             else:
-                chosen, stats, used_llm = await _llm_summary(
-                    n,
+                needs_llm.append((idx, n))
+    
+    # Process LLM calls concurrently with semaphore
+    llm_results: dict[int, Node] = {}
+    if needs_llm and llm is not None:
+        semaphore = asyncio.Semaphore(max_concurrent_llm_calls)
+        
+        async def _process_one(idx: int, node: Node) -> tuple[int, Node, SummarizationStats]:
+            async with semaphore:
+                chosen, node_stats, used_llm = await _llm_summary(
+                    node,
                     llm=llm,
                     strategy=strategy,
                     cloud_threshold=cloud_threshold,
                     local_model=local_model,
                     cloud_model=cloud_model,
                     max_tokens_per_function=max_tokens_per_function,
-                    stats=stats,
+                    stats=SummarizationStats(),
                 )
-
-        if chosen is None:
-            out.append(n)
-            continue
-
-        chosen = chosen.strip()
-        if used_llm and not chosen:
-            chosen = _fallback_summary(n)
-
-        out.append(n.model_copy(update={"summary": chosen}))
+                chosen = chosen.strip() if chosen else _fallback_summary(node)
+                return idx, node.model_copy(update={"summary": chosen}), node_stats
+        
+        results = await asyncio.gather(*[_process_one(idx, n) for idx, n in needs_llm])
+        for idx, summarized_node, node_stats in results:
+            llm_results[idx] = summarized_node
+            stats = SummarizationStats(
+                docstring=stats.docstring,
+                signature=stats.signature,
+                local=stats.local + node_stats.local,
+                cloud=stats.cloud + node_stats.cloud,
+            )
+    
+    # Reconstruct output in original order
+    out: list[Node] = []
+    immediate_idx = 0
+    for idx in range(len(nodes)):
+        if idx in llm_results:
+            out.append(llm_results[idx])
+        else:
+            out.append(immediate[immediate_idx])
+            immediate_idx += 1
 
     _LOG.info(
         _SUMMARY_LOG_TEMPLATE,

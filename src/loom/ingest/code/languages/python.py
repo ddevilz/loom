@@ -171,6 +171,29 @@ def _is_async_function(src: bytes, n: TSNode) -> bool:
     return False
 
 
+def _split_params(text: str) -> list[str]:
+    raw = text.strip()
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1]
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict[str, Any]:
+    params_node = n.child_by_field_name("parameters")
+    return_node = n.child_by_field_name("return_type")
+    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
+    return_type = _node_text(src, return_node).strip() if return_node is not None else None
+    signature = f"{name}({', '.join(params)})"
+    if return_type:
+        signature = f"{signature} -> {return_type}"
+    return {
+        "params": params,
+        "return_type": return_type,
+        "signature": signature,
+        "source_text": _node_text(src, n),
+    }
+
+
 # ── framework hint rules ────────────────────────────────────────────
 _FRAMEWORK_HINTS: dict[str, str] = {
     DEC_APP_ROUTE: HINT_FLASK_ROUTE,
@@ -342,6 +365,7 @@ def _extract_from_def(
         else:
             symbol = name
         meta: dict[str, Any] = {}
+        meta.update(_function_metadata(src, n, name=name))
         if decorators:
             meta[META_DECORATORS] = decorators
             hint = _detect_framework_hint(decorators)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
-from loom.drift.detector import detect_violations
+from loom.drift.detector import detect_ast_drift, detect_violations
 
 
 class _FakeLLM:
@@ -41,3 +41,39 @@ async def test_detect_violations_emits_loom_violates_report() -> None:
 
     assert reports
     assert reports[0].edge.kind == EdgeType.LOOM_VIOLATES
+
+
+def test_detect_ast_drift_reports_signature_return_param_and_side_effect_changes() -> None:
+    old_node = Node(
+        id="function:x:f",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="f",
+        path="x",
+        metadata={
+            "signature": "f(x, y) -> int",
+            "return_type": "int",
+            "params": ["x", "y"],
+        },
+    )
+    new_node = Node(
+        id="function:x:f",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="f",
+        path="x",
+        metadata={
+            "signature": "f(x) -> str",
+            "return_type": "str",
+            "params": ["x"],
+            "is_async": True,
+        },
+    )
+
+    report = detect_ast_drift(old_node, new_node)
+
+    assert report.changed is True
+    assert any("signature_changed" in reason for reason in report.reasons)
+    assert any("return_type_changed" in reason for reason in report.reasons)
+    assert any("removed_parameters" in reason for reason in report.reasons)
+    assert any("added_side_effect_indicator" in reason for reason in report.reasons)

@@ -80,8 +80,7 @@ def trace_calls_for_java_file(path: str, nodes: list[Node]) -> list[Edge]:
     p = Path(path)
     src = p.read_bytes()
 
-    parser = Parser()
-    parser.language = _JAVA_LANGUAGE
+    parser = Parser(_JAVA_LANGUAGE)
     tree = parser.parse(src)
 
     symbol_map: dict[str, list[Node]] = {}

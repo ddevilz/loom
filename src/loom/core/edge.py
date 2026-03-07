@@ -10,9 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class EdgeType(StrEnum):
     # code → code
     CALLS = "calls"
-    IMPORTS = "imports"
+    IMPORTS = "imports"  # Reserved: not yet created by any parser
     EXTENDS = "extends"
-    IMPLEMENTS = "implements"
+    IMPLEMENTS = "implements"  # Reserved: for Java-style interface implementation (not yet implemented)
     USES_TYPE = "uses_type"
     MEMBER_OF = "member_of"
     STEP_IN = "step_in"
@@ -35,7 +35,7 @@ class EdgeType(StrEnum):
     LOOM_VIOLATES = "loom_violates"
 
 
-LinkMethod = Literal["name_match", "embed_match", "llm_match"]
+LinkMethod = Literal["name_match", "embed_match", "llm_match", "ast_diff"]
 
 
 class EdgeOrigin(str, Enum):
