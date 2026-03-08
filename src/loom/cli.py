@@ -64,6 +64,15 @@ def _print_call_rows(console: Console, *, heading: str, rows: list[dict[str, obj
     )
 
 
+def _print_context_rows(console: Console, *, heading: str, rows: list[dict[str, object]]) -> None:
+    _print_table_or_none(
+        console,
+        heading=heading,
+        columns=[("kind", None), ("name", None), ("path", None), ("relation", None)],
+        rows=rows,
+    )
+
+
 async def _infer_repo_root(graph) -> str | None:
     rows = await graph.query(
         "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000"
@@ -301,6 +310,7 @@ def calls(
 
     console = Console()
     calls_rel = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
+    contains_rel = EdgeTypeAdapter.to_storage(EdgeType.CONTAINS)
 
     async def _resolve_node_id(graph: LoomGraph, node: str) -> str | None:
         if ":" in node:
@@ -325,6 +335,25 @@ def calls(
 
     async def _query_call_rows(graph: LoomGraph, query: str, params: dict[str, object]) -> list[dict[str, object]]:
         return await graph.query(query, params)
+
+    async def _query_context_rows(graph: LoomGraph, node_id: str, *, limit: int) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        parent_rows = await graph.query(
+            f"""
+MATCH (a)-[:{contains_rel}]->(b {{id: $id}})
+RETURN a.kind AS kind, a.name AS name, a.path AS path, 'parent' AS relation
+LIMIT $limit
+""",
+            {"id": node_id, "limit": limit},
+        )
+        child_rows = await graph.query(
+            f"""
+MATCH (a {{id: $id}})-[:{contains_rel}]->(b)
+RETURN b.kind AS kind, b.name AS name, b.path AS path, 'child' AS relation
+LIMIT $limit
+""",
+            {"id": node_id, "limit": limit},
+        )
+        return parent_rows, child_rows
 
     async def _run() -> None:
         graph = LoomGraph(graph_name=graph_name)
@@ -365,6 +394,10 @@ def calls(
         if node_id is None:
             console.print("Target not found")
             raise typer.Exit(code=1)
+
+        parent_rows, child_rows = await _query_context_rows(graph, node_id, limit=limit)
+        _print_context_rows(console, heading="=== lexical parents ===", rows=parent_rows)
+        _print_context_rows(console, heading="=== lexical children ===", rows=child_rows)
 
         if direction in {"callees", "both"}:
             rows = await _query_call_rows(
