@@ -76,6 +76,19 @@ class _Context:
         parts.append(name)
         return ".".join(parts)
 
+    def parent_id(self, path: str) -> str | None:
+        if self.func_stack:
+            if self.class_stack:
+                return Node.make_code_id(
+                    NodeKind.METHOD,
+                    path,
+                    ".".join((*self.class_stack, *self.func_stack)),
+                )
+            return Node.make_code_id(NodeKind.FUNCTION, path, ".".join(self.func_stack))
+        if self.class_stack:
+            return Node.make_code_id(NodeKind.CLASS, path, ".".join(self.class_stack))
+        return None
+
 
 def _is_test_path(path: str) -> bool:
     p = Path(path)
@@ -215,6 +228,7 @@ def _extract_from_def(
 
         start_line, end_line = _lines(n)
         meta: dict[str, Any] = {}
+        parent_id = ctx.parent_id(path)
         if decorators:
             meta[META_DECORATORS] = decorators
             hint = _detect_framework_hint(decorators)
@@ -231,6 +245,7 @@ def _extract_from_def(
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_PYTHON,
+                parent_id=parent_id,
                 metadata=meta,
             )
         )
@@ -247,6 +262,7 @@ def _extract_from_def(
 
         start_line, end_line = _lines(n)
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
+        parent_id = ctx.parent_id(path)
         if kind == NodeKind.METHOD:
             symbol = ctx.qualname(name)
         elif ctx.func_stack:
@@ -274,6 +290,7 @@ def _extract_from_def(
                 start_line=start_line,
                 end_line=end_line,
                 language=LANG_PYTHON,
+                parent_id=parent_id,
                 metadata=meta,
             )
         )
@@ -313,6 +330,7 @@ def _try_extract_assignment(
 
         name = _node_text(src, lhs)
         start_line, end_line = _lines(n)
+        parent_id = ctx.parent_id(path)
 
         # named lambda: my_func = lambda x: ...
         if rhs.type == "lambda":
@@ -329,6 +347,7 @@ def _try_extract_assignment(
                     start_line=start_line,
                     end_line=end_line,
                     language=LANG_PYTHON,
+                    parent_id=parent_id,
                     metadata={"is_lambda": True},
                 )
             )
@@ -351,6 +370,7 @@ def _try_extract_assignment(
                             start_line=start_line,
                             end_line=end_line,
                             language=LANG_PYTHON,
+                            parent_id=parent_id,
                             metadata={"class_factory": func_name},
                         )
                     )

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from loom.core import NodeKind
+from loom.core import Node, NodeKind
 from loom.ingest.code.registry import get_registry
 from loom.ingest.code.languages.python import parse_python
 
@@ -328,3 +328,21 @@ def test_nested_class_extracted(tmp_path: Path):
     method = _by_name(nodes, "method")
     assert len(method) == 1
     assert method[0].kind == NodeKind.METHOD
+
+
+def test_parse_python_nested_symbols_get_parent_id(tmp_path: Path):
+    p = tmp_path / "nested_funcs.py"
+    p.write_text(
+        "def outer():\n"
+        "    def inner():\n"
+        "        return 1\n"
+        "    return inner()\n",
+        encoding="utf-8",
+    )
+
+    nodes = parse_python(str(p))
+    outer = _by_name(nodes, "outer")[0]
+    inner = _by_name(nodes, "inner")[0]
+
+    assert outer.parent_id is None
+    assert inner.parent_id == Node.make_code_id(NodeKind.FUNCTION, str(p).replace('\\', '/'), "outer")

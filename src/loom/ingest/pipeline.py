@@ -10,7 +10,7 @@ from typing import Any, Callable, Protocol
 
 from loom.analysis.code.parser import parse_code
 from loom.analysis.code.extractor import extract_summaries
-from loom.core import Edge, LoomGraph, Node, NodeKind, NodeSource
+from loom.core import Edge, EdgeOrigin, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.embed.embedder import embed_nodes
 from loom.ingest.code.walker import walk_repo
@@ -78,10 +78,21 @@ def _file_node_id(path: str) -> str:
 
 def _path_from_file_node_id(file_id: str) -> str | None:
     prefix = f"{NodeKind.FILE.value}:"
-    if not file_id.startswith(prefix):
-        return None
-    path = file_id[len(prefix):]
-    return path or None
+    return file_id[len(prefix) :] if file_id.startswith(prefix) else None
+
+
+def _build_contains_edges(nodes: list[Node]) -> list[Edge]:
+    return [
+        Edge(
+            from_id=node.parent_id,
+            to_id=node.id,
+            kind=EdgeType.CONTAINS,
+            origin=EdgeOrigin.COMPUTED,
+            confidence=1.0,
+        )
+        for node in nodes
+        if isinstance(node.parent_id, str) and node.parent_id
+    ]
 
 
 def _compute_file_hash(path: str) -> str:
@@ -200,6 +211,7 @@ async def _process_file(
     # Add file node with new hash and parsed code nodes
     batch.nodes_to_upsert.append(_make_file_node(fp, content_hash=file_hash))
     batch.nodes_to_upsert.extend(nodes)
+    batch.edges_to_upsert.extend(_build_contains_edges(nodes))
 
     # Trace calls (failure here is non-fatal - we still have valid parsed nodes)
     tracer, _ = _get_call_tracer(fp)
