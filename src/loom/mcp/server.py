@@ -106,7 +106,7 @@ def build_server(graph_name: str = "loom"):
         )
         ast_drift = [report for row in drift_rows if (report := _row_to_ast_drift(row)) is not None]
 
-        return {"ast_drift": ast_drift, "semantic_violations": []}
+        return {"ast_drift": ast_drift}
 
     @mcp.tool()
     async def get_impact(ticket_id: str) -> list[dict[str, object]]:

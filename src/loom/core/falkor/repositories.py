@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from igraph import Graph
 
 from ..edge import Edge, EdgeType
 from ..node import Node
@@ -159,6 +158,8 @@ class TraversalRepository:
         node_ids: set[str],
         edges: list[tuple[str, str]],
     ) -> list[str]:
+        from igraph import Graph
+
         ordered_node_ids = sorted(node_ids)
         index_by_id = {node_id: index for index, node_id in enumerate(ordered_node_ids)}
         graph = Graph(directed=True)
