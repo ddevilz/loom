@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass
 from typing import Protocol
 
-from loom.analysis.code.summarizer import LLMClient as SummaryLLMClient
 from loom.core import Edge, EdgeOrigin, Node
 from loom.linker.embed_match import link_by_embedding
 from loom.linker.llm_match import link_by_llm
@@ -13,6 +12,10 @@ from loom.linker.reranker import PairReranker, rerank_edges
 
 
 logger = logging.getLogger(__name__)
+
+
+class SummaryLLMClient(Protocol):
+    async def summarize(self, *, prompt: str, max_tokens: int = 200, model: str | None = None) -> str: ...
 
 
 class _Graph(Protocol):

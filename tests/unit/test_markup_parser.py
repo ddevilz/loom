@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from loom.core import NodeKind
+from loom.analysis.code.parser import parse_repo
 from loom.ingest.code.languages.markup import (
     parse_css,
     parse_html,
@@ -226,10 +227,9 @@ def test_parse_yaml_detects_github_actions(tmp_path: Path):
     assert nodes[0].metadata.get("file_type") == "github_actions"
 
 
-# ── Integration with parse_tree ─────────────────────────────────────
+# ── Integration with parse_repo ─────────────────────────────────────
 
-def test_parse_tree_includes_markup_files(tmp_path: Path):
-    from loom.analysis.code.parser import parse_tree
+def test_parse_repo_includes_markup_files(tmp_path: Path):
 
     # Create a mini web project
     (tmp_path / "app.py").write_text("def index():\n    pass\n", encoding="utf-8")
@@ -243,18 +243,15 @@ def test_parse_tree_includes_markup_files(tmp_path: Path):
     (tmp_path / ".env").write_text("HELLO=world\n", encoding="utf-8")
     (tmp_path / ".env.local").write_text("LOCAL=1\n", encoding="utf-8")
 
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        nodes = parse_tree(str(tmp_path))
-    
+    nodes = parse_repo(str(tmp_path))
+
     # Should have: 1 function + 9 FILE nodes
     assert len(nodes) == 10
-    
+
     kinds = {n.kind for n in nodes}
     assert NodeKind.FUNCTION in kinds
     assert NodeKind.FILE in kinds
-    
+
     languages = {n.language for n in nodes if n.language}
     assert languages == {
         "python",

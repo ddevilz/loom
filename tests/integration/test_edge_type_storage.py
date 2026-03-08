@@ -2,15 +2,27 @@
 
 from __future__ import annotations
 
+import socket
+
 import pytest
 
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 
 
+def _db_available(host: str = "localhost", port: int = 6379) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.2):
+            return True
+    except OSError:
+        return False
+
+
 @pytest.mark.asyncio
 async def test_edge_persists_with_uppercase_relationship_type():
     """Verify edges are stored with uppercase relationship types in FalkorDB."""
+    if not _db_available():
+        pytest.skip("FalkorDB is not reachable on localhost:6379")
     graph = LoomGraph(graph_name="test_edge_storage")
     
     # Create test nodes
@@ -62,6 +74,8 @@ async def test_edge_persists_with_uppercase_relationship_type():
 @pytest.mark.asyncio
 async def test_edge_query_with_domain_edge_type():
     """Verify queries work when using domain EdgeType with adapter."""
+    if not _db_available():
+        pytest.skip("FalkorDB is not reachable on localhost:6379")
     graph = LoomGraph(graph_name="test_edge_storage")
     
     # Create test nodes
@@ -74,8 +88,8 @@ async def test_edge_query_with_domain_edge_type():
         metadata={},
     )
     node_b = Node(
-        id="module:test:module_b",
-        kind=NodeKind.MODULE,
+        id="class:test:module_b",
+        kind=NodeKind.CLASS,
         source=NodeSource.CODE,
         name="module_b",
         path="test.py",
@@ -112,6 +126,8 @@ async def test_edge_query_with_domain_edge_type():
 @pytest.mark.asyncio
 async def test_multiple_edge_types_persist_correctly():
     """Verify multiple edge types can coexist with correct storage format."""
+    if not _db_available():
+        pytest.skip("FalkorDB is not reachable on localhost:6379")
     graph = LoomGraph(graph_name="test_edge_storage")
     
     # Create test nodes
@@ -171,7 +187,9 @@ async def test_multiple_edge_types_persist_correctly():
 
 @pytest.mark.asyncio
 async def test_edge_type_value_does_not_match_storage():
-    """Verify that EdgeType.value (lowercase) does NOT match stored edges."""
+    """Verify EdgeType enum values don't match storage relationship types."""
+    if not _db_available():
+        pytest.skip("FalkorDB is not reachable on localhost:6379")
     graph = LoomGraph(graph_name="test_edge_storage")
     
     # Create test nodes

@@ -155,3 +155,80 @@ def test_cli_analyze_prints_error_details(monkeypatch):
     assert "Errors" in result.stdout
     assert "embed" in result.stdout
     assert "model.onnx missing" in result.stdout
+
+
+def test_cli_enrich_infers_repo_path_for_coupling(monkeypatch):
+    calls: dict[str, object] = {}
+
+    class FakeGraph:
+        def __init__(self, graph_name: str = "loom", *, gateway=None) -> None:
+            calls["graph_name"] = graph_name
+
+        async def query(self, cypher: str, params=None):
+            if cypher == "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000":
+                return [
+                    {"path": r"F:\repo\src\a.py"},
+                    {"path": r"F:\repo\src\b.py"},
+                ]
+            return []
+
+        async def bulk_create_edges(self, edges):
+            calls["edges"] = edges
+
+    async def fake_detect_communities(graph):
+        calls["communities_graph"] = graph
+        return {}
+
+    async def fake_analyze_coupling(repo_path: str, *, months: int = 6, threshold: float = 0.3):
+        calls["repo_path"] = repo_path
+        calls["months"] = months
+        calls["threshold"] = threshold
+        return []
+
+    monkeypatch.setattr("loom.core.LoomGraph", FakeGraph)
+    monkeypatch.setattr("loom.analysis.code.communities.detect_communities", fake_detect_communities)
+    monkeypatch.setattr("loom.analysis.code.coupling.analyze_coupling", fake_analyze_coupling)
+
+    result = runner.invoke(
+        loom.cli.app,
+        ["enrich", "--graph-name", "test_graph", "--coupling-months", "3"],
+    )
+
+    assert result.exit_code == 0
+    assert calls["graph_name"] == "test_graph"
+    assert Path(str(calls["repo_path"])) == Path(r"F:\repo\src")
+    assert calls["months"] == 3
+    assert calls["threshold"] == 0.3
+
+
+def test_cli_enrich_uses_explicit_repo_path_override(monkeypatch):
+    calls: dict[str, object] = {}
+
+    class FakeGraph:
+        def __init__(self, graph_name: str = "loom", *, gateway=None) -> None:
+            pass
+
+        async def query(self, cypher: str, params=None):
+            raise AssertionError("repo root inference should not run when --repo-path is provided")
+
+        async def bulk_create_edges(self, edges):
+            calls["edges"] = edges
+
+    async def fake_detect_communities(graph):
+        return {}
+
+    async def fake_analyze_coupling(repo_path: str, *, months: int = 6, threshold: float = 0.3):
+        calls["repo_path"] = repo_path
+        return []
+
+    monkeypatch.setattr("loom.core.LoomGraph", FakeGraph)
+    monkeypatch.setattr("loom.analysis.code.communities.detect_communities", fake_detect_communities)
+    monkeypatch.setattr("loom.analysis.code.coupling.analyze_coupling", fake_analyze_coupling)
+
+    result = runner.invoke(
+        loom.cli.app,
+        ["enrich", "--repo-path", r"F:\explicit-repo", "--no-communities"],
+    )
+
+    assert result.exit_code == 0
+    assert Path(str(calls["repo_path"])) == Path(r"F:\explicit-repo")

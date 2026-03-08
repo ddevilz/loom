@@ -31,8 +31,6 @@ class AstDriftReport:
 
 _SIDE_EFFECT_KEYS = frozenset(
     {
-        "reflection_pattern",
-        "dynamic_target",
         "is_async",
         "lambda_count",
         "method_ref_count",

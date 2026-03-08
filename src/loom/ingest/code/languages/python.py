@@ -43,19 +43,14 @@ from loom.ingest.code.languages.constants import (
     LANG_PYTHON,
     META_DECORATORS,
     META_FRAMEWORK_HINT,
-    TS_PY_ALIASED_IMPORT,
     TS_PY_ATTRIBUTE,
     TS_PY_CALL,
     TS_PY_CLASS_DEF,
     TS_PY_DECORATED_DEF,
     TS_PY_DECORATOR,
-    TS_PY_DOTTED_NAME,
     TS_PY_FUNCTION_DEF,
     TS_PY_IDENTIFIER,
-    TS_PY_IMPORT_FROM_STATEMENT,
-    TS_PY_IMPORT_STATEMENT,
 )
-from loom.ingest.code.reflection_detector import detect_python_dynamic_call
 
 
 _PY_LANGUAGE = Language(python_language())
@@ -101,20 +96,6 @@ def _get_name(src: bytes, n: TSNode) -> str | None:
     return _node_text(src, name_node)
 
 
-def _detect_dynamic_metadata(body: TSNode | None) -> dict[str, Any]:
-    if body is None:
-        return {}
-
-    stack = [body]
-    while stack:
-        current = stack.pop()
-        detected = detect_python_dynamic_call(current)
-        if detected is not None:
-            return detected
-        stack.extend(reversed(current.children))
-    return {}
-
-
 def _lines(n: TSNode) -> tuple[int, int]:
     # tree-sitter rows are 0-indexed; convert to 1-indexed inclusive
     start_line = n.start_point[0] + 1
@@ -122,51 +103,11 @@ def _lines(n: TSNode) -> tuple[int, int]:
     return start_line, end_line
 
 
-def _extract_import_info(src: bytes, n: TSNode) -> dict:
-    """Extract import statement details."""
-    if n.type == TS_PY_IMPORT_STATEMENT:
-        # import foo, bar as baz
-        modules = []
-        for child in n.children:
-            if child.type == TS_PY_DOTTED_NAME:
-                modules.append(_node_text(src, child))
-            elif child.type == TS_PY_ALIASED_IMPORT:
-                # Get the actual module name
-                name_node = child.child_by_field_name('name')
-                if name_node:
-                    modules.append(_node_text(src, name_node))
-        return {
-            'type': 'import',
-            'modules': modules,
-            'from': None
-        }
-    elif n.type == TS_PY_IMPORT_FROM_STATEMENT:
-        # from foo import bar, baz
-        module_node = n.child_by_field_name('module_name')
-        from_module = _node_text(src, module_node) if module_node else ''
-        
-        imported = []
-        for child in n.children:
-            if child.type == TS_PY_DOTTED_NAME and child != module_node:
-                imported.append(_node_text(src, child))
-            elif child.type == TS_PY_ALIASED_IMPORT:
-                name_node = child.child_by_field_name('name')
-                if name_node:
-                    imported.append(_node_text(src, name_node))
-        
-        return {
-            'type': 'from_import',
-            'from': from_module,
-            'imported': imported
-        }
-    return {}
-
-
 def _is_async_function(src: bytes, n: TSNode) -> bool:
     """Check if a function is async."""
     # Check for 'async' keyword before 'def'
     for child in n.children:
-        if child.type == 'async':
+        if child.type == "async":
             return True
     return False
 
@@ -260,58 +201,6 @@ def _extract_from_def(
     out: list[Node],
     decorators: list[str] | None = None,
 ) -> None:
-    # Handle import statements
-    if n.type in {TS_PY_IMPORT_STATEMENT, TS_PY_IMPORT_FROM_STATEMENT}:
-        start_line, end_line = _lines(n)
-        import_info = _extract_import_info(src, n)
-        
-        if import_info.get('type') == 'import':
-            # import foo, bar
-            for module in import_info.get('modules', []):
-                import_name = f"import_{module.replace('.', '_')}"
-                out.append(
-                    Node(
-                        id=f"module:{path}:{import_name}",
-                        kind=NodeKind.MODULE,
-                        source=NodeSource.CODE,
-                        name=import_name,
-                        path=path,
-                        content_hash=content_hash_for_line_span(src, start_line, end_line),
-                        start_line=start_line,
-                        end_line=end_line,
-                        language=LANG_PYTHON,
-                        metadata={
-                            'is_import': True,
-                            'import_module': module,
-                            'import_type': 'import'
-                        },
-                    )
-                )
-        elif import_info.get('type') == 'from_import':
-            # from foo import bar
-            from_module = import_info.get('from', '')
-            import_name = f"import_{from_module.replace('.', '_')}"
-            out.append(
-                Node(
-                    id=f"module:{path}:{import_name}",
-                    kind=NodeKind.MODULE,
-                    source=NodeSource.CODE,
-                    name=import_name,
-                    path=path,
-                    content_hash=content_hash_for_line_span(src, start_line, end_line),
-                    start_line=start_line,
-                    end_line=end_line,
-                    language=LANG_PYTHON,
-                    metadata={
-                        'is_import': True,
-                        'import_from': from_module,
-                        'imported_names': import_info.get('imported', []),
-                        'import_type': 'from_import'
-                    },
-                )
-            )
-        return
-
     if n.type == TS_PY_DECORATED_DEF:
         decs = _get_decorators(src, n)
         inner = n.child_by_field_name("definition")
@@ -374,7 +263,6 @@ def _extract_from_def(
         if _is_async_function(src, n):
             meta['is_async'] = True
         body = n.child_by_field_name("body")
-        meta.update(_detect_dynamic_metadata(body))
         out.append(
             Node(
                 id=f"{kind.value}:{path}:{symbol}",
@@ -474,7 +362,7 @@ def _try_extract_assignment(
 def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
     # We walk all children and recursively extract definitions.
     for child in n.children:
-        if child.type in {TS_PY_FUNCTION_DEF, TS_PY_CLASS_DEF, TS_PY_DECORATED_DEF, TS_PY_IMPORT_STATEMENT, TS_PY_IMPORT_FROM_STATEMENT}:
+        if child.type in {TS_PY_FUNCTION_DEF, TS_PY_CLASS_DEF, TS_PY_DECORATED_DEF}:
             _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
         elif _try_extract_assignment(path=path, src=src, n=child, ctx=ctx, out=out):
             pass

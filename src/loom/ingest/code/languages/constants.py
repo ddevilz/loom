@@ -71,11 +71,6 @@ META_PROPERTY_COUNT = "property_count"
 META_PROPERTY_KEYS = "property_keys"
 META_VARIABLE_COUNT = "variable_count"
 META_VARIABLE_NAMES = "variable_names"
-META_REFLECTION_PATTERN = "reflection_pattern"
-META_DYNAMIC_TARGET = "dynamic_target"
-META_RESOLUTION_TYPE = "resolution_type"
-META_CALL_CONFIDENCE = "call_confidence"
-META_RAW_EXPRESSION = "raw_expression"
 META_SENSITIVE_KEYS = "sensitive_keys"
 META_SPRING_PROFILE = "spring_profile"
 META_DATABASE_CONFIG = "database_config"
@@ -182,32 +177,6 @@ TS_JAVA_MODIFIERS = "modifiers"
 TS_JAVA_LAMBDA_EXPRESSION = "lambda_expression"
 TS_JAVA_METHOD_REFERENCE = "method_reference"
 TS_JAVA_RECORD_DECL = "record_declaration"
-
-# Java reflection patterns
-JAVA_REFLECTION_METHODS = {
-    "forName",
-    "getMethod",
-    "getDeclaredMethod",
-    "getMethods",
-    "getDeclaredMethods",
-    "invoke",
-    "newInstance",
-    "newProxyInstance",
-    "getConstructor",
-    "getDeclaredConstructor",
-}
-
-# Python dynamic call patterns
-PYTHON_DYNAMIC_METHODS = {
-    "getattr",
-    "setattr",
-    "hasattr",
-    "delattr",
-    "__import__",
-}
-
-# TypeScript/JavaScript dynamic patterns
-JS_DYNAMIC_IMPORT = "import"
 
 TS_RUST_STRUCT_ITEM = "struct_item"
 TS_RUST_ENUM_ITEM = "enum_item"

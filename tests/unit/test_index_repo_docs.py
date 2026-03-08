@@ -46,10 +46,6 @@ class FakeGraph:
 async def test_index_repo_with_docs_path_upserts_doc_nodes(monkeypatch, tmp_path) -> None:
     # Avoid parsing a real repo; make file list empty.
     monkeypatch.setattr("loom.ingest.pipeline._collect_repo_files", lambda root: [])
-    # Mock coupling analysis to avoid git repo requirement
-    async def mock_coupling(repo_path, **kwargs):
-        return []
-    monkeypatch.setattr("loom.ingest.pipeline.analyze_coupling", mock_coupling)
 
     doc_node = Node(
         id="doc:x:root",
@@ -98,9 +94,6 @@ async def test_index_repo_deletes_all_nodes_for_removed_file(monkeypatch, tmp_pa
     )
 
     monkeypatch.setattr("loom.ingest.pipeline._collect_repo_files", lambda root: [])
-    async def mock_coupling(repo_path, **kwargs):
-        return []
-    monkeypatch.setattr("loom.ingest.pipeline.analyze_coupling", mock_coupling)
 
     g = FakeGraph(nodes=[file_node, code_node])
 

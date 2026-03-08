@@ -10,7 +10,6 @@ class NodeKind(StrEnum):
     FUNCTION = "function"
     CLASS = "class"
     METHOD = "method"
-    MODULE = "module"
     INTERFACE = "interface"
     ENUM = "enum"
     TYPE = "type"

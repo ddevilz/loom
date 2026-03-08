@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from loom.config import LOOM_LLM_MODEL
 from loom.core import LoomGraph
 from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_metadata_value, row_to_node
-from loom.drift.detector import detect_violations
-from loom.llm.client import LLMClient
 from loom.query.traceability import impact_of_ticket, tickets_for_function, unimplemented_tickets
 from loom.search.searcher import search
 
@@ -101,40 +98,15 @@ def build_server(graph_name: str = "loom"):
     @mcp.tool()
     async def check_drift(node_id: str) -> dict[str, object]:
         graph = LoomGraph(graph_name=graph_name)
-        code_rows = await graph.query(
-            "MATCH (f {id: $id}) RETURN f.id AS id, f.kind AS kind, f.name AS name, f.summary AS summary, f.path AS path, f.metadata AS metadata",
-            {"id": node_id},
-        )
-        doc_rows = await graph.query(
-            f"MATCH (f {{id: $id}})-[:{_LOOM_IMPL_REL}]->(t) RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
-            {"id": node_id},
-        )
-        edge_rows = await graph.query(
-            f"MATCH (f {{id: $id}})-[r:{_LOOM_IMPL_REL}]->(t) RETURN f.id AS from_id, t.id AS to_id",
-            {"id": node_id},
-        )
         drift_rows = await graph.query(
             f"MATCH (f {{id: $id}})-[r:{EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)}]->() "
             "WHERE r.link_method = 'ast_diff' "
             "RETURN f.id AS node_id, r.link_reason AS link_reason, r.metadata AS metadata",
             {"id": node_id},
         )
-
-        code_nodes = [node for row in code_rows if (node := _row_to_code_node(row)) is not None]
-        doc_nodes = [node for row in doc_rows if (node := _row_to_doc_node(row)) is not None]
-        implements_edges = [edge for row in edge_rows if (edge := _row_to_edge(row)) is not None]
         ast_drift = [report for row in drift_rows if (report := _row_to_ast_drift(row)) is not None]
 
-        semantic_violations: list[dict[str, object]] = []
-        if LOOM_LLM_MODEL and code_nodes and doc_nodes and implements_edges:
-            llm = LLMClient(model=LOOM_LLM_MODEL)
-            reports = await detect_violations(code_nodes, doc_nodes, implements_edges, llm=llm, model=LOOM_LLM_MODEL)
-            semantic_violations = [
-                {"code_id": report.code_id, "doc_id": report.doc_id, "confidence": report.confidence, "reason": report.reason}
-                for report in reports
-            ]
-
-        return {"ast_drift": ast_drift, "semantic_violations": semantic_violations}
+        return {"ast_drift": ast_drift, "semantic_violations": []}
 
     @mcp.tool()
     async def get_impact(ticket_id: str) -> list[dict[str, object]]:

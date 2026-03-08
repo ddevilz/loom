@@ -5,7 +5,7 @@ from time import perf_counter
 from typing import Any, Protocol
 
 from loom.analysis.code.parser import parse_code
-from loom.analysis.code.summarizer import extract_summaries
+from loom.analysis.code.extractor import extract_summaries
 from loom.core import Edge, EdgeOrigin, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_edge_props, deserialize_node_props

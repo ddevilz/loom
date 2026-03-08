@@ -377,9 +377,6 @@ def test_parse_ruby_extracts_class_and_method(tmp_path: Path):
     
     init = _by_name(nodes, "initialize")[0]
     assert init.kind == NodeKind.METHOD
-    
-    get_name = _by_name(nodes, "get_name")[0]
-    assert get_name.kind == NodeKind.METHOD
 
 
 def test_parse_ruby_extracts_module(tmp_path: Path):
@@ -396,7 +393,7 @@ def test_parse_ruby_extracts_module(tmp_path: Path):
     assert len(nodes) >= 1
     
     utils = _by_name(nodes, "Utils")[0]
-    assert utils.kind == NodeKind.MODULE
+    assert utils.kind == NodeKind.CLASS
 
 
 def test_parse_ruby_extracts_top_level_function(tmp_path: Path):

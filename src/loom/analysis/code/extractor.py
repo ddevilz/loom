@@ -10,7 +10,7 @@ def extract_summary(node: Node) -> str:
     
     For code nodes: produces structured format with kind, name, params, returns, etc.
     For doc nodes: returns node.summary or node.name unchanged.
-    For file/module nodes: returns simple file/module description.
+    For file nodes: returns simple file description.
     """
     # Doc nodes pass through unchanged
     if node.source == NodeSource.DOC:
@@ -19,10 +19,6 @@ def extract_summary(node: Node) -> str:
     # File nodes
     if node.kind == NodeKind.FILE:
         return f"file: {node.name}\npath: {node.path}"
-    
-    # Module nodes
-    if node.kind == NodeKind.MODULE:
-        return f"module: {node.name}\npath: {node.path}"
     
     # Code nodes (function, method, class, etc.)
     lines: list[str] = []
@@ -70,3 +66,13 @@ def extract_summary(node: Node) -> str:
         lines.append(f"docstring: {doc_text}")
     
     return "\n".join(lines)
+
+
+async def extract_summaries(nodes: list[Node]) -> list[Node]:
+    """Assign static summaries to nodes that don't have one yet.
+    No LLM calls — uses extract_summary() for static extraction.
+    """
+    return [
+        n if n.summary else n.model_copy(update={"summary": extract_summary(n)})
+        for n in nodes
+    ]
