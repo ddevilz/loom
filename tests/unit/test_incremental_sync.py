@@ -773,7 +773,7 @@ async def test_sync_commits_relinks_renamed_code_nodes_against_existing_doc_node
     old_path.write_text("def f():\n    return 1\n", encoding="utf-8")
 
     old_abs = old_path.resolve().as_posix()
-    new_abs = new_path.resolve().as_posix()
+    new_path.resolve().as_posix()
 
     doc_node = Node(
         id="doc:spec.md:s1",

@@ -49,7 +49,6 @@ def test_content_hash_changes_on_whitespace_edit(tmp_path: Path) -> None:
 
 
 def test_content_hash_roundtrip_via_mappers() -> None:
-    p = "src/auth.py"
     nodes = parse_code("tests/fixtures/sample_repo/auth.py")
     assert nodes
 

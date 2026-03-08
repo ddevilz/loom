@@ -166,18 +166,18 @@ def test_python_flask_app_parsing_accuracy():
         assert "python_flask_app" in node.path, f"Node {node.name} has unexpected path: {node.path}"
         assert node.path.endswith(".py"), f"Node {node.name} path should end with .py"
     
-    print(f"\n✅ Python Flask E2E Test Results:")
+    print("\n✅ Python Flask E2E Test Results:")
     print(f"   Total nodes extracted: {len(all_nodes)}")
     print(f"   Classes: {len(nodes_by_kind.get('class', []))}")
     print(f"   Functions: {len(nodes_by_kind.get('function', []))}")
     print(f"   Methods: {len(nodes_by_kind.get('method', []))}")
     print(f"   Imports: {len(imports)}")
     print(f"   Async functions: {len(async_funcs)}")
-    print(f"\n   Flask decorators: ✓")
-    print(f"   Custom decorators: ✓")
-    print(f"   Async/await: ✓")
-    print(f"   Type hints: ✓")
-    print(f"   Import tracking: ✓")
+    print("\n   Flask decorators: ✓")
+    print("   Custom decorators: ✓")
+    print("   Async/await: ✓")
+    print("   Type hints: ✓")
+    print("   Import tracking: ✓")
 
 
 @pytest.mark.integration

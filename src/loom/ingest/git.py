@@ -4,7 +4,6 @@ import asyncio
 import logging
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 
 from loom.ingest.code.registry import get_registry
@@ -47,7 +46,7 @@ def _run_git(repo_path: str, args: list[str]) -> str:
             timeout=_GIT_TIMEOUT,
         )
         return p.stdout
-    except subprocess.TimeoutExpired as e:
+    except subprocess.TimeoutExpired:
         logger.error(
             f"Git command timed out after {_GIT_TIMEOUT}s: git {' '.join(args)} "
             f"in {repo_path}"

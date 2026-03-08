@@ -14,7 +14,7 @@ from loom.drift.detector import detect_ast_drift
 from loom.embed.embedder import embed_nodes
 from loom.ingest.differ import diff_nodes
 from loom.ingest.errors import append_index_error
-from loom.ingest.git import FileChange, get_changed_files
+from loom.ingest.git import get_changed_files
 from loom.ingest.code.registry import get_registry
 from loom.ingest.result import IndexError, IndexResult
 from loom.ingest.utils import (
@@ -365,7 +365,7 @@ async def sync_commits(
             edges_to_upsert.extend(batch_edges)
 
             old_by_id = {n.id: n for n in old_nodes}
-            old_by_hash = {
+            {
                 n.content_hash: n.id
                 for n in old_nodes
                 if isinstance(n.content_hash, str) and n.content_hash

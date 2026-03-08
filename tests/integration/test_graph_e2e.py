@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loom.core import EdgeType, LoomGraph
+from loom.core import LoomGraph
 from loom.core.falkor import cypher
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))

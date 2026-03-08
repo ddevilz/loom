@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from loom.core import Node, NodeKind, NodeSource
 from loom.embed.embedder import embed_nodes
 from loom.linker.embed_match import link_by_embedding
@@ -17,9 +19,6 @@ class _FakeEmbedder:
                 # First dimension is 0.0, second is 1.0, rest are 0.0
                 out.append([0.0, 1.0] + [0.0] * 766)
         return out
-
-
-import pytest
 
 
 @pytest.mark.asyncio
@@ -58,7 +57,6 @@ async def test_link_by_embedding_emits_edge_above_threshold(monkeypatch):
         metadata={},
     )
 
-    from loom import embed as _embed_pkg
 
     # Force embed_nodes in embed_match to use fake embedder by pre-setting embeddings.
     code = code.model_copy(update={"embedding": [1.0, 0.0]})

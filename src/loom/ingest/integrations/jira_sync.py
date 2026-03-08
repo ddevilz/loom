@@ -4,7 +4,7 @@ import asyncio
 from inspect import isawaitable
 from typing import Any, Protocol
 
-from loom.core import LoomGraph, EdgeType, Node, NodeKind, NodeSource
+from loom.core import EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
 from loom.ingest.integrations.jira import JiraConfig, _fetch_search_results, _normalize_issue

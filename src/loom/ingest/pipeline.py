@@ -12,7 +12,7 @@ from loom.analysis.code.communities import detect_communities
 from loom.analysis.code.coupling import analyze_coupling
 from loom.analysis.code.parser import parse_code
 from loom.analysis.code.summarizer import extract_summaries
-from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
+from loom.core import Edge, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.embed.embedder import embed_nodes
 from loom.ingest.code.walker import walk_repo

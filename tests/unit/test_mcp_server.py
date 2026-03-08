@@ -150,9 +150,9 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
             self.queries.append((cypher, params))
             if "RETURN f.id AS id" in cypher:
                 return [{"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": {}}]
-            if f"-[:LOOM_IMPLEMENTS]->(t) RETURN t.id AS id" in cypher:
+            if "-[:LOOM_IMPLEMENTS]->(t) RETURN t.id AS id" in cypher:
                 return [{"id": "doc:spec.md:s1", "name": "Spec", "summary": "s", "path": "spec.md", "metadata": {}}]
-            if f"-[r:LOOM_IMPLEMENTS]->(t) RETURN f.id AS from_id" in cypher:
+            if "-[r:LOOM_IMPLEMENTS]->(t) RETURN f.id AS from_id" in cypher:
                 return [{"from_id": "function:x:f", "to_id": "doc:spec.md:s1"}]
             if "LOOM_VIOLATES" in cypher:
                 return [{"node_id": "function:x:f", "link_reason": "signature_changed: a -> b", "metadata": '{"reasons": ["signature_changed: a -> b"]}'}]
