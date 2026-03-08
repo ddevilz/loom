@@ -148,7 +148,7 @@ def test_vue_tsx_app_parsing_accuracy():
         assert node.path.endswith((".ts", ".tsx")), \
             f"Node {node.name} path should end with .ts or .tsx"
     
-    print(f"\n✅ Vue TSX E2E Test Results:")
+    print("\n✅ Vue TSX E2E Test Results:")
     print(f"   Total nodes extracted: {len(all_nodes)}")
     print(f"   Functions: {len(nodes_by_kind.get('function', []))}")
     print(f"   Interfaces: {len(nodes_by_kind.get('interface', []))}")
@@ -156,10 +156,10 @@ def test_vue_tsx_app_parsing_accuracy():
     print(f"   Types: {len(nodes_by_kind.get('type', []))}")
     print(f"   Classes: {len(nodes_by_kind.get('class', []))}")
     print(f"   Methods: {len(nodes_by_kind.get('method', []))}")
-    print(f"\n   Vue Composables: ✓")
-    print(f"   TSX Components: ✓")
-    print(f"   TypeScript Types: ✓")
-    print(f"   Utility Functions: ✓")
+    print("\n   Vue Composables: ✓")
+    print("   TSX Components: ✓")
+    print("   TypeScript Types: ✓")
+    print("   Utility Functions: ✓")
 
 
 @pytest.mark.integration

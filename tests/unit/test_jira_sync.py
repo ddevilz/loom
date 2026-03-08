@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from loom.core import Node, NodeKind, NodeSource
+from loom.core import Node, NodeKind
 from loom.ingest.integrations.jira import JiraConfig
 from loom.ingest.integrations.jira_sync import _row_to_code_node, sync_jira_updates
 

@@ -6,7 +6,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from itertools import combinations
 from pathlib import Path
-from typing import Any
 
 import git
 

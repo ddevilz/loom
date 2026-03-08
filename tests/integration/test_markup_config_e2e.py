@@ -19,13 +19,9 @@ from loom.core import NodeKind
 from loom.ingest.code.languages.markup import (
     parse_html,
     parse_css,
-    parse_xml,
     parse_json,
-    parse_yaml,
     parse_properties,
     parse_env,
-    parse_toml,
-    parse_ini,
 )
 
 
@@ -67,7 +63,7 @@ def test_properties_file_parsing():
         assert metadata["spring_profile"] in ["dev", "prod", "test"], "Should detect valid Spring profile"
     
     # Should detect database configuration
-    assert metadata.get("database_config") == True, "Should detect database configuration"
+    assert metadata.get("database_config"), "Should detect database configuration"
     
     # Should detect sensitive keys
     assert "sensitive_keys" in metadata, "Should detect sensitive keys"
@@ -75,7 +71,7 @@ def test_properties_file_parsing():
     assert any('password' in k.lower() or 'secret' in k.lower() or 'key' in k.lower() for k in sensitive), \
         "Should detect password/secret/key fields"
     
-    print(f"\n✅ Properties File Test Results:")
+    print("\n✅ Properties File Test Results:")
     print(f"   Properties: {metadata['property_count']}")
     print(f"   Spring profile: {metadata.get('spring_profile', 'N/A')}")
     print(f"   Database config: {metadata.get('database_config', False)}")
@@ -93,7 +89,7 @@ def test_env_file_parsing():
         fixture_path = Path(__file__).parent.parent / "fixtures" / "python_flask_app" / ".env.example"
     
     if not fixture_path.exists():
-        pytest.skip(f"No .env file found in fixtures")
+        pytest.skip("No .env file found in fixtures")
     
     nodes = parse_env(str(fixture_path))
     
@@ -113,7 +109,7 @@ def test_env_file_parsing():
     
     # Should have variable names
     assert "variable_names" in metadata, "Should extract variable names"
-    var_names = metadata["variable_names"]
+    metadata["variable_names"]
     
     # Should detect sensitive keys
     assert "sensitive_keys" in metadata, "Should detect sensitive keys"
@@ -125,7 +121,7 @@ def test_env_file_parsing():
     assert any(any(pattern in var for pattern in sensitive_patterns) for var in sensitive), \
         "Should detect common sensitive variable patterns"
     
-    print(f"\n✅ Environment File Test Results:")
+    print("\n✅ Environment File Test Results:")
     print(f"   Variables: {metadata['variable_count']}")
     print(f"   Sensitive keys: {len(sensitive)}")
     print(f"   Database config: {metadata.get('database_config', False)}")
@@ -195,7 +191,7 @@ def test_html_file_parsing():
         if "stylesheets" in metadata:
             assert any("styles.css" in style for style in metadata["stylesheets"]), "Should extract stylesheet references"
         
-        print(f"\n✅ HTML File Test Results:")
+        print("\n✅ HTML File Test Results:")
         print(f"   Title: {metadata.get('title', 'N/A')}")
         print(f"   Forms: {metadata.get('form_count', 0)}")
         print(f"   Scripts: {len(metadata.get('scripts', []))}")
@@ -275,7 +271,7 @@ def test_css_file_parsing():
             assert any("primary-color" in var or "secondary-color" in var for var in metadata["css_variables"]), \
                 "Should extract custom property names"
         
-        print(f"\n✅ CSS File Test Results:")
+        print("\n✅ CSS File Test Results:")
         print(f"   Classes: {metadata.get('class_count', 0)}")
         print(f"   IDs: {metadata.get('id_count', 0)}")
         print(f"   Media queries: {metadata.get('media_query_count', 0)}")
@@ -335,7 +331,7 @@ def test_json_file_parsing():
             # The parser uses 'package.json' as the file type value
             assert "package" in metadata["file_type"].lower(), "Should detect package.json type"
         
-        print(f"\n✅ JSON File Test Results:")
+        print("\n✅ JSON File Test Results:")
         print(f"   Top-level keys: {len(keys)}")
         print(f"   File type: {metadata.get('file_type', 'generic')}")
         
@@ -369,7 +365,7 @@ def test_markup_parsers_comprehensive():
         nodes = parse_env(str(env_path))
         results['env'] = len(nodes) == 1 and nodes[0].metadata.get('variable_count', 0) > 0
     
-    print(f"\n📊 Markup Parser Comprehensive Test:")
+    print("\n📊 Markup Parser Comprehensive Test:")
     print(f"   Properties parser: {'✅' if results['properties'] else '❌'}")
     print(f"   Env parser: {'✅' if results['env'] else '❌'}")
     

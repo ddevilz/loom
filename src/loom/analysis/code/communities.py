@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from typing import Any
 
 import igraph as ig
 import leidenalg

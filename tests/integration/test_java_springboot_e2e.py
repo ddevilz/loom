@@ -175,7 +175,7 @@ def test_java_springboot_app_parsing_accuracy():
     assert len(create_payment_methods) > 0, "createPayment method not found"
     create_payment = create_payment_methods[0]
     method_annotations = create_payment.metadata.get("annotations", [])
-    assert "PostMapping" in method_annotations, f"@PostMapping annotation not found on createPayment"
+    assert "PostMapping" in method_annotations, "@PostMapping annotation not found on createPayment"
     
     # Test 17: Verify abstract class detection
     payment_class = find_node("Payment", NodeKind.CLASS)
@@ -187,17 +187,17 @@ def test_java_springboot_app_parsing_accuracy():
     override_methods = [n for n in all_nodes if n.kind == NodeKind.METHOD and "Override" in n.metadata.get("annotations", [])]
     assert len(override_methods) >= 2, f"Expected at least 2 @Override methods, found {len(override_methods)}"
     
-    print(f"\n✅ E2E Test Results:")
+    print("\n✅ E2E Test Results:")
     print(f"   Total nodes extracted: {len(all_nodes)}")
     print(f"   Classes: {len(nodes_by_kind.get('class', []))}")
     print(f"   Interfaces: {len(nodes_by_kind.get('interface', []))}")
     print(f"   Enums: {len(nodes_by_kind.get('enum', []))}")
     print(f"   Methods: {len(nodes_by_kind.get('method', []))}")
-    print(f"\n   Inheritance detected: ✓")
-    print(f"   Polymorphism detected: ✓")
-    print(f"   Interface implementation: ✓")
-    print(f"   Generic types: ✓")
-    print(f"   SOLID principles validated: ✓")
+    print("\n   Inheritance detected: ✓")
+    print("   Polymorphism detected: ✓")
+    print("   Interface implementation: ✓")
+    print("   Generic types: ✓")
+    print("   SOLID principles validated: ✓")
 
 
 @pytest.mark.integration

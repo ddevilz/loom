@@ -13,11 +13,6 @@ from loom.core import NodeKind
 from loom.ingest.code.languages.java import parse_java
 from loom.ingest.code.languages.python import parse_python
 from loom.ingest.code.languages.typescript import parse_typescript
-from loom.ingest.code.reflection_detector import (
-    detect_java_reflection,
-    detect_python_dynamic_call,
-    detect_js_dynamic_pattern,
-)
 
 
 @pytest.mark.integration
@@ -46,10 +41,10 @@ def test_java_reflection_detection():
     create_proxy = next((n for n in nodes if n.name == "createProxy" and n.kind == NodeKind.METHOD), None)
     assert create_proxy is not None, "Should find createProxy method"
     
-    print(f"\n✅ Java Reflection Detection Test Results:")
+    print("\n✅ Java Reflection Detection Test Results:")
     print(f"   Class: {reflection_class.name}")
-    print(f"   Methods with reflection: 4")
-    print(f"   Patterns: Class.forName, getMethod, invoke, Proxy.newProxyInstance")
+    print("   Methods with reflection: 4")
+    print("   Patterns: Class.forName, getMethod, invoke, Proxy.newProxyInstance")
 
 
 @pytest.mark.integration
@@ -81,13 +76,13 @@ def test_python_dynamic_call_detection():
     # Find async function
     async_func = next((n for n in nodes if n.name == "async_dynamic_call" and n.kind == NodeKind.FUNCTION), None)
     assert async_func is not None, "Should find async_dynamic_call function"
-    assert async_func.metadata.get('is_async') == True, "Should detect async function"
+    assert async_func.metadata.get('is_async'), "Should detect async function"
     
-    print(f"\n✅ Python Dynamic Call Detection Test Results:")
+    print("\n✅ Python Dynamic Call Detection Test Results:")
     print(f"   Class: {dynamic_class.name}")
-    print(f"   Methods with dynamic calls: 5")
-    print(f"   Patterns: getattr, setattr, __import__, importlib.import_module")
-    print(f"   Async dynamic calls: ✓")
+    print("   Methods with dynamic calls: 5")
+    print("   Patterns: getattr, setattr, __import__, importlib.import_module")
+    print("   Async dynamic calls: ✓")
 
 
 @pytest.mark.integration
@@ -121,10 +116,10 @@ def test_typescript_dynamic_pattern_detection():
     exports = [n for n in nodes if n.metadata.get('is_exported')]
     assert len(exports) > 0, "Should find exported items"
     
-    print(f"\n✅ TypeScript Dynamic Pattern Detection Test Results:")
+    print("\n✅ TypeScript Dynamic Pattern Detection Test Results:")
     print(f"   Class: {dynamic_class.name}")
-    print(f"   Methods with dynamic patterns: 4")
-    print(f"   Patterns: dynamic import(), obj[prop](), computed member access")
+    print("   Methods with dynamic patterns: 4")
+    print("   Patterns: dynamic import(), obj[prop](), computed member access")
     print(f"   Async functions: {len(async_funcs)}")
     print(f"   Exports: {len(exports)}")
 
@@ -157,7 +152,7 @@ def test_reflection_detector_comprehensive():
         nodes = parse_typescript(str(ts_path))
         results['typescript'] = len(nodes) > 0 and any(n.name == "DynamicPatternExample" for n in nodes)
     
-    print(f"\n📊 Reflection Detection Comprehensive Test:")
+    print("\n📊 Reflection Detection Comprehensive Test:")
     print(f"   Java reflection: {'✅' if results['java'] else '❌'}")
     print(f"   Python dynamic calls: {'✅' if results['python'] else '❌'}")
     print(f"   TypeScript dynamic patterns: {'✅' if results['typescript'] else '❌'}")

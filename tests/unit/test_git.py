@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from loom.ingest.git import FileChange, get_changed_files
+from loom.ingest.git import get_changed_files
 
 
 def _git(cwd: str, *args: str) -> str:

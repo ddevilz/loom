@@ -5,7 +5,6 @@ from loom.core import LoomGraph
 from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_metadata_value, row_to_node
-from loom.drift.detector import detect_ast_drift
 from loom.drift.detector import detect_violations
 from loom.llm.client import LLMClient
 from loom.query.traceability import impact_of_ticket, tickets_for_function, unimplemented_tickets

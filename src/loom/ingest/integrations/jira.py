@@ -4,7 +4,6 @@ import asyncio
 import base64
 import json
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from time import perf_counter
 
 import typer
 from rich.console import Console
@@ -237,8 +236,7 @@ def query(
     graph_name: str = typer.Option("loom", "--graph-name"),
     limit: int = typer.Option(10, "--limit"),
 ) -> None:
-    from loom.core import EdgeType, LoomGraph
-    from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
+    from loom.core import LoomGraph
     from loom.search.searcher import search
 
     console = Console()
@@ -451,7 +449,7 @@ def serve(
     from loom.mcp.server import build_server
 
     console = Console()
-    console.print(f"[bold green]Starting Loom MCP server...[/bold green]")
+    console.print("[bold green]Starting Loom MCP server...[/bold green]")
     console.print(f"Graph: {graph_name}")
     console.print(f"Database: {LOOM_DB_HOST}:{LOOM_DB_PORT}")
     console.print(f"Server: http://{host}:{port}")

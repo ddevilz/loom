@@ -50,6 +50,7 @@ packages = ["src/loom"]
 
 [dependency-groups]
 dev = [
+    "mypy>=1.19.1",
     "pytest>=9.0.2",
     "pytest-asyncio>=0.24.0",
 ]

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import git
 import pytest

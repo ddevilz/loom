@@ -32,13 +32,13 @@ class DynamicCallExample:
     def import_module_dynamically(self, module_name: str):
         """Dynamic module imports"""
         # __import__ with string literal
-        module = __import__("json")
+        __import__("json")
         
         # __import__ with variable
-        dynamic_module = __import__(module_name)
+        __import__(module_name)
         
         # importlib.import_module with string literal
-        imported = importlib.import_module("datetime")
+        importlib.import_module("datetime")
         
         # importlib.import_module with variable
         dynamic_imported = importlib.import_module(module_name)

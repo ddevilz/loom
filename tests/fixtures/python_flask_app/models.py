@@ -2,7 +2,6 @@
 Database models module
 Demonstrates: classes, inheritance, type hints, properties
 """
-from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 

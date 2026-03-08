@@ -115,7 +115,7 @@ async def test_index_repo_updates_only_changed_file(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_index_repo_force_rebuild_clears_stale_repo_nodes(tmp_path: Path, monkeypatch) -> None:
-    a = _write(tmp_path, "a.py", "def f():\n    return 1\n")
+    _write(tmp_path, "a.py", "def f():\n    return 1\n")
     stale_path = str((tmp_path / "stale.py").resolve())
 
     async def _noop_detect_communities(graph) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from loom.core import EdgeType, Node, NodeKind, NodeSource
+from loom.core import EdgeType
 from loom.core.falkor.repositories import TraversalRepository
 
 

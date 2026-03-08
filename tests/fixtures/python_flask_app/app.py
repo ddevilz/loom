@@ -2,7 +2,7 @@
 Flask REST API Application - E2E Parser Test Fixture
 Demonstrates: decorators, async functions, classes, type hints, imports
 """
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import asyncio
