@@ -1,46 +1,135 @@
 # Loom
 
-> A unified code + document knowledge graph. The foundation for code intelligence.
+> A code intelligence platform that turns repositories, docs, and ticket data into one graph you can search, trace, and serve to agents.
 
-Loom indexes your **codebase** and your **documentation** into a single connected graph — where code symbols and document sections are linked by meaning, not just proximity. Ask questions that span both worlds simultaneously.
+Loom ingests source code, technical docs, and optional Jira-style work items into a shared graph stored in FalkorDB. It extracts code structure, builds call relationships, links code to documentation semantically, and exposes the resulting graph through a CLI and MCP server.
 
+## What Loom is
+
+Loom is built for teams that want more than grep, static tags, or disconnected docs. It answers questions like:
+
+- **Where is this requirement implemented?**
+- **Which functions call this API?**
+- **What changed between two commits, structurally and semantically?**
+- **Which code nodes have no traceability to tickets or specs?**
+- **What should an agent know about this repo before making a change?**
+
+Loom works by treating code symbols, files, docs, sections, communities, and relationships as graph entities instead of isolated text blobs.
+
+## What problem it solves
+
+In most codebases:
+
+- **Code and docs drift apart**
+- **Call relationships are hard to inspect at repo scale**
+- **Requirements and implementation links are tribal knowledge**
+- **Incremental updates silently lose context in weak indexing systems**
+- **AI tools lack a durable, queryable model of the repo**
+
+Loom gives you a persistent graph model of your system so those relationships can be searched, queried, traversed, and served to tooling.
+
+## Core product capabilities
+
+- **Repository indexing**
+  - parses source files into graph nodes and edges
+  - persists graph state in FalkorDB
+
+- **Multi-language code understanding**
+  - supports Python, TypeScript, TSX, JavaScript, JSX, Java, Go, Rust, Ruby, and multiple markup/config formats
+
+- **Call graph extraction**
+  - builds `CALLS` relationships for supported languages
+
+- **Document ingestion**
+  - ingests Markdown, PDF, and other document structures into document/section graphs
+
+- **Jira and traceability workflows**
+  - links code to tickets and docs
+  - supports queries like unimplemented tickets, impact, and coverage
+
+- **Semantic linking**
+  - links code to docs with name matching, embedding similarity, and optional LLM fallback
+
+- **Incremental sync and watch mode**
+  - updates graph state from git diffs and filesystem changes
+
+- **Semantic search**
+  - supports query-time search over embeddings plus graph expansion
+
+- **MCP server**
+  - exposes Loom as a tool server for Windsurf, Claude Code, and other MCP clients
+
+## How Loom models a codebase
+
+Loom stores a graph where nodes can represent:
+
+- **Files**
+- **Functions**
+- **Methods**
+- **Classes / interfaces / enums / types / modules**
+- **Documents / chapters / sections / paragraphs**
+- **Communities**
+
+And edges can represent relationships like:
+
+- **`CALLS`**
+- **`MEMBER_OF`**
+- **`LOOM_IMPLEMENTS`**
+- **`LOOM_SPECIFIES`**
+- **`LOOM_VIOLATES`**
+- **`COUPLED_WITH`**
+
+Example:
+
+```text
+validate_user()  --CALLS---------> hash_password()
+validate_user()  --IMPLEMENTS---> §3.2.4 Input Validation
+validate_user()  --MEMBER_OF----> community:auth
+§3.2.4           --CHILD_OF-----> Chapter 3: Security
 ```
-$ loom analyze . --docs ./specs/
 
-  (example output — illustrative)
-```
+## Product workflow
 
----
+Typical workflow:
 
-## The problem Loom solves
+1. **Analyze a repository** into a named graph
+2. **Query** the graph semantically
+3. **Trace** missing or impacted implementation links
+4. **Inspect** callers, callees, and entrypoints
+5. **Serve** the graph over MCP to an editor or agent
+6. **Watch** the repo or **sync** specific git revisions incrementally
 
-Every engineering team has the same invisible problem: code and documentation drift apart, and **nobody can see the gap**.
+## Installation
 
-- The spec says `validate()` must return a typed error
-- The code returns `None`
-- No tool reads both at the same time — so nobody catches it
+### Requirements
 
-Loom is the connection layer. It knows that `validate_user()` **implements** `§3.2.4 Input Validation`, that it has 47 callers, and that changing its return type would make that spec section stale. No existing tool can do this.
+- **Python** 3.12+
+- **uv** for environment and command execution
+- **Docker** for FalkorDB
 
----
-
-## Install
+### Setup
 
 ```bash
-# Development install (recommended)
 uv sync
 ```
 
-**Requirements:** Python 3.12+, Docker (for FalkorDB)
+Start FalkorDB:
 
 ```bash
-# Start the graph database
 docker run -d -p 6379:6379 --name loom-db falkordb/falkordb
 ```
 
-**Windows users:** use `winloop` instead of `uvloop` — Loom handles this automatically.
+Or, if your repo includes a compose setup:
 
-Optional configuration via environment variables:
+```bash
+docker compose up -d
+```
+
+### Configuration
+
+Loom is configured through environment variables.
+
+Common values:
 
 ```bash
 LOOM_DB_HOST=localhost
@@ -52,180 +141,149 @@ LOOM_JIRA_EMAIL=you@example.com
 LOOM_JIRA_API_TOKEN=...
 ```
 
----
+Windows event loop handling is automatic.
 
 ## Quick start
 
+Verify the CLI:
+
 ```bash
-# Verify the CLI is installed and imports
-loom --dev
-
-# Index a repo
-loom analyze . --graph-name myrepo --exclude-tests
-
-# Search semantically across indexed code + docs
-loom query "how is auth validated" --graph-name myrepo
-
-# Inspect Jira/code traceability
-loom trace unimplemented --graph-name myrepo
+uv run loom --dev
 ```
 
----
+Index a repository:
 
-## CLI
+```bash
+uv run loom analyze . --graph-name myrepo --exclude-tests
+```
+
+Search the graph:
+
+```bash
+uv run loom query "how is auth validated" --graph-name myrepo
+```
+
+Inspect untraced functions:
+
+```bash
+uv run loom trace untraced --graph-name myrepo
+```
+
+Start the MCP server:
+
+```bash
+uv run loom serve --graph-name myrepo
+```
+
+## CLI reference
 
 | Command | Purpose | Example |
 |---|---|---|
-| `loom analyze <path>` | Index a repository into FalkorDB and print a Rich summary (file deltas, node/edge counts, duration). | `loom analyze . --graph-name myrepo --exclude-tests --force` |
-| `loom query <text>` | Run semantic search over indexed nodes using embeddings plus graph expansion. | `loom query "how does login work" --graph-name myrepo --limit 10` |
-| `loom trace <mode> [target]` | Inspect Jira/code traceability: unimplemented tickets, untraced functions, impact, linked tickets, or sprint coverage. | `loom trace impact PROJ-123 --graph-name myrepo` |
-| `loom entrypoints` | Show entrypoint candidates and high-signal call graph summaries (name-based candidates, CALLS roots, relationship type counts). | `loom entrypoints --graph-name myrepo --limit 100` |
-| `loom calls` | Inspect `CALLS` edges: who a node calls (callees), who calls a node (callers), or dump a slice of the call graph. | `loom calls --graph-name myrepo --target App --direction both --limit 50` |
-| `loom watch` | Watch a repo for filesystem changes and re-index incrementally. | `loom watch . --graph-name myrepo --debounce 500` |
-| `loom serve` | Start the MCP server for editor/agent integrations. | `loom serve --graph-name myrepo` |
-| `loom sync` | Incrementally sync changes between two git SHAs into the graph using git-diff + node diffing. | `loom sync --old-sha abc --new-sha def --graph-name myrepo --repo-path .` |
-| `loom --dev` | Development health check (verifies package import OK). | `loom --dev` |
+| `loom analyze <path>` | Index a repository and print counts, deltas, and errors. | `uv run loom analyze . --graph-name myrepo --exclude-tests --force` |
+| `loom query <text>` | Search indexed nodes semantically using embeddings and graph expansion. | `uv run loom query "how does login work" --graph-name myrepo --limit 10` |
+| `loom trace <mode> [target]` | Run traceability workflows like unimplemented, untraced, impact, tickets, and coverage. | `uv run loom trace impact PROJ-123 --graph-name myrepo` |
+| `loom calls` | Inspect `CALLS` relationships for a target node or dump a slice of the call graph. | `uv run loom calls --target App --direction both --graph-name myrepo` |
+| `loom entrypoints` | Show likely entrypoints, call roots, and relationship counts. | `uv run loom entrypoints --graph-name myrepo --limit 30` |
+| `loom watch` | Watch the filesystem and incrementally update the graph. | `uv run loom watch . --graph-name myrepo --debounce 500` |
+| `loom sync` | Sync changes between two git SHAs into the graph. | `uv run loom sync --old-sha abc --new-sha def --graph-name myrepo --repo-path .` |
+| `loom serve` | Start the MCP server over stdio. | `uv run loom serve --graph-name myrepo` |
+| `loom --dev` | Verify the package imports correctly. | `uv run loom --dev` |
 
----
+## MCP integration
 
-## How it works
+Loom exposes an MCP server so agents can query the graph directly.
 
-Loom builds a property graph in FalkorDB where **code symbols** and **document sections** are both nodes, connected by typed edges.
+Example Windsurf MCP config:
 
+```json
+{
+  "mcpServers": {
+    "loom": {
+      "command": "uv",
+      "args": ["run", "loom", "serve", "--graph-name", "loom_graph"],
+      "cwd": "F:\\loom"
+    }
+  }
+}
 ```
-validate_user()  ──[CALLS]──────────▶  hash_password()
-validate_user()  ──[IMPLEMENTS]──────▶  §3.2.4 Input Validation
-validate_user()  ──[MEMBER_OF]───────▶  community:auth
-§3.2.4           ──[CHILD_OF]─────────▶  Chapter 3: Security
-```
 
-**Semantic linking**: Loom links code and docs via:
-1. **Name matching**
-2. **Embedding similarity**
-3. **LLM fallback** (optional)
+Once connected, MCP clients can use Loom tools such as:
 
-Embeddings are persisted during indexing, community detection runs after indexing, and traceability queries can traverse Jira-linked documentation and code symbols.
+- **`search_code`**
+- **`get_callers`**
+- **`get_spec`**
+- **`check_drift`**
+- **`get_impact`**
+- **`get_ticket`**
+- **`unimplemented`**
 
----
+## Architecture overview
 
-## Architecture
-
-```
+```text
 src/loom/
-├── core/                 # Core graph domain + FalkorDB facade
-│   ├── node.py           # Node model (code symbols + doc sections)
-│   ├── edge.py           # Edge model + EdgeType
-│   ├── graph.py          # LoomGraph async facade
-│   └── falkor/           # FalkorDB data-access implementation details
-│       ├── gateway.py    # Connection + low-level query execution
-│       ├── repositories.py
-│       ├── queries.py
-│       ├── mappers.py
-│       └── schema.py     # Index + vector index initialization
-│
-├── ingest/               # code, docs, and Jira ingestion
-├── analysis/             # summarization, calls, communities, coupling
-├── embed/                # embedding generation + similarity helpers
-├── linker/               # cross-domain semantic linking
-├── search/               # semantic search layer
-├── watch/                # file watching + incremental updates
-├── drift/                # drift detection
-├── llm/                  # LLM client
+├── core/                 # Node/edge models, graph facade, FalkorDB access
+├── ingest/               # repo parsing, docs ingestion, Jira sync, incremental sync
+├── analysis/             # calls, communities, coupling, summarization
+├── embed/                # embeddings and similarity helpers
+├── linker/               # semantic linking between code and docs
+├── search/               # query-time search over graph state
 ├── query/                # traceability queries
-└── mcp/                  # MCP server tools
-
-tests/
-├── unit/
-├── integration/
-└── fixtures/
+├── drift/                # AST and semantic drift detection
+├── watch/                # filesystem-driven incremental updates
+└── mcp/                  # MCP server integration
 ```
 
----
+For deeper technical details, see:
 
-## What you get today
-
-- **Code indexing** into a graph model (nodes + typed edges)
-- **Multi-language parsing** (Java, TypeScript/JavaScript, Python)
-- **Config + markup awareness** (e.g. properties/env/json/yaml/html/css metadata)
-- **Document + Jira ingestion** for traceability workflows
-- **Semantic linking** between code and docs
-- **Semantic search** over summaries and embeddings
-- **Community detection** with `COMMUNITY` nodes and `MEMBER_OF` edges
-- **Watch mode** for live repository updates
-- **MCP server** for agent/editor integrations
-
-## Technical details
-
-See:
-
+- `docs/ARCHITECTURE.md`
 - `docs/TECHNICAL_CAPABILITIES.md`
-
----
-
-## Cost
-
-**Building Loom: $0.** Everything runs locally.
-
-- FalkorDB: free, runs in Docker
-- Embeddings: local nomic model, no API
-- LLM calls: use Ollama locally (free) or OpenAI API (~$0.05/index run)
-- All libraries: open source
-
-**Hosting for others:** ~$6/month Hetzner VPS for the first 50 users.
-
----
+- `docs/USAGE.md`
 
 ## Development
 
+Clone and set up:
+
 ```bash
-# Clone and set up
 git clone https://github.com/ddevilz/loom
 cd loom
 uv sync
+```
 
-# Start FalkorDB
-docker compose up -d
+Run tests:
 
-# Run tests
+```bash
 uv run pytest
+```
 
-# Run with coverage
-uv run pytest --cov=loom --cov-report=term-missing
+Run static checks:
 
-# Lint
+```bash
 uv run ruff check .
 uv run mypy src/
 ```
 
----
+## Current state of the product
 
-## Roadmap
+Loom already provides:
 
-**v0.1** *(current sprint)*
-- [x] Project setup + environment
-- [x] Node + Edge models (graph schema)
-- [x] FalkorDB CRUD layer + indexes
-- [x] Multi-language code parser (Java, TypeScript, JavaScript, Python)
-- [x] Advanced parser features (annotations, imports, decorators, async)
-- [x] PDF/Markdown doc pipeline
-- [x] Semantic linker (3-tier)
-- [x] Dual-traversal search
-- [x] Watch mode + drift detection
-- [x] MCP server tools
-- [x] CLI for analyze/query/trace/calls/entrypoints/sync/watch/serve
+- **Graph-backed repository indexing**
+- **Incremental sync correctness paths**
+- **Watch mode**
+- **Semantic search**
+- **Traceability queries**
+- **MCP serving**
+- **Document and Jira ingestion hooks**
 
-**v0.2** *(algorithms sprint)*
-- [ ] Personalized PageRank for impact scoring
-- [ ] Cross-encoder reranking in linker
-- [ ] GumTree-style AST diffing for precise drift
+The project is actively evolving in areas like ranking, deeper drift detection, and richer external knowledge connectors.
 
-**v0.3**
-- [ ] RAPTOR hierarchical doc summaries
-- [ ] HippoRAG search
-- [ ] Confluence + Notion connectors
+## Documentation
 
----
+- `README.md` for product overview
+- `docs/USAGE.md` for day-to-day usage
+- `docs/ARCHITECTURE.md` for system design
+- `docs/TECHNICAL_CAPABILITIES.md` for feature details
+- `docs/MANUAL_INTERVENTION_ERRORS.md` for operational troubleshooting
 
 ## License
 
-MIT — use it, build on it, ship products with it.
+MIT — use it, extend it, and build on top of it.

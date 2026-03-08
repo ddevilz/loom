@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any, AsyncIterable, Awaitable, Callable, Protocol
 
@@ -8,6 +7,13 @@ from watchfiles import Change, awatch
 
 from loom.core import LoomGraph, EdgeType
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
+from loom.ingest.utils import (
+    delete_nodes_by_ids,
+    get_node_ids_by_path,
+    invalidate_edges_for_file,
+    mark_human_edges_stale_for_node,
+    node_has_human_edges,
+)
 from loom.ingest.pipeline import index_repo
 
 
@@ -23,15 +29,19 @@ async def _default_indexer(repo_path: str, graph: LoomGraph | _Graph) -> object:
     return await index_repo(repo_path, graph)
 
 
-async def _delete_nodes_by_path(graph: LoomGraph | _Graph, *, path: str) -> None:
-    await graph.query("MATCH (n {path: $path}) DETACH DELETE n", {"path": path})
-
-
 async def _flag_changed_loom_edges(graph: LoomGraph | _Graph, *, path: str) -> None:
     loom_impl_rel = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
     await graph.query(
         f"""
 MATCH (n {{path: $path}})-[r:{loom_impl_rel}]->()
+SET r.stale = true,
+    r.stale_reason = 'source_changed'
+""",
+        {"path": path},
+    )
+    await graph.query(
+        f"""
+MATCH ()-[r:{loom_impl_rel}]->(n {{path: $path}})
 SET r.stale = true,
     r.stale_reason = 'source_changed'
 """,
@@ -65,13 +75,21 @@ async def watch_repo(
         }
 
         for path in sorted(deleted_paths):
-            await _delete_nodes_by_path(graph, path=path)
             await _flag_changed_loom_edges(graph, path=path)
+            await invalidate_edges_for_file(graph, path=path)
+            ids = await get_node_ids_by_path(graph, path=path)
+            preserved: list[str] = []
+            for node_id in ids:
+                if await node_has_human_edges(graph, node_id=node_id):
+                    preserved.append(node_id)
+                    await mark_human_edges_stale_for_node(graph, node_id=node_id, reason="file_deleted")
+            deletable = [node_id for node_id in ids if node_id not in set(preserved)]
+            await delete_nodes_by_ids(graph, deletable)
 
         if changed_paths - deleted_paths:
-            await indexer(repo_path, graph)
             for path in sorted(changed_paths - deleted_paths):
                 await _flag_changed_loom_edges(graph, path=path)
+            await indexer(repo_path, graph)
 
         processed += len(changes)
         if stop_after_events is not None and processed >= stop_after_events:

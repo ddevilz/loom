@@ -177,8 +177,7 @@ def parse_rust(path: str, *, exclude_tests: bool = False) -> list[Node]:
     p = Path(path)
     src = p.read_bytes()
 
-    parser = Parser()
-    parser.language = _RUST_LANGUAGE
+    parser = Parser(_RUST_LANGUAGE)
     tree = parser.parse(src)
 
     out: list[Node] = []

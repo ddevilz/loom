@@ -229,8 +229,7 @@ def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:
     p = Path(path)
     src = p.read_bytes()
 
-    parser = Parser()
-    parser.language = _JS_LANGUAGE
+    parser = Parser(_JS_LANGUAGE)
     tree = parser.parse(src)
 
     out: list[Node] = []

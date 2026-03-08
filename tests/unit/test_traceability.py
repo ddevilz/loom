@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from loom.query.traceability import impact_of_ticket, sprint_code_coverage, tickets_for_function, unimplemented_tickets, untraced_functions, untraced_functions_limited
+from loom.core import NodeKind
+from loom.query.traceability import _row_to_code_node, _row_to_doc_node, impact_of_ticket, sprint_code_coverage, tickets_for_function, unimplemented_tickets, untraced_functions, untraced_functions_limited
 
 
 class _FakeGraph:
@@ -54,5 +55,51 @@ async def test_untraced_functions_limited_passes_limit_and_path_prefix() -> None
 async def test_sprint_code_coverage_returns_report() -> None:
     graph = _FakeGraph([{"ticket_count": 3, "linked_function_count": 5}])
     report = await sprint_code_coverage("Sprint 1", graph)
-    assert report.ticket_count == 3
-    assert report.linked_function_count == 5
+    assert report.ticket_count == 0
+    assert report.linked_function_count == 0
+
+
+@pytest.mark.asyncio
+async def test_sprint_code_coverage_decodes_json_metadata_and_counts_distinct_matches() -> None:
+    graph = _FakeGraph(
+        [
+            {"function_id": "function:x:f1", "ticket_id": "doc:jira:PROJ-1", "metadata": '{"sprint": "Sprint 1"}'},
+            {"function_id": "function:x:f2", "ticket_id": "doc:jira:PROJ-1", "metadata": '{"sprint": "Sprint 1"}'},
+            {"function_id": "function:x:f3", "ticket_id": "doc:jira:PROJ-2", "metadata": {"sprint": "Sprint 2"}},
+        ]
+    )
+
+    report = await sprint_code_coverage("Sprint 1", graph)
+
+    assert report.ticket_count == 1
+    assert report.linked_function_count == 2
+
+
+def test_row_to_code_node_falls_back_to_function_for_invalid_kind() -> None:
+    node = _row_to_code_node({"id": "function:x:f", "kind": "not_a_kind", "name": "f", "summary": "s", "path": "x", "metadata": {}})
+
+    assert node.kind == NodeKind.FUNCTION
+
+
+def test_row_to_code_node_decodes_json_metadata() -> None:
+    node = _row_to_code_node({"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": '{"owner": "team-a"}'})
+
+    assert node.metadata == {"owner": "team-a"}
+
+
+def test_row_to_doc_node_preserves_valid_doc_kind() -> None:
+    node = _row_to_doc_node({"id": "doc:spec:ch1", "kind": "chapter", "name": "Chapter 1", "summary": "s", "path": "spec.md", "metadata": {}})
+
+    assert node.kind == NodeKind.CHAPTER
+
+
+def test_row_to_doc_node_falls_back_to_section_for_invalid_kind() -> None:
+    node = _row_to_doc_node({"id": "doc:spec:s1", "kind": "function", "name": "Spec", "summary": "s", "path": "spec.md", "metadata": {}})
+
+    assert node.kind == NodeKind.SECTION
+
+
+def test_row_to_doc_node_decodes_json_metadata() -> None:
+    node = _row_to_doc_node({"id": "doc:spec:s1", "kind": "section", "name": "Spec", "summary": "s", "path": "spec.md", "metadata": '{"sprint": "Sprint 1"}'})
+
+    assert node.metadata == {"sprint": "Sprint 1"}

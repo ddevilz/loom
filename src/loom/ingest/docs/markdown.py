@@ -32,10 +32,12 @@ def parse_markdown(path: str) -> tuple[list[Node], list[Edge]]:
     headings: list[tuple[int, str, int]] = []
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        if not line.startswith("#"):
+        stripped = line.lstrip(" ")
+        leading_spaces = len(line) - len(stripped)
+        if leading_spaces > 3 or not stripped.startswith("#"):
             continue
-        hashes = len(line) - len(line.lstrip("#"))
-        title = line[hashes:].strip()
+        hashes = len(stripped) - len(stripped.lstrip("#"))
+        title = stripped[hashes:].strip()
         if not title:
             continue
         headings.append((hashes, title, i))

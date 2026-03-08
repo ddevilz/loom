@@ -4,10 +4,26 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
+IndexPhase = Literal[
+    "parse",
+    "calls",
+    "persist",
+    "summarize",
+    "link",
+    "embed",
+    "communities",
+    "hash",
+    "invalidate",
+    "jira",
+    "coupling",
+    "process",
+]
+
+
 @dataclass(frozen=True)
 class IndexError:
     path: str
-    phase: Literal["parse", "calls", "persist", "summarize", "link", "embed", "communities"]
+    phase: IndexPhase
     message: str
 
 

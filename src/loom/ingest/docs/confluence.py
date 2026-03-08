@@ -82,7 +82,7 @@ def _normalize_page(page: dict[str, Any], config: ConfluenceConfig) -> Node:
     version = (page.get("version") or {}).get("number")
     return Node(
         id=f"doc:confluence:{page_id}",
-        kind=NodeKind.SECTION,
+        kind=NodeKind.DOCUMENT,
         source=NodeSource.DOC,
         name=title,
         summary=f"{title}. {str(body)[:500]}".strip(),

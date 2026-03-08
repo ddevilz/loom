@@ -65,3 +65,27 @@ async def test_get_changed_files_filters_and_handles_rename(tmp_path: Path) -> N
 
     # Ensure delete is present for b.ts (supported extension)
     assert any(c.status == "D" and c.path.endswith("b.ts") for c in changes)
+
+
+@pytest.mark.asyncio
+async def test_get_changed_files_filters_minified_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    _git(str(repo), "init")
+    _git(str(repo), "config", "user.email", "test@example.com")
+    _git(str(repo), "config", "user.name", "Test")
+
+    (repo / "app.js").write_text("function app() { return 1; }\n", encoding="utf-8")
+    _git(str(repo), "add", ".")
+    _git(str(repo), "commit", "-m", "init")
+    old = _git(str(repo), "rev-parse", "HEAD").strip()
+
+    (repo / "bundle.min.js").write_text("function x(){return 1;}\n", encoding="utf-8")
+    _git(str(repo), "add", ".")
+    _git(str(repo), "commit", "-m", "add minified")
+    new = _git(str(repo), "rev-parse", "HEAD").strip()
+
+    changes = await get_changed_files(str(repo), old, new)
+
+    assert all(not c.path.endswith("bundle.min.js") for c in changes)

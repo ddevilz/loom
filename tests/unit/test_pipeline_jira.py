@@ -45,7 +45,7 @@ async def test_index_repo_with_jira_adds_jira_nodes(monkeypatch, tmp_path) -> No
     monkeypatch.setattr("loom.ingest.pipeline._collect_repo_files", lambda root: [])
     monkeypatch.setattr(
         "loom.ingest.pipeline.fetch_jira_nodes",
-        lambda cfg: [Node(id="doc:jira:PROJ-1", kind=NodeKind.SECTION, source=NodeSource.DOC, name="PROJ-1", path="jira://PROJ/PROJ-1", summary="req", metadata={})],
+        lambda cfg: [Node(id="doc:jira:PROJ-1", kind=NodeKind.DOCUMENT, source=NodeSource.DOC, name="PROJ-1", path="jira://PROJ/PROJ-1", summary="req", metadata={})],
     )
     linker = _FakeSemanticLinker()
     monkeypatch.setattr("loom.ingest.pipeline.SemanticLinker", lambda: linker)

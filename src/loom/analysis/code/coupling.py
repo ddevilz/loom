@@ -15,6 +15,10 @@ from loom.core import Edge, EdgeType, NodeKind
 logger = logging.getLogger(__name__)
 
 
+def _to_file_node_id(repo_root: Path, file_path: str) -> str:
+    return f"{NodeKind.FILE.value}:{str((repo_root / file_path).resolve())}"
+
+
 async def _open_repo(repo_path: str) -> git.Repo | None:
     try:
         return await asyncio.to_thread(git.Repo, repo_path, search_parent_directories=True)
@@ -47,6 +51,12 @@ async def analyze_coupling(
     repo = await _open_repo(repo_path)
     if repo is None:
         return []
+
+    repo_root = repo.working_tree_dir
+    if not isinstance(repo_root, str) or not repo_root:
+        logger.warning("Repository working tree root is unavailable for %s", repo_path)
+        return []
+    repo_root_path = Path(repo_root)
     
     # Calculate cutoff date
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=months * 30)
@@ -139,12 +149,12 @@ async def analyze_coupling(
         if coupling_frequency >= threshold:
             # Map coupling frequency to confidence (0.3-1.0 → 0.3-1.0)
             confidence = coupling_frequency
-            
-            # Create bidirectional edges (A coupled with B, B coupled with A)
+
+            # Create a single canonical edge for the symmetric file pair.
             edges.append(
                 Edge(
-                    from_id=f"{NodeKind.FILE.value}:{file_a}",
-                    to_id=f"{NodeKind.FILE.value}:{file_b}",
+                    from_id=_to_file_node_id(repo_root_path, file_a),
+                    to_id=_to_file_node_id(repo_root_path, file_b),
                     kind=EdgeType.COUPLED_WITH,
                     confidence=confidence,
                     metadata={
@@ -156,25 +166,9 @@ async def analyze_coupling(
                     },
                 )
             )
-            
-            edges.append(
-                Edge(
-                    from_id=f"{NodeKind.FILE.value}:{file_b}",
-                    to_id=f"{NodeKind.FILE.value}:{file_a}",
-                    kind=EdgeType.COUPLED_WITH,
-                    confidence=confidence,
-                    metadata={
-                        "coupling_frequency": coupling_frequency,
-                        "cooccurrence_count": cooccurrence_count,
-                        "file_a_appearances": appearances_b,
-                        "file_b_appearances": appearances_a,
-                        "analysis_months": months,
-                    },
-                )
-            )
     
     logger.info(
-        f"Found {len(edges) // 2} coupled file pairs "
+        f"Found {len(edges)} coupled file pairs "
         f"(threshold={threshold}, {len(file_changes_per_commit)} commits analyzed)"
     )
     

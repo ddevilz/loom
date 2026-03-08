@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from loom.core import NodeKind
+from loom.ingest.code.registry import get_registry
 from loom.ingest.code.languages.python import parse_python
 
 
@@ -171,6 +172,29 @@ def test_parse_code_parses_python(tmp_path: Path):
     nodes = parse_code(str(p))
     assert len(nodes) == 1
     assert nodes[0].name == "hello"
+
+
+def test_registry_exposes_call_tracer_capability_for_supported_languages():
+    reg = get_registry()
+
+    py_handler = reg.get_handler_for_path("example.py")
+    ts_handler = reg.get_handler_for_path("example.ts")
+    java_handler = reg.get_handler_for_path("Example.java")
+    js_handler = reg.get_handler_for_path("example.js")
+
+    assert py_handler is not None and py_handler.call_tracer is not None
+    assert ts_handler is not None and ts_handler.call_tracer is not None
+    assert java_handler is not None and java_handler.call_tracer is not None
+    assert js_handler is not None and js_handler.call_tracer is None
+
+
+def test_registry_get_handler_for_path_special_cases_env_files():
+    reg = get_registry()
+
+    handler = reg.get_handler_for_path(".env.local")
+
+    assert handler is not None
+    assert handler.parser is reg.get_parser(".env")
 
 
 # ── parse_tree directory walker ─────────────────────────────────────

@@ -341,8 +341,7 @@ def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:
     p = Path(path)
     src = p.read_bytes()
 
-    parser = Parser()
-    parser.language = _JAVA_LANGUAGE
+    parser = Parser(_JAVA_LANGUAGE)
     tree = parser.parse(src)
 
     package = _extract_package(src, tree.root_node)

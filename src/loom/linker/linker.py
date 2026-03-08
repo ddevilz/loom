@@ -5,8 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from loom.analysis.code.summarizer import LLMClient as SummaryLLMClient
-from loom.analysis.code.summarizer import summarize_nodes
-from loom.core import Edge, Node
+from loom.core import Edge, EdgeOrigin, Node
 from loom.linker.embed_match import link_by_embedding
 from loom.linker.llm_match import link_by_llm
 from loom.linker.name_match import link_by_name
@@ -37,26 +36,20 @@ class SemanticLinker:
         doc_nodes: list[Node],
         graph: _Graph,
     ) -> list[Edge]:
-        summarized_code = await summarize_nodes(code_nodes, llm=self.summary_llm)
+        summarized_code = code_nodes
 
         tier1 = link_by_name(summarized_code, doc_nodes, threshold=self.name_threshold)
-        matched_code_ids = {e.from_id for e in tier1}
-        matched_doc_ids = {e.to_id for e in tier1}
-
-        unmatched_code = [n for n in summarized_code if n.id not in matched_code_ids]
-        unmatched_doc = [n for n in doc_nodes if n.id not in matched_doc_ids]
-
         tier2 = await link_by_embedding(
-            unmatched_code,
-            unmatched_doc,
+            summarized_code,
+            doc_nodes,
             threshold=self.embedding_threshold,
             graph=graph,
         )
         if self.reranker is not None and tier2:
             tier2 = rerank_edges(
                 tier2,
-                code_nodes=unmatched_code,
-                doc_nodes=unmatched_doc,
+                code_nodes=summarized_code,
+                doc_nodes=doc_nodes,
                 reranker=self.reranker,
                 threshold=self.rerank_threshold,
             )
@@ -64,13 +57,9 @@ class SemanticLinker:
 
         if self.llm_fallback:
             if self.match_llm is not None:
-                matched_code_ids = {e.from_id for e in all_edges}
-                matched_doc_ids = {e.to_id for e in all_edges}
-                still_unmatched_code = [n for n in summarized_code if n.id not in matched_code_ids]
-                still_unmatched_doc = [n for n in doc_nodes if n.id not in matched_doc_ids]
                 tier3 = await link_by_llm(
-                    still_unmatched_code,
-                    still_unmatched_doc,
+                    summarized_code,
+                    doc_nodes,
                     llm=self.match_llm,
                     threshold=self.llm_threshold,
                 )
@@ -88,6 +77,14 @@ class SemanticLinker:
         for edge in edges:
             key = (edge.from_id, edge.to_id, edge.kind.value)
             current = best.get(key)
-            if current is None or edge.confidence > current.confidence:
+            if current is None:
+                best[key] = edge
+                continue
+            if current.origin == EdgeOrigin.HUMAN and edge.origin != EdgeOrigin.HUMAN:
+                continue
+            if edge.origin == EdgeOrigin.HUMAN and current.origin != EdgeOrigin.HUMAN:
+                best[key] = edge
+                continue
+            if edge.confidence > current.confidence:
                 best[key] = edge
         return list(best.values())

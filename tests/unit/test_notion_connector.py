@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from loom.core import NodeKind
 from loom.ingest.docs.notion import NotionConfig, fetch_notion_nodes
 
 
@@ -27,4 +28,5 @@ async def test_fetch_notion_nodes_maps_pages(monkeypatch) -> None:
     nodes = await fetch_notion_nodes(NotionConfig(api_token="tok", database_id="db1"))
     assert len(nodes) == 1
     assert nodes[0].name == "Platform Plan"
+    assert nodes[0].kind == NodeKind.DOCUMENT
     assert nodes[0].metadata["url"] == "https://notion.so/page"

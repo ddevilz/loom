@@ -31,8 +31,14 @@ class NodeRepository:
         rows = self._gw.query_rows(cypher.GET_NODE_BY_ID, params={"id": node_id})
         if not rows:
             return None
-        props = deserialize_node_props(rows[0]["props"])
-        return Node.model_validate(props)
+        props = rows[0].get("props")
+        if not isinstance(props, dict):
+            return None
+        props = deserialize_node_props(props)
+        try:
+            return Node.model_validate(props)
+        except Exception:
+            return None
 
     def delete(self, node_id: str) -> None:
         self._gw.run(cypher.DELETE_NODE_BY_ID, params={"id": node_id})
@@ -120,8 +126,14 @@ class TraversalRepository:
             for row in rows:
                 from_id = row.get("from_id")
                 to_id = row.get("to_id")
-                props = deserialize_node_props(row["props"])
-                node = Node.model_validate(props)
+                props = row.get("props")
+                if not isinstance(props, dict):
+                    continue
+                props = deserialize_node_props(props)
+                try:
+                    node = Node.model_validate(props)
+                except Exception:
+                    continue
                 if isinstance(from_id, str) and isinstance(to_id, str):
                     graph_nodes.add(from_id)
                     graph_nodes.add(to_id)

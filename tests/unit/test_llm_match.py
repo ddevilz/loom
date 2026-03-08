@@ -16,6 +16,11 @@ class _FakeLLM:
         return self.payload
 
 
+class _ListLLM:
+    async def complete(self, *, prompt: str, model: str | None = None) -> str:
+        return '[]'
+
+
 @pytest.mark.asyncio
 async def test_link_by_llm_emits_edge_when_implements_true_and_over_threshold() -> None:
     code = Node(
@@ -40,6 +45,8 @@ async def test_link_by_llm_emits_edge_when_implements_true_and_over_threshold() 
     llm = _FakeLLM('{"implements": true, "confidence": 0.9, "reason": "matches"}')
     edges = await link_by_llm([code], [doc], llm=llm, threshold=0.6)
     assert edges
+    assert edges[0].from_id == code.id
+    assert edges[0].to_id == doc.id
     assert llm.calls == 1
 
 

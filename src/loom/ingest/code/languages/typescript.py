@@ -489,8 +489,7 @@ def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:
     src = p.read_bytes()
 
     is_tsx = p.suffix.lower() == ".tsx"
-    parser = Parser()
-    parser.language = _TSX_LANGUAGE if is_tsx else _TS_LANGUAGE
+    parser = Parser(_TSX_LANGUAGE if is_tsx else _TS_LANGUAGE)
     tree = parser.parse(src)
 
     out: list[Node] = []
