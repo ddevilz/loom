@@ -117,6 +117,13 @@ def test_row_to_node_decodes_json_metadata() -> None:
     assert node.metadata == {"owner": "team-a"}
 
 
+def test_row_to_node_preserves_module_kind_for_module_ids() -> None:
+    node = _row_to_node({"id": "module:x:m", "kind": "module", "name": "m", "summary": "s", "path": "x", "metadata": {}})
+
+    assert node.kind == NodeKind.MODULE
+    assert node.source == NodeSource.CODE
+
+
 def test_row_to_node_falls_back_for_missing_code_kind() -> None:
     node = _row_to_node({"id": "function:x:f", "name": "f", "summary": "s", "path": "x", "metadata": {}})
 
