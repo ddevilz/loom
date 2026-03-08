@@ -528,8 +528,6 @@ def enrich(
 @app.command()
 def serve(
     graph_name: str = typer.Option("loom", "--graph-name"),
-    host: str = typer.Option("localhost", "--host"),
-    port: int = typer.Option(8000, "--port"),
 ) -> None:
     """Start the MCP server for Claude Code integration."""
     from loom.mcp.server import build_server
@@ -538,7 +536,6 @@ def serve(
     console.print("[bold green]Starting Loom MCP server...[/bold green]")
     console.print(f"Graph: {graph_name}")
     console.print(f"Database: {LOOM_DB_HOST}:{LOOM_DB_PORT}")
-    console.print(f"Server: http://{host}:{port}")
 
     mcp = build_server(graph_name=graph_name)
     mcp.run(transport="stdio")

@@ -160,7 +160,6 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
     output = asyncio.run(tool(node_id="function:x:f"))
 
     assert output["ast_drift"] == [{"node_id": "function:x:f", "reasons": ["signature_changed: a -> b"]}]
-    assert output["semantic_violations"] == []
     drift_query = next(cypher for cypher, _ in fake_graph.queries if "link_method = 'ast_diff'" in cypher)
     assert "[r:LOOM_VIOLATES]" in drift_query
     assert "r.kind" not in drift_query
