@@ -267,3 +267,26 @@ def test_trace_calls_auth_fixture_integration():
     
     for edge in edges:
         assert 0.5 <= edge.confidence <= 1.0
+
+
+def test_build_file_batch_emits_contains_edges_for_nested_symbols(tmp_path: Path):
+    from loom.ingest.code.languages.python import parse_python
+    from loom.ingest.incremental import _build_file_batch
+
+    test_file = tmp_path / "nested.py"
+    test_file.write_text(
+        "def outer():\n"
+        "    def inner():\n"
+        "        return 1\n"
+        "    return inner()\n",
+        encoding="utf-8",
+    )
+
+    nodes = parse_python(str(test_file))
+    _, edges = _build_file_batch(str(test_file), nodes)
+
+    outer = next(n for n in nodes if n.name == "outer")
+    inner = next(n for n in nodes if n.name == "inner")
+    contains_edges = [e for e in edges if e.kind == EdgeType.CONTAINS]
+
+    assert any(e.from_id == outer.id and e.to_id == inner.id for e in contains_edges)

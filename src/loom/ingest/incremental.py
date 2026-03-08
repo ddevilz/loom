@@ -55,11 +55,26 @@ def _trace_calls_for_path(path: str, nodes: list[Node]) -> list[Edge]:
     return handler.call_tracer(path, nodes)
 
 
+def _build_contains_edges(nodes: list[Node]) -> list[Edge]:
+    return [
+        Edge(
+            from_id=node.parent_id,
+            to_id=node.id,
+            kind=EdgeType.CONTAINS,
+            origin=EdgeOrigin.COMPUTED,
+            confidence=1.0,
+        )
+        for node in nodes
+        if isinstance(node.parent_id, str) and node.parent_id
+    ]
+
+
 def _build_file_batch(path: str, nodes: list[Node]) -> tuple[list[Node], list[Edge]]:
     file_hash = content_hash_bytes(Path(path).read_bytes())
     file_node = _make_file_node(path, content_hash=file_hash)
     call_edges = _trace_calls_for_path(path, nodes)
-    return [file_node, *nodes], call_edges
+    contains_edges = _build_contains_edges(nodes)
+    return [file_node, *nodes], [*contains_edges, *call_edges]
 
 
 async def _run_or_append_error(
