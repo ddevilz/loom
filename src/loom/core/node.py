@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 class NodeKind(StrEnum):
     FUNCTION = "function"
+    MODULE = "module"
     CLASS = "class"
     METHOD = "method"
     INTERFACE = "interface"
