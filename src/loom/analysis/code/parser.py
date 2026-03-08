@@ -14,21 +14,14 @@ logger = logging.getLogger(__name__)
 def parse_code(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Parse a single file into Nodes. Returns [] for unsupported extensions."""
     reg = get_registry()
-    p = Path(path)
-    ext = p.suffix.lower()
-
-    # special-case env files: `.env`, `.env.local`, `.env.example`, etc.
-    if p.name.startswith(".env"):
-        ext = ".env"
-
-    if reg.should_skip_file(ext):
+    if reg.should_skip_path(path):
         return []
 
-    parser = reg.get_parser(ext)
-    if parser is None:
+    handler = reg.get_handler_for_path(path)
+    if handler is None:
         return []
 
-    return parser(path, exclude_tests=exclude_tests)
+    return handler.parser(path, exclude_tests=exclude_tests)
 
 
 def parse_tree(

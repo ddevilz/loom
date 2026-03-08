@@ -6,17 +6,122 @@ It is intentionally **high-level** (module and subsystem oriented) rather than a
 
 ---
 
+## System overview
+
+Loom is a graph-backed code intelligence system.
+
+It ingests:
+
+- source repositories
+- technical documentation
+- external knowledge sources such as Jira, Confluence, and Notion
+
+It then turns those inputs into a shared graph that can be:
+
+- queried semantically
+- traversed structurally
+- enriched incrementally
+- exposed to editors and agents through MCP
+
+### High-level architecture flow
+
+```mermaid
+flowchart LR
+    subgraph INPUT["Input Sources"]
+        REPO["Repository"]
+        DOCS["Docs"]
+        EXT["Jira / Confluence / Notion"]
+    end
+
+    subgraph INGEST["Ingestion"]
+        WALK["Repo Walker"]
+        PARSE["Language Parsers"]
+        DOCPARSE["Doc / Integration Parsers"]
+        INCR["Incremental Sync"]
+        WATCH["Watch Mode"]
+    end
+
+    subgraph ENRICH["Enrichment"]
+        CALLS["Call Tracing"]
+        SUMM["Summaries"]
+        EMBED["Embeddings"]
+        LINK["Semantic Linking"]
+        DRIFT["Drift Detection"]
+        COMMUNITY["Communities"]
+        COUPLING["Git Coupling"]
+    end
+
+    subgraph CORE["Core Graph Layer"]
+        MODELS["Node / Edge Models"]
+        GRAPH["LoomGraph API"]
+        REPOS["Repositories / Mappers / Cypher"]
+    end
+
+    subgraph STORAGE["Storage"]
+        FALKOR[("FalkorDB\nGraph + Vector Index")]
+    end
+
+    subgraph OUTPUT["Interfaces"]
+        SEARCH["Semantic Search"]
+        TRACE["Traceability Queries"]
+        CLI["CLI"]
+        MCP["MCP Server"]
+    end
+
+    REPO --> WALK
+    REPO --> INCR
+    REPO --> WATCH
+    DOCS --> DOCPARSE
+    EXT --> DOCPARSE
+
+    WALK --> PARSE
+    INCR --> PARSE
+    WATCH --> INCR
+
+    PARSE --> MODELS
+    DOCPARSE --> MODELS
+    PARSE --> CALLS
+    PARSE --> SUMM
+    DOCPARSE --> SUMM
+
+    SUMM --> EMBED
+    MODELS --> GRAPH
+    CALLS --> GRAPH
+    EMBED --> GRAPH
+    GRAPH --> FALKOR
+    REPOS --> FALKOR
+
+    FALKOR --> LINK
+    FALKOR --> DRIFT
+    FALKOR --> COMMUNITY
+    FALKOR --> COUPLING
+    LINK --> GRAPH
+    DRIFT --> GRAPH
+    COMMUNITY --> GRAPH
+    COUPLING --> GRAPH
+
+    FALKOR --> SEARCH
+    FALKOR --> TRACE
+    SEARCH --> CLI
+    TRACE --> CLI
+    SEARCH --> MCP
+    TRACE --> MCP
+```
+
+---
+
 ## Project goal (what we’re trying to achieve)
 
-Loom is a code/document ingestion and analysis system.
+Loom is a code, document, and traceability intelligence system.
 
 At a high level, Loom:
 
 - Walks a repository (gitignore-aware, safe directory traversal)
 - Parses supported files into a uniform internal representation (`Node` objects)
 - Extracts relationships between nodes (`Edge` objects), e.g. call graphs
+- Ingests documents and external systems into the same graph model
 - Stores and queries these nodes/edges in a graph database (FalkorDB)
-- Enables downstream analysis (communities/clustering, traversal, similarity search)
+- Enables downstream analysis (communities, coupling, traversal, search, drift, traceability)
 
 The design aim is to:
 
@@ -24,6 +129,31 @@ The design aim is to:
 - Treat non-code “markup/config” files as **first-class FILE nodes**
 - Keep IDs stable and deterministic so graphs are reproducible
 - Be resilient (skip unsupported files, tolerate parse errors)
+- Support both **full indexing** and **incremental updates**
+- Make the graph usable both for humans and for agent tooling
+
+---
+
+## Main subsystems
+
+At a system level, Loom is organized into a few major subsystems:
+
+- **Core graph model**
+  - `Node`, `Edge`, enums, ID conventions, and graph-facing APIs
+
+- **Persistence layer**
+  - FalkorDB gateway, repositories, Cypher helpers, schema initialization, vector index setup
+
+- **Ingestion layer**
+  - repository walking, code parsing, document ingestion, Jira sync, incremental sync, watch mode
+
+- **Analysis and enrichment**
+  - call tracing, summarization, embeddings, semantic linking, community detection, coupling, drift detection
+
+- **Interfaces**
+  - CLI commands and FastMCP tools
+
+These are intentionally separated so parsing, persistence, enrichment, and querying can evolve independently while still sharing one graph model.
 
 ---
 
@@ -72,6 +202,14 @@ Graph persistence is via FalkorDB.
 - Edges are stored as relationships between nodes
 - Schema initialization creates property indexes and a vector index on `Node.embedding` for similarity search
 
+The graph acts as the system of record for:
+
+- structural relationships
+- semantic links
+- traceability edges
+- embeddings
+- graph analysis outputs such as communities and coupling
+
 ---
 
 ## Parsing pipeline (end-to-end)
@@ -99,6 +237,51 @@ The core “ingest code” pipeline is in `loom.analysis.code.parser`:
 4. **Language parsers** (`loom.ingest.code.languages.*`)
    - Code languages typically use tree-sitter to extract functions/classes/etc.
    - Markup/config parsers create a `FILE` node with metadata rather than symbol extraction
+
+This parsing pipeline is only one part of ingestion. Full indexing also includes summarization, embedding, semantic linking, graph enrichment, and persistence.
+
+---
+
+## Full indexing lifecycle
+
+The main full-index workflow lives in `loom.ingest.pipeline.index_repo()`.
+
+At a high level it:
+
+1. discovers repository files
+2. parses changed or new files
+3. creates file and symbol nodes
+4. extracts call relationships where supported
+5. summarizes nodes
+6. generates embeddings
+7. persists graph state
+8. detects communities
+9. computes git coupling edges
+10. ingests docs and optional Jira nodes
+11. performs semantic linking between code and docs
+
+This means Loom is not just a parser. It is an ingest-and-enrich pipeline that builds a usable graph for search, traceability, and agents.
+
+---
+
+## Incremental update lifecycle
+
+Incremental updates are handled primarily by `loom.ingest.incremental.sync_commits()` and `loom.watch.watcher.watch_repo()`.
+
+Key behaviors:
+
+- git-diff-based changed file detection
+- node-level diffing based on content hashes
+- invalidation of stale computed edges on file change or delete
+- preservation and stale marking of human-linked relationships
+- rename-aware migration of human edges where possible
+- AST drift detection for changed code nodes
+- watch-mode reindexing on local filesystem change
+
+The architecture intentionally supports both:
+
+- **batch rebuilds** with `analyze`
+- **incremental graph maintenance** with `sync` and `watch`
 
 ---
 
@@ -226,8 +409,13 @@ Note: In this repo, tests are primarily run with `pytest` (via `uv run pytest ..
 - Primary parsing APIs:
   - `loom.analysis.code.parser.parse_repo()`
   - `loom.analysis.code.parser.parse_code()`
+- Primary indexing APIs:
+  - `loom.ingest.pipeline.index_repo()`
+  - `loom.ingest.incremental.sync_commits()`
 - Graph API:
   - `loom.core.graph.LoomGraph`
+- MCP entrypoint:
+  - `loom.mcp.server.build_server()`
 
 ---
 

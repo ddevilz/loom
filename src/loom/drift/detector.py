@@ -110,6 +110,8 @@ async def detect_violations(
                 data: dict[str, Any] = json.loads(raw)
             except Exception:
                 return None
+            if not isinstance(data, dict):
+                return None
 
             violates = data.get("violates")
             confidence = data.get("confidence")

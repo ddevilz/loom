@@ -7,7 +7,7 @@ import pytest
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.ingest.integrations.jira import JiraConfig
-from loom.ingest.integrations.jira_sync import sync_jira_updates
+from loom.ingest.integrations.jira_sync import _row_to_code_node, sync_jira_updates
 
 
 @dataclass
@@ -72,3 +72,33 @@ async def test_sync_jira_updates_marks_reopened_for_review(monkeypatch) -> None:
         JiraConfig(base_url="https://jira.example.com", email="a@b.com", api_token="tok", project_key="PROJ", last_synced_at="2025-01-01"),
     )
     assert any("needs_review" in q[0] for q in graph.queries)
+
+
+def test_row_to_code_node_falls_back_to_function_for_invalid_kind() -> None:
+    node = _row_to_code_node(
+        {
+            "id": "function:x:f",
+            "kind": "not_a_kind",
+            "name": "f",
+            "summary": "s",
+            "path": "x",
+            "metadata": {},
+        }
+    )
+
+    assert node.kind == NodeKind.FUNCTION
+
+
+def test_row_to_code_node_decodes_json_metadata() -> None:
+    node = _row_to_code_node(
+        {
+            "id": "function:x:f",
+            "kind": "function",
+            "name": "f",
+            "summary": "does work",
+            "path": "x",
+            "metadata": '{"owner": "team-a"}',
+        }
+    )
+
+    assert node.metadata == {"owner": "team-a"}

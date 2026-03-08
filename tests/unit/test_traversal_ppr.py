@@ -35,3 +35,30 @@ def test_traversal_repository_ranks_neighbors_with_ppr() -> None:
     assert "function:b.py:b" in ids[:2]
     assert "function:d.py:d" in ids[:2]
     assert ids.index("function:c.py:c") > ids.index("function:b.py:b")
+
+
+@dataclass
+class _MalformedRowGateway:
+    graph_name: str = "test"
+
+    def run(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None):
+        return None
+
+    def reconnect(self) -> None:
+        return None
+
+    def query_rows(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None):
+        ids = set((params or {}).get("ids") or [])
+        rows: list[dict[str, Any]] = []
+        if "a" in ids:
+            rows.append({"from_id": "a", "to_id": "broken", "props": "not-a-dict"})
+            rows.append({"from_id": "a", "to_id": "function:b.py:b", "props": {"id": "function:b.py:b", "kind": "function", "source": "code", "name": "b", "path": "b.py", "metadata": {}}})
+        return rows
+
+
+def test_traversal_repository_skips_malformed_rows() -> None:
+    repo = TraversalRepository(_MalformedRowGateway())
+
+    nodes = repo.neighbors("a", depth=1, edge_types=[EdgeType.CALLS])
+
+    assert [node.id for node in nodes] == ["function:b.py:b"]

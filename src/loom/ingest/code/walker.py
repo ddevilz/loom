@@ -11,6 +11,7 @@ from loom.ingest.code.registry import get_registry
 from loom.ingest.code.languages.constants import (
     EXT_CSS,
     EXT_CXML,
+    EXT_ENV,
     EXT_GO,
     EXT_HTM,
     EXT_HTML,
@@ -100,6 +101,10 @@ def _to_posix_rel(root: Path, p: Path) -> str:
     return str(p.relative_to(root)).replace("\\", "/")
 
 
+def _to_posix_abs(p: Path) -> str:
+    return p.resolve().as_posix()
+
+
 def walk_repo(
     path: str,
     *,
@@ -152,20 +157,15 @@ def walk_repo(
                     if spec.match_file(rel):
                         continue
 
-                    # special-case .env files: suffix may be empty (".env") or misleading (".example")
-                    if name.startswith(".env"):
-                        results.setdefault(LANG_ENV, []).append(str(entry_path))
+                    ext = registry.get_extension_for_path(str(entry_path))
+                    if registry.should_skip_path(str(entry_path)):
                         continue
 
-                    ext = entry_path.suffix.lower()
-                    if registry.should_skip_file(ext, filename=name):
-                        continue
-
-                    lang = _EXT_TO_LANGUAGE.get(ext)
+                    lang = LANG_ENV if ext == EXT_ENV else _EXT_TO_LANGUAGE.get(ext)
                     if lang is None:
                         continue
 
-                    results.setdefault(lang, []).append(str(entry_path))
+                    results.setdefault(lang, []).append(_to_posix_abs(entry_path))
 
         except (PermissionError, FileNotFoundError):
             continue

@@ -17,11 +17,12 @@ from loom.core.content_hash import content_hash_bytes
 from loom.embed.embedder import embed_nodes
 from loom.ingest.code.walker import walk_repo
 from loom.ingest.errors import append_index_error
-from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
-from loom.ingest.utils import invalidate_edges_for_file
+from loom.ingest.result import IndexError, IndexResult
+from loom.ingest.utils import get_doc_nodes_for_linking, invalidate_edges_for_file, merge_nodes_by_id
+from loom.ingest.code.registry import get_registry
 from loom.linker.linker import SemanticLinker
 
-from loom.ingest.result import IndexError, IndexResult
+from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
 
 
 def _merge_file_result(batch: _IndexBatch, file_result: _FileProcessResult) -> None:
@@ -42,8 +43,9 @@ class _Graph(Protocol):
 
 
 _GET_FILE_NODES = "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash"
-
 _DELETE_NODE_BY_ID = "MATCH (n {id: $id}) DETACH DELETE n"
+_DELETE_NODES_BY_PATH = "MATCH (n {path: $path}) DETACH DELETE n"
+_DELETE_NODES_BY_PATH_PREFIX = "MATCH (n) WHERE n.path STARTS WITH $path_prefix DETACH DELETE n"
 _COUNT_NODES = "MATCH (n) RETURN count(n) AS c"
 _COUNT_EDGES = "MATCH ()-[r]->() RETURN count(r) AS c"
 _DEFAULT_INGEST_CONCURRENCY = 8
@@ -54,17 +56,9 @@ class _IndexBatch:
     files_skipped: int = 0
     files_updated: int = 0
     files_added: int = 0
-    nodes_to_upsert: list[Node] | None = None
-    edges_to_upsert: list[Edge] | None = None
-    errors: list[IndexError] | None = None
-
-    def __post_init__(self) -> None:
-        if self.nodes_to_upsert is None:
-            self.nodes_to_upsert = []
-        if self.edges_to_upsert is None:
-            self.edges_to_upsert = []
-        if self.errors is None:
-            self.errors = []
+    nodes_to_upsert: list[Node] = field(default_factory=list)
+    edges_to_upsert: list[Edge] = field(default_factory=list)
+    errors: list[IndexError] = field(default_factory=list)
 
 
 @dataclass
@@ -82,6 +76,14 @@ CallTracer = Callable[[str, list[Node]], list[Edge]]
 
 def _file_node_id(path: str) -> str:
     return f"{NodeKind.FILE.value}:{path}"
+
+
+def _path_from_file_node_id(file_id: str) -> str | None:
+    prefix = f"{NodeKind.FILE.value}:"
+    if not file_id.startswith(prefix):
+        return None
+    path = file_id[len(prefix):]
+    return path or None
 
 
 def _compute_file_hash(path: str) -> str:
@@ -133,20 +135,10 @@ def _collect_repo_files(root: str) -> list[str]:
 
 
 def _get_call_tracer(path: str) -> tuple[CallTracer | None, str | None]:
-    lower = path.lower()
-    if lower.endswith(".py"):
-        from loom.analysis.code.calls import trace_calls_for_file
-
-        return trace_calls_for_file, "python call tracing failed"
-    if lower.endswith((".ts", ".tsx")):
-        from loom.analysis.code.calls_ts import trace_calls_for_ts_file
-
-        return trace_calls_for_ts_file, "typescript call tracing failed"
-    if lower.endswith(".java"):
-        from loom.analysis.code.calls_java import trace_calls_for_java_file
-
-        return trace_calls_for_java_file, "java call tracing failed"
-    return None, None
+    handler = get_registry().get_handler_for_path(path)
+    if handler is None:
+        return None, None
+    return handler.call_tracer, handler.call_tracer_error_message
 
 
 def _append_docs_batch(docs_path: str, batch: _IndexBatch) -> None:
@@ -225,12 +217,32 @@ async def _process_file(
     return batch
 
 
-async def _delete_missing_files(graph: _Graph, deleted_file_ids: set[str], errors: list[IndexError]) -> None:
+async def _delete_missing_files(
+    graph: _Graph,
+    deleted_file_ids: set[str],
+    errors: list[IndexError],
+) -> None:
     for file_id in sorted(deleted_file_ids):
         try:
-            await graph.query(_DELETE_NODE_BY_ID, {"id": file_id})
+            path = _path_from_file_node_id(file_id)
+            if path is not None:
+                await graph.query(_DELETE_NODES_BY_PATH, {"path": path})
+            else:
+                await graph.query(_DELETE_NODE_BY_ID, {"id": file_id})
         except Exception as e:
-            append_index_error(errors, path=file_id, phase="persist", error=e)
+            append_index_error(errors, path=str(path), phase="persist", error=e)
+
+
+async def _delete_existing_repo_nodes(
+    graph: _Graph,
+    *,
+    root: str,
+    errors: list[IndexError],
+) -> None:
+    try:
+        await graph.query(_DELETE_NODES_BY_PATH_PREFIX, {"path_prefix": root})
+    except Exception as e:
+        append_index_error(errors, path=root, phase="persist", error=e)
 
 
 async def _persist_batch(graph: _Graph, root: str, batch: _IndexBatch) -> None:
@@ -280,14 +292,16 @@ async def index_repo(
 
     t0 = perf_counter()
     root = str(Path(path).resolve())
+    batch = _IndexBatch()
+
+    if force:
+        await _delete_existing_repo_nodes(graph, root=root, errors=batch.errors)
 
     stored_hash_by_file_id = {} if force else await _load_stored_file_hashes(graph)
     current_files = _collect_repo_files(root)
 
     current_file_ids = {_file_node_id(fp) for fp in current_files}
     stored_file_ids = set(stored_hash_by_file_id.keys())
-
-    batch = _IndexBatch()
 
     if docs_path is not None:
         _append_docs_batch(docs_path, batch)
@@ -388,10 +402,13 @@ async def index_repo(
     except Exception as e:
         append_index_error(batch.errors, path=root, phase="coupling", error=e)
 
-    if docs_path is not None or jira is not None:
-        code_nodes = _collect_code_nodes_for_linking(batch)
-        doc_nodes = _collect_doc_nodes_for_linking(batch)
-        if code_nodes and doc_nodes:
+    code_nodes = _collect_code_nodes_for_linking(batch)
+    if code_nodes:
+        doc_nodes = merge_nodes_by_id(
+            _collect_doc_nodes_for_linking(batch),
+            await get_doc_nodes_for_linking(graph),
+        )
+        if doc_nodes:
             try:
                 await SemanticLinker().link(code_nodes, doc_nodes, graph)
             except Exception as e:

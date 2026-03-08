@@ -63,11 +63,7 @@ def _run_git(repo_path: str, args: list[str]) -> str:
 
 def _is_supported(path: str) -> bool:
     reg = get_registry()
-    p = Path(path)
-    ext = p.suffix.lower()
-    if p.name.startswith(".env"):
-        ext = ".env"
-    return not reg.should_skip_file(ext)
+    return not reg.should_skip_path(path)
 
 
 def _parse_name_status_output(out: str) -> list[FileChange]:

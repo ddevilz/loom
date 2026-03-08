@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from loom.core import EdgeType, Node, NodeKind, NodeSource
+from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
 from loom.embed.embedder import FastEmbedder, Embedder, cosine_similarity
 
 logger = logging.getLogger(__name__)
@@ -48,20 +49,26 @@ class SearchResult:
     matched_via: str
 
 
+def _coerce_node_kind(raw_kind: Any, *, fallback: NodeKind) -> NodeKind:
+    return coerce_row_node_kind(raw_kind, fallback=fallback) or fallback
+
+
 def _row_to_node(row: dict[str, Any]) -> Node:
-    kind = row.get("kind")
-    kind_value = kind.value if hasattr(kind, "value") else str(kind)
     node_id = str(row.get("id"))
     source = NodeSource.DOC if node_id.startswith("doc:") else NodeSource.CODE
-    return Node(
-        id=node_id,
-        kind=NodeKind(kind_value),
+    fallback_kind = NodeKind.SECTION if source == NodeSource.DOC else NodeKind.FUNCTION
+    return row_to_node(
+        row,
         source=source,
-        name=str(row.get("name")),
-        summary=row.get("summary"),
-        path=str(row.get("path")),
-        embedding=row.get("embedding") if isinstance(row.get("embedding"), list) else None,
-        metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+        fallback_kind=_coerce_node_kind(row.get("kind"), fallback=fallback_kind),
+        allow_embedding=True,
+    ) or Node(
+        id=node_id,
+        kind=fallback_kind,
+        source=source,
+        name=node_id,
+        path="",
+        metadata={},
     )
 
 
@@ -128,7 +135,8 @@ async def search(
             for neighbor in neighbors:
                 score = res.score * 0.85
                 candidate = SearchResult(node=neighbor, score=score, matched_via="graph")
-                if neighbor.id not in expanded:
+                current = expanded.get(neighbor.id)
+                if current is None or candidate.score > current.score:
                     expanded[neighbor.id] = candidate
 
     return sorted(expanded.values(), key=lambda r: r.score, reverse=True)[:limit]

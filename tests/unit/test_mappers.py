@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
-from loom.core.falkor.mappers import deserialize_node_props, serialize_edge_props, serialize_node_props
+from loom.core.falkor.mappers import deserialize_edge_props, deserialize_node_props, serialize_edge_props, serialize_node_props
 
 
 def test_serialize_node_props_encodes_metadata_and_keeps_content_hash() -> None:
@@ -38,6 +38,18 @@ def test_deserialize_node_props_decodes_metadata_json() -> None:
 
     out = deserialize_node_props(dict(props))
     assert out["metadata"] == {"a": 1}
+
+
+def test_deserialize_edge_props_decodes_metadata_json() -> None:
+    props = {
+        "origin": EdgeOrigin.HUMAN,
+        "confidence": 0.8,
+        "metadata": '{"reviewed": true}',
+    }
+
+    out = deserialize_edge_props(dict(props))
+
+    assert out["metadata"] == {"reviewed": True}
 
 
 def test_serialize_node_props_includes_embedding_array() -> None:

@@ -58,3 +58,24 @@ More.
 
     # Ensure parent pointers exist
     assert all(s.parent_id is not None for s in [*chapters, *sections, *subsections, *paragraphs])
+
+
+def test_parse_markdown_accepts_headings_with_up_to_three_leading_spaces(tmp_path: Path) -> None:
+    md = tmp_path / "indented.md"
+    md.write_text(
+        """
+   # Title
+
+Body.
+
+   ## Section A
+
+Details.
+""".strip(),
+        encoding="utf-8",
+    )
+
+    nodes, _ = parse_markdown(str(md))
+
+    assert any(node.kind == NodeKind.CHAPTER and node.name == "Title" for node in nodes)
+    assert any(node.kind == NodeKind.SECTION and node.name == "Section A" for node in nodes)

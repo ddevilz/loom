@@ -4,6 +4,7 @@ from loom.config import LOOM_LLM_MODEL
 from loom.core import LoomGraph
 from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
+from loom.core.falkor.mappers import deserialize_metadata_value, row_to_node
 from loom.drift.detector import detect_ast_drift
 from loom.drift.detector import detect_violations
 from loom.llm.client import LLMClient
@@ -20,22 +21,13 @@ except Exception:  # pragma: no cover
 
 
 def _row_to_code_node(row: dict[str, object]) -> Node | None:
-    node_id = row.get("id")
-    kind = row.get("kind")
-    if not isinstance(node_id, str) or not isinstance(kind, str):
-        return None
-    try:
-        node_kind = NodeKind(kind)
-    except Exception:
-        return None
-    return Node(
-        id=node_id,
-        kind=node_kind,
+    return row_to_node(
+        row,
         source=NodeSource.CODE,
-        name=str(row.get("name") or node_id),
-        summary=row.get("summary") if isinstance(row.get("summary"), str) else None,
-        path=str(row.get("path") or ""),
-        metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+        fallback_kind=NodeKind.FUNCTION,
+        require_str_id=True,
+        require_valid_kind=True,
+        summary_must_be_str=True,
     )
 
 
@@ -48,18 +40,36 @@ def _row_to_edge(row: dict[str, object]) -> Edge | None:
 
 
 def _row_to_doc_node(row: dict[str, object]) -> Node | None:
-    node_id = row.get("id")
+    return row_to_node(
+        row,
+        source=NodeSource.DOC,
+        fallback_kind=NodeKind.SECTION,
+        allowed_kinds={NodeKind.DOCUMENT, NodeKind.CHAPTER, NodeKind.SECTION, NodeKind.SUBSECTION, NodeKind.PARAGRAPH},
+        require_str_id=True,
+        summary_must_be_str=True,
+    )
+
+
+def _row_to_ast_drift(row: dict[str, object]) -> dict[str, object] | None:
+    node_id = row.get("node_id")
     if not isinstance(node_id, str):
         return None
-    return Node(
-        id=node_id,
-        kind=NodeKind.SECTION,
-        source=NodeSource.DOC,
-        name=str(row.get("name") or node_id),
-        summary=row.get("summary") if isinstance(row.get("summary"), str) else None,
-        path=str(row.get("path") or ""),
-        metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
-    )
+    reasons = row.get("reasons")
+    if isinstance(reasons, list):
+        normalized_reasons = [reason for reason in reasons if isinstance(reason, str)]
+    else:
+        normalized_reasons = []
+    if not normalized_reasons:
+        metadata = deserialize_metadata_value(row.get("metadata"))
+        if isinstance(metadata, dict):
+            metadata_reasons = metadata.get("reasons")
+            if isinstance(metadata_reasons, list):
+                normalized_reasons = [reason for reason in metadata_reasons if isinstance(reason, str)]
+    if not normalized_reasons:
+        link_reason = row.get("link_reason")
+        if isinstance(link_reason, str) and link_reason:
+            normalized_reasons = [part.strip() for part in link_reason.split(";") if part.strip()]
+    return {"node_id": node_id, "reasons": normalized_reasons}
 
 
 def build_server(graph_name: str = "loom"):
@@ -104,23 +114,17 @@ def build_server(graph_name: str = "loom"):
             f"MATCH (f {{id: $id}})-[r:{_LOOM_IMPL_REL}]->(t) RETURN f.id AS from_id, t.id AS to_id",
             {"id": node_id},
         )
+        drift_rows = await graph.query(
+            f"MATCH (f {{id: $id}})-[r:{EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)}]->() "
+            "WHERE r.link_method = 'ast_diff' "
+            "RETURN f.id AS node_id, r.link_reason AS link_reason, r.metadata AS metadata",
+            {"id": node_id},
+        )
 
         code_nodes = [node for row in code_rows if (node := _row_to_code_node(row)) is not None]
         doc_nodes = [node for row in doc_rows if (node := _row_to_doc_node(row)) is not None]
         implements_edges = [edge for row in edge_rows if (edge := _row_to_edge(row)) is not None]
-
-        ast_drift: list[dict[str, object]] = []
-        if code_nodes:
-            current_node = code_nodes[0]
-            for row in doc_rows:
-                metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-                previous_summary = metadata.get("previous_code_summary")
-                if not isinstance(previous_summary, str):
-                    continue
-                previous_node = current_node.model_copy(update={"summary": previous_summary})
-                report = detect_ast_drift(previous_node, current_node)
-                if report.changed:
-                    ast_drift.append({"node_id": report.node_id, "reasons": report.reasons})
+        ast_drift = [report for row in drift_rows if (report := _row_to_ast_drift(row)) is not None]
 
         semantic_violations: list[dict[str, object]] = []
         if LOOM_LLM_MODEL and code_nodes and doc_nodes and implements_edges:

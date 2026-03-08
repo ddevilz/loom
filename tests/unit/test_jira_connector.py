@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from loom.core import NodeKind
 from loom.ingest.integrations.jira import JiraConfig, _build_jql, fetch_jira_nodes
 
 
@@ -31,6 +32,7 @@ async def test_fetch_jira_nodes_maps_issue_to_node(monkeypatch) -> None:
     nodes = await fetch_jira_nodes(cfg)
     assert len(nodes) == 1
     assert nodes[0].name == "PROJ-1"
+    assert nodes[0].kind == NodeKind.DOCUMENT
     assert "Fix login" in (nodes[0].summary or "")
     assert nodes[0].metadata["status"] == "Done"
 

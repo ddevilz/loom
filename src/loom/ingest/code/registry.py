@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 import threading
 from typing import Protocol
 
-from loom.core import Node
+from loom.core import Edge, Node
 from loom.config import DEFAULT_SKIP_DIRS
 
 from loom.ingest.code.languages.constants import (
@@ -35,6 +37,17 @@ from loom.ingest.code.languages.constants import (
 class LanguageParser(Protocol):
     def __call__(self, path: str, *, exclude_tests: bool = False) -> list[Node]: ...
 
+
+class CallTracer(Protocol):
+    def __call__(self, path: str, nodes: list[Node]) -> list[Edge]: ...
+
+
+@dataclass(frozen=True)
+class LanguageHandler:
+    parser: LanguageParser
+    call_tracer: CallTracer | None = None
+    call_tracer_error_message: str | None = None
+
 # ── known non-code extensions we always skip ────────────────────────
 # Note: HTML, XML, JSON, CSS, YAML are now parsed as FILE nodes
 SKIP_EXTENSIONS: frozenset[str] = frozenset({
@@ -58,20 +71,44 @@ class LanguageRegistry:
     """
 
     def __init__(self) -> None:
-        self._parsers: dict[str, LanguageParser] = {}
+        self._handlers: dict[str, LanguageHandler] = {}
 
-    def register(self, extension: str, parser: LanguageParser) -> None:
-        self._parsers[extension.lower()] = parser
+    def register(
+        self,
+        extension: str,
+        parser: LanguageParser,
+        *,
+        call_tracer: CallTracer | None = None,
+        call_tracer_error_message: str | None = None,
+    ) -> None:
+        self._handlers[extension.lower()] = LanguageHandler(
+            parser=parser,
+            call_tracer=call_tracer,
+            call_tracer_error_message=call_tracer_error_message,
+        )
+
+    def get_handler(self, extension: str) -> LanguageHandler | None:
+        return self._handlers.get(extension.lower())
+
+    def get_extension_for_path(self, path: str) -> str:
+        p = Path(path)
+        if p.name.startswith(".env"):
+            return EXT_ENV
+        return p.suffix.lower()
+
+    def get_handler_for_path(self, path: str) -> LanguageHandler | None:
+        return self.get_handler(self.get_extension_for_path(path))
 
     def get_parser(self, extension: str) -> LanguageParser | None:
-        return self._parsers.get(extension.lower())
+        handler = self.get_handler(extension)
+        return handler.parser if handler is not None else None
 
     @property
     def supported_extensions(self) -> frozenset[str]:
-        return frozenset(self._parsers.keys())
+        return frozenset(self._handlers.keys())
 
     def can_parse(self, extension: str) -> bool:
-        return extension.lower() in self._parsers
+        return extension.lower() in self._handlers
 
     def should_skip_dir(self, dirname: str) -> bool:
         if dirname.startswith("."):
@@ -84,9 +121,14 @@ class LanguageRegistry:
             return True
         if filename.endswith((".min.js", ".min.css")):
             return True
-        if ext not in self._parsers:
+        if ext not in self._handlers:
             return True
         return False
+
+    def should_skip_path(self, path: str) -> bool:
+        p = Path(path)
+        ext = self.get_extension_for_path(path)
+        return self.should_skip_file(ext, filename=p.name)
 
 
 # ── singleton ───────────────────────────────────────────────────────
@@ -105,6 +147,9 @@ def get_registry() -> LanguageRegistry:
 
 
 def _register_defaults(reg: LanguageRegistry) -> None:
+    from loom.analysis.code.calls import trace_calls_for_file
+    from loom.analysis.code.calls_java import trace_calls_for_java_file
+    from loom.analysis.code.calls_ts import trace_calls_for_ts_file
     from loom.ingest.code.languages.python import parse_python
     from loom.ingest.code.languages.typescript import parse_typescript
     from loom.ingest.code.languages.javascript import parse_javascript
@@ -125,14 +170,14 @@ def _register_defaults(reg: LanguageRegistry) -> None:
     )
 
     # Code languages
-    reg.register(EXT_PY, parse_python)
-    reg.register(EXT_PYW, parse_python)
-    reg.register(EXT_TS, parse_typescript)
-    reg.register(EXT_TSX, parse_typescript)
+    reg.register(EXT_PY, parse_python, call_tracer=trace_calls_for_file, call_tracer_error_message="python call tracing failed")
+    reg.register(EXT_PYW, parse_python, call_tracer=trace_calls_for_file, call_tracer_error_message="python call tracing failed")
+    reg.register(EXT_TS, parse_typescript, call_tracer=trace_calls_for_ts_file, call_tracer_error_message="typescript call tracing failed")
+    reg.register(EXT_TSX, parse_typescript, call_tracer=trace_calls_for_ts_file, call_tracer_error_message="typescript call tracing failed")
     reg.register(EXT_JS, parse_javascript)
     reg.register(EXT_JSX, parse_javascript)
     reg.register(EXT_GO, parse_go)
-    reg.register(EXT_JAVA, parse_java)
+    reg.register(EXT_JAVA, parse_java, call_tracer=trace_calls_for_java_file, call_tracer_error_message="java call tracing failed")
     reg.register(EXT_RS, parse_rust)
     reg.register(EXT_RB, parse_ruby)
 

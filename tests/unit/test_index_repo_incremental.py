@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from loom.core import EdgeType, Node, NodeKind, NodeSource
 from loom.ingest.pipeline import index_repo
 
 
@@ -13,6 +14,7 @@ from loom.ingest.pipeline import index_repo
 class FakeGraph:
     nodes: dict[str, dict[str, Any]] = field(default_factory=dict)
     bulk_nodes_calls: int = 0
+    edges: list[dict[str, Any]] = field(default_factory=list)
 
     async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         if cypher.strip() == "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash":
@@ -26,7 +28,14 @@ class FakeGraph:
             return [{"c": len(self.nodes)}]
 
         if cypher.strip() == "MATCH ()-[r]->() RETURN count(r) AS c":
-            return [{"c": 0}]
+            return [{"c": len(self.edges)}]
+
+        if cypher.strip() == "MATCH (n) WHERE n.id STARTS WITH 'doc:' RETURN properties(n) AS props":
+            return [
+                {"props": dict(props)}
+                for props in self.nodes.values()
+                if str(props.get("id", "")).startswith("doc:")
+            ]
 
         if cypher.strip().startswith("MATCH (a {path: $path})-[r]->()"):
             # Edge invalidation queries are accepted but ignored by this fake.
@@ -38,6 +47,17 @@ class FakeGraph:
             self.nodes.pop(node_id, None)
             return []
 
+        if cypher.strip() == "MATCH (n) WHERE n.path STARTS WITH $path_prefix DETACH DELETE n":
+            assert params is not None
+            prefix = params["path_prefix"]
+            for node_id in [
+                node_id
+                for node_id, props in self.nodes.items()
+                if str(props.get("path", "")).startswith(prefix)
+            ]:
+                self.nodes.pop(node_id, None)
+            return []
+
         raise AssertionError(f"Unexpected cypher: {cypher}")
 
     async def bulk_create_nodes(self, nodes: list[Any]) -> None:
@@ -46,7 +66,8 @@ class FakeGraph:
             self.nodes[n.id] = n.model_dump()
 
     async def bulk_create_edges(self, edges: list[Any]) -> None:
-        return None
+        for e in edges:
+            self.edges.append({"from_id": e.from_id, "to_id": e.to_id, "kind": e.kind})
 
 
 def _write(tmp_path: Path, rel: str, text: str) -> str:
@@ -90,3 +111,91 @@ async def test_index_repo_updates_only_changed_file(tmp_path: Path) -> None:
     assert r2.files_added == 0
     assert r2.files_updated == 1
     assert r2.files_skipped == 1
+
+
+@pytest.mark.asyncio
+async def test_index_repo_force_rebuild_clears_stale_repo_nodes(tmp_path: Path, monkeypatch) -> None:
+    a = _write(tmp_path, "a.py", "def f():\n    return 1\n")
+    stale_path = str((tmp_path / "stale.py").resolve())
+
+    async def _noop_detect_communities(graph) -> None:
+        return None
+
+    async def _noop_analyze_coupling(root: str):
+        return []
+
+    monkeypatch.setattr("loom.ingest.pipeline.detect_communities", _noop_detect_communities)
+    monkeypatch.setattr("loom.ingest.pipeline.analyze_coupling", _noop_analyze_coupling)
+
+    g = FakeGraph(
+        nodes={
+            "function:stale": {
+                "id": "function:stale",
+                "kind": "function",
+                "path": stale_path,
+                "name": "stale",
+            }
+        }
+    )
+
+    r = await index_repo(str(tmp_path), g, force=True)
+
+    assert r.error_count == 0
+    assert r.files_added == 1
+    assert g.bulk_nodes_calls >= 1
+    assert all(props.get("path") != stale_path for props in g.nodes.values())
+    assert any(node_id != "function:stale" for node_id in g.nodes)
+
+
+@pytest.mark.asyncio
+async def test_index_repo_relinks_changed_code_nodes_against_existing_doc_nodes(tmp_path: Path, monkeypatch) -> None:
+    file_path = _write(tmp_path, "a.py", "def f():\n    return 1\n")
+    abs_path = Path(file_path).resolve().as_posix()
+
+    doc_node = Node(
+        id="doc:spec.md:s1",
+        kind=NodeKind.SECTION,
+        source=NodeSource.DOC,
+        name="Req",
+        path="spec.md",
+        summary="return value requirement",
+        embedding=[1.0, 0.0],
+        metadata={},
+    )
+    old_node = Node(
+        id=f"function:{abs_path}:f",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="f",
+        path=abs_path,
+        content_hash="old",
+        start_line=1,
+        end_line=2,
+        metadata={},
+    )
+
+    async def _noop_detect_communities(graph) -> None:
+        return None
+
+    async def _noop_analyze_coupling(root: str):
+        return []
+
+    class _FakeSemanticLinker:
+        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+            await graph.bulk_create_edges(
+                [type("_EdgeLike", (), {"from_id": code_nodes[0].id, "to_id": doc_nodes[0].id, "kind": EdgeType.LOOM_IMPLEMENTS})()]
+            )
+            return []
+
+    monkeypatch.setattr("loom.ingest.pipeline.detect_communities", _noop_detect_communities)
+    monkeypatch.setattr("loom.ingest.pipeline.analyze_coupling", _noop_analyze_coupling)
+    monkeypatch.setattr("loom.ingest.pipeline.SemanticLinker", lambda: _FakeSemanticLinker())
+
+    g = FakeGraph(nodes={old_node.id: old_node.model_dump(), doc_node.id: doc_node.model_dump()})
+
+    Path(file_path).write_text("def f():\n    return 2\n", encoding="utf-8")
+
+    res = await index_repo(str(tmp_path), g, force=False)
+
+    assert res.error_count == 0
+    assert any(edge["kind"] == EdgeType.LOOM_IMPLEMENTS for edge in g.edges)

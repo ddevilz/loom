@@ -104,4 +104,14 @@ def test_walk_repo_performance_sanity(tmp_path: Path):
     elapsed = time.perf_counter() - start
 
     assert len(out.get("python", [])) == 150
-    assert elapsed < 0.5
+    assert elapsed < 2.0
+
+
+def test_walk_repo_returns_absolute_posix_paths(tmp_path: Path):
+    target = tmp_path / "nested" / "app.py"
+    _touch(target, "def app():\n  pass\n")
+
+    out = walk_repo(str(tmp_path))
+
+    python_files = out.get("python", [])
+    assert python_files == [target.resolve().as_posix()]

@@ -59,7 +59,7 @@ def _normalize_page(page: dict[str, Any], config: NotionConfig) -> Node:
     summary = title
     return Node(
         id=f"doc:notion:{page_id}",
-        kind=NodeKind.SECTION,
+        kind=NodeKind.DOCUMENT,
         source=NodeSource.DOC,
         name=title,
         summary=summary,

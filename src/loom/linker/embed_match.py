@@ -5,6 +5,8 @@ from typing import Any, Protocol
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
 from loom.embed.embedder import cosine_similarity, embed_nodes
 
+_FALLBACK_DOC_CANDIDATE_LIMIT = 1000
+
 
 _VECTOR_CANDIDATES_QUERY = (
     "CALL db.idx.vector.queryNodes('Node', 'embedding', $k, vecf32($vec)) "
@@ -62,7 +64,7 @@ async def link_by_embedding(
         candidate_docs = (
             [doc_by_id[doc_id] for doc_id in candidate_doc_ids]
             if candidate_doc_ids is not None
-            else doc_nodes
+            else doc_nodes[:_FALLBACK_DOC_CANDIDATE_LIMIT]
         )
         for d in candidate_docs:
             if d.embedding is None:

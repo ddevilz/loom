@@ -82,7 +82,7 @@ def _normalize_issue(issue: dict[str, Any], config: JiraConfig) -> Node:
 
     return Node(
         id=f"doc:jira:{key}",
-        kind=NodeKind.SECTION,
+        kind=NodeKind.DOCUMENT,
         source=NodeSource.DOC,
         name=key,
         summary=combined,

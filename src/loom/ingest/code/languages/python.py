@@ -490,8 +490,7 @@ def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
     p = Path(path)
     src = p.read_bytes()
 
-    parser = Parser()
-    parser.language = _PY_LANGUAGE
+    parser = Parser(_PY_LANGUAGE)
     tree = parser.parse(src)
 
     out: list[Node] = []

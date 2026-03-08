@@ -26,12 +26,14 @@ def _git(cwd: str, *args: str) -> str:
 @dataclass
 class FakeGraph:
     nodes_by_path: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
-    human_edge_count_by_node_id: dict[str, int] = field(default_factory=dict)
+    outgoing_human_edge_count_by_node_id: dict[str, int] = field(default_factory=dict)
+    incoming_human_edge_count_by_node_id: dict[str, int] = field(default_factory=dict)
     implements_by_node_id: dict[str, list[str]] = field(default_factory=dict)
 
     node_deletes: int = 0
     bulk_upserts: int = 0
     persisted_edges: list[dict[str, Any]] = field(default_factory=list)
+    invalidated_paths: list[str] = field(default_factory=list)
 
     async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         q = cypher.strip()
@@ -48,9 +50,17 @@ class FakeGraph:
         if q == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nRETURN count(r) AS c":
             assert params is not None
             node_id = params["id"]
-            return [{"c": self.human_edge_count_by_node_id.get(node_id, 0)}]
+            return [{"c": self.outgoing_human_edge_count_by_node_id.get(node_id, 0)}]
+
+        if q == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nRETURN count(r) AS c":
+            assert params is not None
+            node_id = params["id"]
+            return [{"c": self.incoming_human_edge_count_by_node_id.get(node_id, 0)}]
 
         if q == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason":
+            return []
+
+        if q == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason":
             return []
 
         if q == "UNWIND $ids AS id MATCH (n {id: id}) DETACH DELETE n":
@@ -59,6 +69,18 @@ class FakeGraph:
             return []
 
         if q.startswith("MATCH (a {path: $path})-[r]->()"):
+            if params is not None:
+                self.invalidated_paths.append(params["path"])
+            return []
+
+        if q == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin IS NULL OR r.origin <> 'human'\nDELETE r":
+            if params is not None:
+                self.invalidated_paths.append(params["path"])
+            return []
+
+        if q == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = 'source_changed'":
+            if params is not None:
+                self.invalidated_paths.append(params["path"])
             return []
 
         if q == "MATCH (n {id: $id})-[:LOOM_IMPLEMENTS]->(d) RETURN d.id AS id":
@@ -212,3 +234,50 @@ async def test_sync_commits_end_to_end_emits_drift_warning_and_violation_edge(tm
     assert res.warnings
     assert any("AST drift detected" in warning for warning in res.warnings)
     assert any(edge["kind"] == EdgeType.LOOM_VIOLATES for edge in g.persisted_edges)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_sync_commits_delete_preserves_node_with_incoming_human_edge(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    _git(str(repo), "init")
+    _git(str(repo), "config", "user.email", "test@example.com")
+    _git(str(repo), "config", "user.name", "Test")
+
+    file_path = repo / "a.py"
+    file_path.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    _git(str(repo), "add", ".")
+    _git(str(repo), "commit", "-m", "init")
+    old = _git(str(repo), "rev-parse", "HEAD").strip()
+
+    _git(str(repo), "rm", "a.py")
+    _git(str(repo), "commit", "-m", "delete a")
+    new = _git(str(repo), "rev-parse", "HEAD").strip()
+
+    abs_path = file_path.resolve().as_posix()
+    node_id = f"function:{abs_path}:f"
+    g = FakeGraph(
+        nodes_by_path={
+            abs_path: [
+                {
+                    "id": node_id,
+                    "kind": "function",
+                    "source": "code",
+                    "name": "f",
+                    "path": abs_path,
+                    "content_hash": "old",
+                    "metadata": {},
+                }
+            ]
+        },
+        incoming_human_edge_count_by_node_id={node_id: 1},
+    )
+
+    res = await sync_commits(str(repo), old, new, g)
+
+    assert res.files_deleted == 1
+    assert g.node_deletes == 0
+    assert g.invalidated_paths == [abs_path, abs_path, abs_path, abs_path]

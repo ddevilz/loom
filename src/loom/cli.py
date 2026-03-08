@@ -298,10 +298,10 @@ def calls(
             label_clause = f":`{k.name.title()}`"
 
         rows = await graph.query(
-            f"MATCH (n{label_clause} {{name: $name}}) RETURN n.id AS id LIMIT 1",
+            f"MATCH (n{label_clause} {{name: $name}}) RETURN n.id AS id LIMIT 2",
             {"name": node},
         )
-        if not rows:
+        if len(rows) != 1:
             return None
         return rows[0].get("id")
 

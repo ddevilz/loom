@@ -102,14 +102,14 @@ class LoomGraph:
             if kind is not None:
                 label_clause = f":`{kind.name.title()}`"
             rows = await self.query(
-                f"MATCH (n{label_clause} {{name: $name}}) RETURN n.id AS id LIMIT 1",
+                f"MATCH (n{label_clause} {{name: $name}}) RETURN n.id AS id LIMIT 2",
                 params={"name": node_id},
             )
-            if not rows:
+            if len(rows) != 1:
                 return []
             resolved_id = rows[0]["id"]
 
-        types = edge_types or list(EdgeType)
+        types = list(EdgeType) if edge_types is None else edge_types
         return await asyncio.to_thread(
             self._traversal.neighbors,
             node_id=resolved_id,

@@ -34,6 +34,8 @@ async def link_by_llm(
                 data = json.loads(raw)
             except Exception:
                 continue
+            if not isinstance(data, dict):
+                continue
 
             impl = data.get("implements")
             conf = data.get("confidence")

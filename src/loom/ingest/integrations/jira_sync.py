@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from inspect import isawaitable
 from typing import Any, Protocol
 
 from loom.core import LoomGraph, EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
+from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
 from loom.ingest.integrations.jira import JiraConfig, _fetch_search_results, _normalize_issue
 from loom.linker.linker import SemanticLinker
 
@@ -19,16 +21,27 @@ class _Graph(Protocol):
     async def bulk_create_nodes(self, nodes: list[Node]) -> None: ...
 
 
+def _coerce_code_kind(raw_kind: Any) -> NodeKind:
+    return coerce_row_node_kind(
+        raw_kind,
+        fallback=NodeKind.FUNCTION,
+        allowed_kinds={NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.ENUM, NodeKind.TYPE, NodeKind.MODULE, NodeKind.FILE},
+    ) or NodeKind.FUNCTION
+
+
 def _row_to_code_node(row: dict[str, Any]) -> Node:
-    return Node(
-        id=str(row.get("id")),
-        kind=NodeKind(str(row.get("kind") or NodeKind.FUNCTION.value)),
+    return row_to_node(
+        row,
         source=NodeSource.CODE,
-        name=str(row.get("name")),
-        summary=row.get("summary"),
-        path=str(row.get("path")),
-        embedding=row.get("embedding") if isinstance(row.get("embedding"), list) else None,
-        metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+        fallback_kind=_coerce_code_kind(row.get("kind")),
+        allow_embedding=True,
+    ) or Node(
+        id=str(row.get("id")),
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name=str(row.get("id")),
+        path="",
+        metadata={},
     )
 
 
@@ -38,7 +51,7 @@ async def sync_jira_updates(
     *,
     linker: SemanticLinker | None = None,
 ) -> list[Node]:
-    issues_result = _fetch_search_results(config)
+    issues_result = await asyncio.to_thread(_fetch_search_results, config)
     issues = await issues_result if isawaitable(issues_result) else issues_result
 
     updated_nodes: list[Node] = []
