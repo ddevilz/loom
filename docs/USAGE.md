@@ -79,15 +79,42 @@ Analyze a specific repo path:
 uv run loom analyze F:\my-repo --graph-name myrepo --exclude-tests
 ```
 
-What `analyze` does:
+ What `analyze` does:
+ 
+ - walks the repository
+ - parses supported files
+ - creates file and symbol nodes
+ - extracts structural edges such as `CALLS`
+ - computes summaries and embeddings
+ - links code to docs when available
+ - writes all graph state into FalkorDB
 
-- walks the repository
-- parses supported files
-- creates file and symbol nodes
-- extracts structural edges such as `CALLS`
-- computes summaries and embeddings
-- links code to docs when available
-- writes all graph state into FalkorDB
+What `analyze` does not do anymore:
+
+- it does **not** run community detection by default
+- it does **not** run git coupling analysis by default
+
+Use `loom enrich` for those expensive passes after indexing.
+
+## Enrich an indexed graph
+
+Use `loom enrich` to run expensive graph enrichment on an already-indexed graph.
+
+```bash
+uv run loom enrich --graph-name myrepo
+```
+
+Communities only:
+
+```bash
+uv run loom enrich --graph-name myrepo --no-coupling
+```
+
+Coupling only:
+
+```bash
+uv run loom enrich --graph-name myrepo --no-communities --coupling-months 3
+```
 
 ## Analyze with docs
 
@@ -257,30 +284,32 @@ Loom uses stdio transport for MCP serving.
 }
 ```
 
-Once connected, the MCP client can use Loom tools such as:
-
-- `search_code`
-- `get_callers`
-- `get_spec`
-- `check_drift`
-- `get_impact`
-- `get_ticket`
-- `unimplemented`
+ Once connected, the MCP client can use Loom tools such as:
+ 
+ - `search_code`
+ - `get_callers`
+ - `get_spec`
+ - `check_drift` (AST drift only)
+ - `get_impact`
+ - `get_ticket`
+ - `unimplemented`
 
 ## Typical workflows
 
 ### Workflow: first-time setup
+ 
+ 1. start FalkorDB
+ 2. run `uv sync`
+ 3. run `uv run loom analyze <repo> --graph-name <name>`
+ 4. optionally run `uv run loom enrich --graph-name <name>`
+ 5. verify with `loom query` or `loom entrypoints`
 
-1. start FalkorDB
-2. run `uv sync`
-3. run `uv run loom analyze <repo> --graph-name <name>`
-4. verify with `loom query` or `loom entrypoints`
-
-### Workflow: ongoing local development
-
-1. run `loom analyze` once for a baseline graph
-2. run `loom watch` during local development
-3. use `loom query`, `loom calls`, and `loom trace` while working
+ ### Workflow: ongoing local development
+ 
+ 1. run `loom analyze` once for a baseline graph
+ 2. optionally run `loom enrich` when you want communities/coupling
+ 3. run `loom watch` during local development
+ 4. use `loom query`, `loom calls`, and `loom trace` while working
 
 ### Workflow: agent integration
 

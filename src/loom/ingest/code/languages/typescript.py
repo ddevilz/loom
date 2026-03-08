@@ -22,12 +22,11 @@ from loom.ingest.code.languages.constants import (
     TS_JS_EXPORT_STATEMENT,
     TS_JS_FUNCTION,
     TS_JS_FUNCTION_DECL,
-    TS_JS_IMPORT_STATEMENT,
     TS_JS_INTERFACE_DECL,
     TS_JS_METHOD_DEF,
     TS_JS_TYPE_ALIAS_DECL,
 )
-from loom.ingest.code.reflection_detector import detect_js_dynamic_pattern
+
 
 _TS_LANGUAGE = Language(language_typescript())
 _TSX_LANGUAGE = Language(language_tsx())
@@ -88,46 +87,6 @@ def _extract_decorators(src: bytes, n: TSNode) -> list[str]:
     return decorators
 
 
-def _extract_import_info(src: bytes, n: TSNode) -> dict:
-    """Extract import statement details."""
-    # Get the source (from 'module')
-    source_node = n.child_by_field_name('source')
-    source = _node_text(src, source_node) if source_node else ''
-    # Remove quotes
-    source = source.strip('"\'')
-    
-    # Get imported names
-    imported = []
-    for child in n.children:
-        if child.type == 'import_clause':
-            # Extract named imports, default imports, namespace imports
-            clause_text = _node_text(src, child)
-            imported.append(clause_text)
-    
-    return {
-        'source': source,
-        'imported': imported if imported else [_node_text(src, n)]
-    }
-
-
-def _extract_export_info(src: bytes, n: TSNode) -> dict:
-    """Extract export statement details."""
-    export_info = {'type': 'export'}
-    
-    # Check if it's a default export
-    for child in n.children:
-        if child.type == 'default':
-            export_info['default'] = True
-            break
-    
-    # Get what's being exported
-    declaration = n.child_by_field_name('declaration')
-    if declaration:
-        export_info['declaration_type'] = declaration.type
-    
-    return export_info
-
-
 def _split_params(text: str) -> list[str]:
     raw = text.strip()
     if raw.startswith("(") and raw.endswith(")"):
@@ -153,20 +112,6 @@ def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
     }
 
 
-def _detect_dynamic_metadata(body: TSNode | None) -> dict:
-    if body is None:
-        return {}
-
-    stack = [body]
-    while stack:
-        current = stack.pop()
-        detected = detect_js_dynamic_pattern(current)
-        if detected is not None:
-            return detected
-        stack.extend(reversed(current.children))
-    return {}
-
-
 def _extract_from_def(
     *,
     path: str,
@@ -176,53 +121,15 @@ def _extract_from_def(
     out: list[Node],
     language: str,
 ) -> None:
-    # Handle import statements
-    if n.type == TS_JS_IMPORT_STATEMENT:
-        start_line, end_line = _lines(n)
-        import_info = _extract_import_info(src, n)
-        
-        # Create a node for the import (for dependency tracking)
-        # Use a sanitized name for the import
-        import_name = f"import_{import_info['source'].replace('/', '_').replace('.', '_')}"
-        
-        out.append(
-            Node(
-                id=f"module:{path}:{import_name}",
-                kind=NodeKind.MODULE,
-                source=NodeSource.CODE,
-                name=import_name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=language,
-                metadata={
-                    'import_source': import_info['source'],
-                    'imported_names': import_info['imported'],
-                    'is_import': True
-                },
-            )
-        )
-        return
-    
     # Handle export statements
     if n.type == TS_JS_EXPORT_STATEMENT:
         # Process the exported declaration
         declaration = n.child_by_field_name('declaration')
         if declaration:
-            prev_len = len(out)
             # Try normal definition extraction first
             _extract_from_def(path=path, src=src, n=declaration, ctx=ctx, out=out, language=language)
             # Also try const function pattern (export const x = () => {})
-            if len(out) == prev_len:
-                _try_extract_const_function(path=path, src=src, n=declaration, ctx=ctx, out=out, language=language)
-            # Mark the last added node as exported
-            if len(out) > prev_len:
-                export_info = _extract_export_info(src, n)
-                updated_metadata = {**out[-1].metadata, 'is_exported': True}
-                if export_info.get('default'):
-                    updated_metadata['is_default_export'] = True
-                out[-1] = out[-1].model_copy(update={'metadata': updated_metadata})
+            _try_extract_const_function(path=path, src=src, n=declaration, ctx=ctx, out=out, language=language)
         return
     
     # TypeScript/JavaScript: class_declaration, function_declaration, method_definition
@@ -281,9 +188,7 @@ def _extract_from_def(
             if child.type == 'async':
                 metadata['is_async'] = True
                 break
-        body = n.child_by_field_name("body")
-        metadata.update(_detect_dynamic_metadata(body))
-
+        
         out.append(
             Node(
                 id=f"{kind.value}:{path}:{symbol}",
@@ -299,6 +204,7 @@ def _extract_from_def(
             )
         )
 
+        body = n.child_by_field_name("body")
         if body is not None:
             _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out, language=language)
         return
@@ -312,7 +218,6 @@ def _extract_from_def(
         symbol = ctx.qualname(name)
         body = n.child_by_field_name("body")
         metadata = _function_metadata(src, n, name=name)
-        metadata.update(_detect_dynamic_metadata(body))
 
         out.append(
             Node(
@@ -438,7 +343,6 @@ def _try_extract_const_function(
                 metadata["is_async"] = True
                 break
         body = value_node.child_by_field_name("body")
-        metadata.update(_detect_dynamic_metadata(body))
 
         out.append(
             Node(
@@ -473,7 +377,6 @@ def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node], l
             TS_JS_ENUM_DECL,
             TS_JS_INTERFACE_DECL,
             TS_JS_TYPE_ALIAS_DECL,
-            TS_JS_IMPORT_STATEMENT,
             TS_JS_EXPORT_STATEMENT,
         }:
             _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, language=language)

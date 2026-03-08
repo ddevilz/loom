@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-import warnings
 
 from loom.core import Node
 from loom.ingest.code.registry import get_registry
@@ -22,23 +21,6 @@ def parse_code(path: str, *, exclude_tests: bool = False) -> list[Node]:
         return []
 
     return handler.parser(path, exclude_tests=exclude_tests)
-
-
-def parse_tree(
-    root: str,
-    *,
-    exclude_tests: bool = False,
-) -> list[Node]:
-    """Backward-compatible wrapper for repo parsing.
-
-    Prefer `parse_repo()` for gitignore-aware repo parsing.
-    """
-    warnings.warn(
-        "parse_tree() is deprecated; use parse_repo() instead",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return parse_repo(root, exclude_tests=exclude_tests)
 
 
 def parse_repo(

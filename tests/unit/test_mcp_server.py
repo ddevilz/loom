@@ -148,25 +148,19 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
 
         async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
             self.queries.append((cypher, params))
-            if "RETURN f.id AS id" in cypher:
-                return [{"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": {}}]
-            if "-[:LOOM_IMPLEMENTS]->(t) RETURN t.id AS id" in cypher:
-                return [{"id": "doc:spec.md:s1", "name": "Spec", "summary": "s", "path": "spec.md", "metadata": {}}]
-            if "-[r:LOOM_IMPLEMENTS]->(t) RETURN f.id AS from_id" in cypher:
-                return [{"from_id": "function:x:f", "to_id": "doc:spec.md:s1"}]
             if "LOOM_VIOLATES" in cypher:
                 return [{"node_id": "function:x:f", "link_reason": "signature_changed: a -> b", "metadata": '{"reasons": ["signature_changed: a -> b"]}'}]
             return []
 
     fake_graph = _FakeGraph()
     monkeypatch.setattr("loom.mcp.server.LoomGraph", lambda graph_name: fake_graph)
-    monkeypatch.setattr("loom.mcp.server.LOOM_LLM_MODEL", "")
 
     import asyncio
 
     output = asyncio.run(tool(node_id="function:x:f"))
 
     assert output["ast_drift"] == [{"node_id": "function:x:f", "reasons": ["signature_changed: a -> b"]}]
+    assert output["semantic_violations"] == []
     drift_query = next(cypher for cypher, _ in fake_graph.queries if "link_method = 'ast_diff'" in cypher)
     assert "[r:LOOM_VIOLATES]" in drift_query
     assert "r.kind" not in drift_query

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import typer
@@ -61,6 +62,25 @@ def _print_call_rows(console: Console, *, heading: str, rows: list[dict[str, obj
         columns=[("kind", None), ("name", None), ("path", None), ("confidence", "right")],
         rows=rows,
     )
+
+
+async def _infer_repo_root(graph) -> str | None:
+    rows = await graph.query(
+        "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000"
+    )
+    paths = [row.get("path") for row in rows if isinstance(row.get("path"), str) and row.get("path")]
+    if not paths:
+        return None
+
+    normalized_paths = [os.path.normpath(path) for path in paths]
+    common_path = os.path.commonpath(normalized_paths)
+    if not common_path:
+        return None
+
+    candidate = Path(common_path)
+    if candidate.is_file():
+        candidate = candidate.parent
+    return str(candidate)
 
 
 @app.command()
@@ -435,6 +455,72 @@ def entrypoints(
             columns=[("type", None), ("count", "right")],
             rows=relationship_rows,
         )
+
+    asyncio.run(_run())
+
+
+@app.command()
+def enrich(
+    graph_name: str = typer.Option("loom", "--graph-name"),
+    repo_path: str | None = typer.Option(None, "--repo-path"),
+    communities: bool = typer.Option(True, "--communities/--no-communities"),
+    coupling: bool = typer.Option(True, "--coupling/--no-coupling"),
+    coupling_months: int = typer.Option(6, "--coupling-months"),
+    coupling_threshold: float = typer.Option(0.3, "--coupling-threshold"),
+) -> None:
+    """Run enrichment passes (communities, coupling) on an already-indexed graph.
+
+    These are expensive operations best run once after initial indexing,
+    not on every incremental update.
+
+    Examples:
+        uv run loom enrich --graph-name myrepo
+        uv run loom enrich --graph-name myrepo --no-coupling
+        uv run loom enrich --graph-name myrepo --coupling-months 3
+    """
+    from loom.core import LoomGraph
+
+    console = Console()
+
+    async def _run() -> None:
+        graph = LoomGraph(graph_name=graph_name)
+
+        if communities:
+            from loom.analysis.code.communities import detect_communities
+
+            console.print("Running community detection...")
+            try:
+                node_to_community = await detect_communities(graph)
+                console.print(
+                    f"Communities: {len(set(node_to_community.values()))} detected, "
+                    f"{len(node_to_community)} nodes clustered"
+                )
+            except Exception as e:
+                console.print(f"[red]Community detection failed: {e}[/red]")
+
+        if coupling:
+            from loom.analysis.code.coupling import analyze_coupling
+
+            resolved_repo_path = repo_path or await _infer_repo_root(graph)
+            if resolved_repo_path is None:
+                console.print(
+                    "[red]Coupling analysis failed: could not infer repo path from indexed file nodes; pass --repo-path explicitly[/red]"
+                )
+            else:
+                console.print(
+                    f"Analyzing git coupling for {resolved_repo_path} (last {coupling_months} months)..."
+                )
+                try:
+                    edges = await analyze_coupling(
+                        resolved_repo_path,
+                        months=coupling_months,
+                        threshold=coupling_threshold,
+                    )
+                    if edges:
+                        await graph.bulk_create_edges(edges)
+                    console.print(f"Coupling: {len(edges)} file pairs found")
+                except Exception as e:
+                    console.print(f"[red]Coupling analysis failed: {e}[/red]")
 
     asyncio.run(_run())
 

@@ -14,7 +14,7 @@ It ingests:
 
 - source repositories
 - technical documentation
-- external knowledge sources such as Jira, Confluence, and Notion
+- external knowledge sources such as Jira
 
 It then turns those inputs into a shared graph that can be:
 
@@ -30,7 +30,7 @@ flowchart LR
     subgraph INPUT["Input Sources"]
         REPO["Repository"]
         DOCS["Docs"]
-        EXT["Jira / Confluence / Notion"]
+        EXT["Jira"]
     end
 
     subgraph INGEST["Ingestion"]
@@ -46,7 +46,7 @@ flowchart LR
         SUMM["Summaries"]
         EMBED["Embeddings"]
         LINK["Semantic Linking"]
-        DRIFT["Drift Detection"]
+        DRIFT["AST Drift Detection"]
         COMMUNITY["Communities"]
         COUPLING["Git Coupling"]
     end
@@ -145,10 +145,10 @@ At a system level, Loom is organized into a few major subsystems:
   - FalkorDB gateway, repositories, Cypher helpers, schema initialization, vector index setup
 
 - **Ingestion layer**
-  - repository walking, code parsing, document ingestion, Jira sync, incremental sync, watch mode
+  - repository walking, code parsing, document ingestion, Jira ingestion, incremental sync, watch mode
 
 - **Analysis and enrichment**
-  - call tracing, summarization, embeddings, semantic linking, community detection, coupling, drift detection
+  - call tracing, static summaries, embeddings, semantic linking, community detection, coupling, AST drift detection
 
 - **Interfaces**
   - CLI commands and FastMCP tools
@@ -188,7 +188,7 @@ An `Edge` links two nodes.
 Typical examples:
 
 - `CALLS`: function A calls function B
-- additional edge types exist for structural and “dynamic/reflection” relationships
+- additional edge types exist for structural, traceability, and enrichment relationships
 
 Edges can carry:
 
@@ -255,10 +255,13 @@ At a high level it:
 5. summarizes nodes
 6. generates embeddings
 7. persists graph state
-8. detects communities
-9. computes git coupling edges
-10. ingests docs and optional Jira nodes
-11. performs semantic linking between code and docs
+8. ingests docs and optional Jira nodes
+9. performs semantic linking between code and docs
+
+Expensive graph enrichment is intentionally split out of `analyze`:
+
+- `loom enrich` runs community detection
+- `loom enrich` runs git coupling analysis
 
 This means Loom is not just a parser. It is an ingest-and-enrich pipeline that builds a usable graph for search, traceability, and agents.
 
@@ -285,12 +288,12 @@ The architecture intentionally supports both:
 
 ---
 
-## `parse_tree()` vs `parse_repo()` (why there are two)
+## `parse_repo()`
 
-Both live in `loom.analysis.code.parser`.
+`parse_repo(root, exclude_tests=False)` lives in `loom.analysis.code.parser`.
 
 ### `parse_repo(root, exclude_tests=False)`
-This is the **authoritative** repo parser.
+ This is the **authoritative** repo parser.
 
 What it does:
 
@@ -301,25 +304,7 @@ What it does:
 
 When to use it:
 
-- **Always prefer this** for real ingestion and analysis.
-
-### `parse_tree(root, exclude_tests=False)`
-This is a **backward-compatible wrapper**.
-
-What it does:
-
-- Emits a `DeprecationWarning`
-- Immediately delegates to `parse_repo()`
-
-Why it exists:
-
-- To preserve older call sites/tests that still call `parse_tree()`
-- To provide a gentle migration path while encouraging `parse_repo()`
-
-The name `parse_tree()` is misleading now:
-
-- It does not return a tree
-- It returns the same flat `list[Node]` as `parse_repo()`
+- **Always use this** for repo-level parsing.
 
 ---
 

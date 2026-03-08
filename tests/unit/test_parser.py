@@ -197,10 +197,10 @@ def test_registry_get_handler_for_path_special_cases_env_files():
     assert handler.parser is reg.get_parser(".env")
 
 
-# ── parse_tree directory walker ─────────────────────────────────────
+# ── parse_repo directory walker ─────────────────────────────────────
 
-def test_parse_tree_walks_directory(tmp_path: Path):
-    from loom.analysis.code.parser import parse_tree
+def test_parse_repo_walks_directory(tmp_path: Path):
+    from loom.analysis.code.parser import parse_repo
 
     # create a mini project
     (tmp_path / "app.py").write_text("def main():\n    pass\n", encoding="utf-8")
@@ -209,11 +209,7 @@ def test_parse_tree_walks_directory(tmp_path: Path):
     (tmp_path / "style.css").write_text("body {}", encoding="utf-8")
     (tmp_path / "index.html").write_text("<html></html>", encoding="utf-8")
     (tmp_path / "data.json").write_text("{}", encoding="utf-8")
-
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        nodes = parse_tree(str(tmp_path))
+    nodes = parse_repo(str(tmp_path))
     names = {n.name for n in nodes}
     assert "main" in names
     assert "helper" in names
@@ -226,8 +222,8 @@ def test_parse_tree_walks_directory(tmp_path: Path):
     assert NodeKind.FILE in kinds
 
 
-def test_parse_tree_skips_venv_and_node_modules(tmp_path: Path):
-    from loom.analysis.code.parser import parse_tree
+def test_parse_repo_skips_venv_and_node_modules(tmp_path: Path):
+    from loom.analysis.code.parser import parse_repo
 
     # real code
     (tmp_path / "app.py").write_text("def real():\n    pass\n", encoding="utf-8")
@@ -245,26 +241,19 @@ def test_parse_tree_skips_venv_and_node_modules(tmp_path: Path):
     pycache.mkdir()
     (pycache / "mod.py").write_text("def cached():\n    pass\n", encoding="utf-8")
 
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        nodes = parse_tree(str(tmp_path))
+    nodes = parse_repo(str(tmp_path))
     names = {n.name for n in nodes}
     assert names == {"real"}
 
 
-def test_parse_tree_skips_hidden_dirs(tmp_path: Path):
-    from loom.analysis.code.parser import parse_tree
+def test_parse_repo_skips_hidden_dirs(tmp_path: Path):
+    from loom.analysis.code.parser import parse_repo
 
     (tmp_path / "app.py").write_text("def real():\n    pass\n", encoding="utf-8")
     hidden = tmp_path / ".hidden"
     hidden.mkdir()
     (hidden / "x.py").write_text("def hidden():\n    pass\n", encoding="utf-8")
-
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        nodes = parse_tree(str(tmp_path))
+    nodes = parse_repo(str(tmp_path))
     names = {n.name for n in nodes}
     assert names == {"real"}
 

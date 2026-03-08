@@ -15,25 +15,23 @@ Loom’s extraction is intentionally described in levels so it’s clear *how de
 - **Level 1: Symbol extraction**
   - Classes, functions, methods, interfaces, enums, type aliases (language-dependent).
 - **Level 2: Metadata extraction**
-  - Language-specific metadata attached to nodes (e.g., Java annotations/modifiers, TS imports/exports, Python decorators/async).
+  - Language-specific metadata attached to nodes (e.g., Java annotations/modifiers, Python decorators/async).
 - **Level 3: Call edges (static)**
   - `calls` edges from function/method bodies when resolvable.
-- **Level 4: Dynamic/reflection signals**
-  - `dynamic_call`, `reflects_call`, `dynamic_import`, `unresolved_call` edges/pattern metadata for reflective/dynamic invocation.
-- **Level 5: Dynamic dispatch (planned)**
+- **Level 4: Dynamic dispatch (planned)**
   - Candidate resolution for virtual/interface calls with uncertainty.
 
 ### Levels implemented (tested)
 
-| Language | L1 Symbols | L2 Metadata | L3 Static calls | L4 Reflection/Dynamic | L5 Dynamic dispatch |
-|----------|------------|------------|-----------------|----------------------|--------------------|
-| Java | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| TypeScript | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| JavaScript | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| Python | ✅ | ✅ | ✅ | ✅ | 🚧 |
-| Go | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Rust | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Ruby | ✅ | ✅ | ❌ | ✅ | ❌ |
+| Language | L1 Symbols | L2 Metadata | L3 Static calls | L4 Dynamic dispatch |
+|----------|------------|------------|-----------------|---------------------|
+| Java | ✅ | ✅ | ✅ | 🚧 |
+| TypeScript | ✅ | ✅ | ✅ | 🚧 |
+| JavaScript | ✅ | ✅ | ✅ | 🚧 |
+| Python | ✅ | ✅ | ✅ | 🚧 |
+| Go | ✅ | ✅ | ❌ | ❌ |
+| Rust | ✅ | ✅ | ❌ | ❌ |
+| Ruby | ✅ | ✅ | ❌ | ❌ |
 
 ### Supported languages (tested)
 
@@ -47,29 +45,13 @@ Loom’s extraction is intentionally described in levels so it’s clear *how de
 | Rust | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Ruby | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 
-### Markup and config parsing
-
-Markup and config formats are treated as first-class ingest sources. These typically produce `FILE` nodes with rich metadata instead of symbol graphs.
-
-| Format | Notes |
-|--------|-------|
-| HTML | title, forms, scripts, stylesheets, template hints |
-| XML | structural/file metadata |
-| JSON | top-level keys and shape hints |
-| CSS | classes, ids, media queries, CSS variables |
-| YAML | top-level keys and config hints |
-| Properties | keys, counts, profile hints, sensitive key detection |
-| ENV | variable names/count, sensitive key detection |
-| TOML | project metadata and dependencies where recoverable |
-| INI | sections and key counts |
-
 ### Parser fixtures / E2E stats (integration tests)
 
 | Fixture | Nodes | Notes |
 |--------:|------:|------|
 | Java Spring Boot | 73 | Annotations/modifiers/inheritance tested in integration fixtures |
-| Vue TSX (TypeScript) | 24+ | Imports/exports, async, enums/interfaces/types tested |
-| Python Flask | 72 | Imports, decorators, async tested |
+| Vue TSX (TypeScript) | 24+ | async, enums/interfaces/types tested |
+| Python Flask | 72 | decorators and async tested |
 
 ## Call graph resolution
 
@@ -104,45 +86,6 @@ Goal: resolve virtual/interface calls to candidate targets and represent uncerta
 Representation:
 - CALLS edges annotated with resolution metadata, or UNRESOLVED_CALL when no safe target.
 
-## Reflection / metaprogramming (implemented + tested)
-
-Loom detects reflective/dynamic invocation patterns and preserves raw expressions.
-
-### Edge types
-
-- `DYNAMIC_CALL`
-- `REFLECTS_CALL`
-- `DYNAMIC_IMPORT`
-- `UNRESOLVED_CALL`
-
-### Java patterns
-
-- `Class.forName`, `getMethod/getDeclaredMethod`, `invoke`, `newInstance`, `Proxy.newProxyInstance`, etc.
-
-### Python patterns
-
-- `getattr`, `setattr`, `hasattr`, `delattr`, `__import__`, `importlib.import_module`
-
-### TypeScript/JavaScript patterns
-
-- Dynamic `import()`
-- Computed member calls `obj[prop]()`
-
-### Ruby patterns
-
-- Rails-style DSL extraction and reflective framework hints preserved as metadata
-
-### Metadata captured
-
-```json
-{
-  "reflection_pattern": "getMethod|getattr|dynamic_import",
-  "dynamic_target": "methodName",
-  "raw_expression": "obj.getClass().getMethod(\"foo\")",
-  "call_confidence": "low|medium|high"
-}
-```
-
 ## Configuration + markup parsing (tested)
 
 Loom extracts lightweight metadata from common non-code files:
@@ -157,6 +100,8 @@ Loom extracts lightweight metadata from common non-code files:
 | CSS | `.css` | classes, ids, media query count, css variables |
 | JSON | `package.json`, `tsconfig.json` | top-level keys, type hints |
 | YAML | `docker-compose.yml` | top-level keys, type hints |
+| Markdown | `.md` | hierarchical document, chapter, section, subsection, and paragraph extraction |
+| PDF | `.pdf` | page-based section extraction |
 
 ## Document and external knowledge ingestion
 
@@ -173,11 +118,7 @@ Loom can ingest non-code knowledge into the same graph model used for code.
 
 - **Jira**
   - issue ingestion into doc-style graph nodes with ticket metadata
-  - traceability relinking and stale-edge handling on status changes
-- **Confluence**
-  - page ingestion via REST
-- **Notion**
-  - page/database ingestion via REST
+  - traceability linking during indexing
 
 ## Search and traceability
 
@@ -225,11 +166,10 @@ Watch mode supports:
 
 ### Summaries
 
-Loom supports multiple summary sources:
+Loom uses static summary extraction:
 
 - parser-derived static summaries
 - docstrings and signatures
-- local or remote LLM-backed summarization where configured
 
 ### Embeddings
 
@@ -239,10 +179,14 @@ Loom supports multiple summary sources:
 
 ### Communities
 
+Run via `loom enrich`.
+
 - Leiden community detection over the code graph
 - creation of `COMMUNITY` nodes and `MEMBER_OF` edges
 
 ### Coupling
+
+Run via `loom enrich`.
 
 - git co-change analysis to create `COUPLED_WITH` file relationships
 
@@ -261,9 +205,11 @@ Optional reranking can refine embedding-based candidate selection.
 Loom is available through:
 
 - **Typer CLI**
-  - `analyze`, `query`, `trace`, `calls`, `entrypoints`, `watch`, `sync`, `serve`
+  - `analyze`, `enrich`, `query`, `trace`, `calls`, `entrypoints`, `watch`, `sync`, `serve`
 - **FastMCP server**
   - `search_code`, `get_callers`, `get_spec`, `check_drift`, `get_impact`, `get_ticket`, `unimplemented`
+
+`check_drift` currently reports AST drift only.
 
 ## Tech stack
 

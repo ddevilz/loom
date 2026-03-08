@@ -105,8 +105,8 @@ async def analyze_coupling(
                 # Initial commit: all files are new
                 try:
                     for item in commit.tree.traverse():
-                        if item.type == "blob":
-                            changed_files.add(item.path)
+                        if item.type == "blob":  # type: ignore[union-attr]
+                            changed_files.add(item.path)  # type: ignore[union-attr]
                 except Exception as e:
                     logger.debug(f"Failed to traverse initial commit {commit.hexsha[:8]}: {e}")
                     continue

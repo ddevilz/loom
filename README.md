@@ -66,7 +66,7 @@ Loom stores a graph where nodes can represent:
 - **Files**
 - **Functions**
 - **Methods**
-- **Classes / interfaces / enums / types / modules**
+- **Classes / interfaces / enums / types**
 - **Documents / chapters / sections / paragraphs**
 - **Communities**
 
@@ -93,11 +93,12 @@ validate_user()  --MEMBER_OF----> community:auth
 Typical workflow:
 
 1. **Analyze a repository** into a named graph
-2. **Query** the graph semantically
-3. **Trace** missing or impacted implementation links
-4. **Inspect** callers, callees, and entrypoints
-5. **Serve** the graph over MCP to an editor or agent
-6. **Watch** the repo or **sync** specific git revisions incrementally
+2. **Enrich** the graph with communities and coupling when needed
+3. **Query** the graph semantically
+4. **Trace** missing or impacted implementation links
+5. **Inspect** callers, callees, and entrypoints
+6. **Serve** the graph over MCP to an editor or agent
+7. **Watch** the repo or **sync** specific git revisions incrementally
 
 ## Installation
 
@@ -157,6 +158,12 @@ Index a repository:
 uv run loom analyze . --graph-name myrepo --exclude-tests
 ```
 
+Run expensive graph enrichment on an existing graph:
+
+```bash
+uv run loom enrich --graph-name myrepo
+```
+
 Search the graph:
 
 ```bash
@@ -179,7 +186,8 @@ uv run loom serve --graph-name myrepo
 
 | Command | Purpose | Example |
 |---|---|---|
-| `loom analyze <path>` | Index a repository and print counts, deltas, and errors. | `uv run loom analyze . --graph-name myrepo --exclude-tests --force` |
+| `loom analyze <path>` | Index a repository and print counts, deltas, and errors. This is the main ingest path. | `uv run loom analyze . --graph-name myrepo --exclude-tests --force` |
+| `loom enrich` | Run expensive enrichment passes like community detection and git coupling on an already-indexed graph. | `uv run loom enrich --graph-name myrepo --coupling-months 6` |
 | `loom query <text>` | Search indexed nodes semantically using embeddings and graph expansion. | `uv run loom query "how does login work" --graph-name myrepo --limit 10` |
 | `loom trace <mode> [target]` | Run traceability workflows like unimplemented, untraced, impact, tickets, and coverage. | `uv run loom trace impact PROJ-123 --graph-name myrepo` |
 | `loom calls` | Inspect `CALLS` relationships for a target node or dump a slice of the call graph. | `uv run loom calls --target App --direction both --graph-name myrepo` |
@@ -212,7 +220,7 @@ Once connected, MCP clients can use Loom tools such as:
 - **`search_code`**
 - **`get_callers`**
 - **`get_spec`**
-- **`check_drift`**
+- **`check_drift`** (AST drift only)
 - **`get_impact`**
 - **`get_ticket`**
 - **`unimplemented`**
@@ -222,13 +230,12 @@ Once connected, MCP clients can use Loom tools such as:
 ```text
 src/loom/
 ├── core/                 # Node/edge models, graph facade, FalkorDB access
-├── ingest/               # repo parsing, docs ingestion, Jira sync, incremental sync
-├── analysis/             # calls, communities, coupling, summarization
+├── ingest/               # repo parsing, docs ingestion, Jira ingestion, incremental sync
+├── analysis/             # calls, communities, coupling, static summary extraction
 ├── embed/                # embeddings and similarity helpers
 ├── linker/               # semantic linking between code and docs
 ├── search/               # query-time search over graph state
-├── query/                # traceability queries
-├── drift/                # AST and semantic drift detection
+├── drift/                # AST drift detection
 ├── watch/                # filesystem-driven incremental updates
 └── mcp/                  # MCP server integration
 ```
@@ -273,8 +280,9 @@ Loom already provides:
 - **Traceability queries**
 - **MCP serving**
 - **Document and Jira ingestion hooks**
+- **On-demand enrichment with `loom enrich`**
 
-The project is actively evolving in areas like ranking, deeper drift detection, and richer external knowledge connectors.
+The project is actively evolving in areas like ranking, semantic linking quality, and operational workflows around the graph.
 
 ## Documentation
 

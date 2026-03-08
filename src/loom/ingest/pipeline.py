@@ -8,10 +8,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Callable, Protocol
 
-from loom.analysis.code.communities import detect_communities
-from loom.analysis.code.coupling import analyze_coupling
 from loom.analysis.code.parser import parse_code
-from loom.analysis.code.summarizer import extract_summaries
+from loom.analysis.code.extractor import extract_summaries
 from loom.core import Edge, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.embed.embedder import embed_nodes
@@ -388,19 +386,6 @@ async def index_repo(
             # Continue without embeddings - nodes are still valid
 
     await _persist_batch(graph, root, batch)
-
-    # Detect communities - this creates community nodes and MEMBER_OF edges directly in the graph
-    try:
-        await detect_communities(graph)
-    except Exception as e:
-        append_index_error(batch.errors, path=root, phase="communities", error=e)
-
-    try:
-        coupling_edges = await analyze_coupling(root)
-        if coupling_edges:
-            await graph.bulk_create_edges(coupling_edges)
-    except Exception as e:
-        append_index_error(batch.errors, path=root, phase="coupling", error=e)
 
     code_nodes = _collect_code_nodes_for_linking(batch)
     if code_nodes:

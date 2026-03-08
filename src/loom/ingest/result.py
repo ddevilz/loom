@@ -11,11 +11,9 @@ IndexPhase = Literal[
     "summarize",
     "link",
     "embed",
-    "communities",
     "hash",
     "invalidate",
     "jira",
-    "coupling",
     "process",
 ]
 

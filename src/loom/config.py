@@ -21,7 +21,6 @@ LOOM_DB_URL = os.getenv("LOOM_DB_URL", f"redis://{LOOM_DB_HOST}:{LOOM_DB_PORT}")
 LOOM_LLM_MODEL = os.getenv("LOOM_LLM_MODEL") or None
 LOOM_LLM_API_KEY = os.getenv("LOOM_LLM_API_KEY", "")
 LOOM_LLM_BASE_URL = os.getenv("LOOM_LLM_BASE_URL", "")
-LOOM_LOCAL_MODEL = os.getenv("LOOM_LOCAL_MODEL", "llama3.2")
 
 # Embedding configuration
 LOOM_EMBED_MODEL = os.getenv("LOOM_EMBED_MODEL", "nomic-ai/nomic-embed-text-v1.5")
@@ -33,14 +32,6 @@ LOOM_EMBED_CACHE_DIR = os.getenv("LOOM_EMBED_CACHE_DIR", str(Path.home() / ".loo
 LOOM_JIRA_URL = os.getenv("LOOM_JIRA_URL", "")
 LOOM_JIRA_EMAIL = os.getenv("LOOM_JIRA_EMAIL", "")
 LOOM_JIRA_API_TOKEN = os.getenv("LOOM_JIRA_API_TOKEN", "")
-
-# Confluence configuration
-LOOM_CONFLUENCE_URL = os.getenv("LOOM_CONFLUENCE_URL", "")
-LOOM_CONFLUENCE_EMAIL = os.getenv("LOOM_CONFLUENCE_EMAIL", "")
-LOOM_CONFLUENCE_API_TOKEN = os.getenv("LOOM_CONFLUENCE_API_TOKEN", "")
-
-# Notion configuration
-LOOM_NOTION_TOKEN = os.getenv("LOOM_NOTION_TOKEN", "")
 
 
 def validate_jira_config() -> None:
@@ -61,40 +52,6 @@ def validate_jira_config() -> None:
         raise ValueError(
             f"Jira integration requires the following environment variables: {', '.join(missing)}. "
             "Please set them in your .env file or environment."
-        )
-
-
-def validate_confluence_config() -> None:
-    """Validate Confluence configuration is complete.
-    
-    Raises:
-        ValueError: If any required Confluence configuration is missing.
-    """
-    missing = []
-    if not LOOM_CONFLUENCE_URL:
-        missing.append("LOOM_CONFLUENCE_URL")
-    if not LOOM_CONFLUENCE_EMAIL:
-        missing.append("LOOM_CONFLUENCE_EMAIL")
-    if not LOOM_CONFLUENCE_API_TOKEN:
-        missing.append("LOOM_CONFLUENCE_API_TOKEN")
-    
-    if missing:
-        raise ValueError(
-            f"Confluence integration requires the following environment variables: {', '.join(missing)}. "
-            "Please set them in your .env file or environment."
-        )
-
-
-def validate_notion_config() -> None:
-    """Validate Notion configuration is complete.
-    
-    Raises:
-        ValueError: If any required Notion configuration is missing.
-    """
-    if not LOOM_NOTION_TOKEN:
-        raise ValueError(
-            "Notion integration requires LOOM_NOTION_TOKEN environment variable. "
-            "Please set it in your .env file or environment."
         )
 
 

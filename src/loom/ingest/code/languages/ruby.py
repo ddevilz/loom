@@ -83,7 +83,7 @@ def _extract_from_def(
             return
 
         start_line, end_line = _lines(n)
-        kind = NodeKind.MODULE if n.type == TS_RUBY_MODULE else NodeKind.CLASS
+        kind = NodeKind.CLASS
 
         metadata: dict = {}
 

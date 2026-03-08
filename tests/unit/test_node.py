@@ -8,7 +8,6 @@ def test_nodekind_has_required_members():
         "FUNCTION",
         "CLASS",
         "METHOD",
-        "MODULE",
         "INTERFACE",
         "ENUM",
         "TYPE",

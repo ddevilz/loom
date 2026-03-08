@@ -27,7 +27,6 @@ from loom.ingest.code.languages.constants import (
     TS_JAVA_MODIFIERS,
     TS_JAVA_RECORD_DECL,
 )
-from loom.ingest.code.reflection_detector import detect_java_reflection
 
 _JAVA_LANGUAGE = Language(java_language())
 
@@ -167,20 +166,6 @@ def _lines(n: TSNode) -> tuple[int, int]:
     return start_line, end_line
 
 
-def _detect_reflection_metadata(body: TSNode | None) -> dict:
-    if body is None:
-        return {}
-
-    stack = [body]
-    while stack:
-        current = stack.pop()
-        detected = detect_java_reflection(current)
-        if detected is not None:
-            return detected
-        stack.extend(reversed(current.children))
-    return {}
-
-
 def _extract_from_def(
     *,
     path: str,
@@ -288,7 +273,6 @@ def _extract_from_def(
                 metadata['lambda_count'] = functional_counts['lambda_count']
             if functional_counts['method_ref_count'] > 0:
                 metadata['method_ref_count'] = functional_counts['method_ref_count']
-            metadata.update(_detect_reflection_metadata(body))
 
         out.append(
             Node(

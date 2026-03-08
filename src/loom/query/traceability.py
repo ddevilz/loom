@@ -26,7 +26,7 @@ def _coerce_code_kind(raw_kind: Any) -> NodeKind:
     return coerce_row_node_kind(
         raw_kind,
         fallback=NodeKind.FUNCTION,
-        allowed_kinds={NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.ENUM, NodeKind.TYPE, NodeKind.MODULE, NodeKind.FILE},
+        allowed_kinds={NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.ENUM, NodeKind.TYPE, NodeKind.FILE},
     ) or NodeKind.FUNCTION
 
 
@@ -39,10 +39,12 @@ def _coerce_doc_kind(raw_kind: Any) -> NodeKind:
 
 
 def _row_to_doc_node(row: dict[str, Any]) -> Node:
+    allowed_doc_kinds = {NodeKind.DOCUMENT, NodeKind.CHAPTER, NodeKind.SECTION, NodeKind.SUBSECTION, NodeKind.PARAGRAPH}
     return row_to_node(
         row,
         source=NodeSource.DOC,
         fallback_kind=_coerce_doc_kind(row.get("kind")),
+        allowed_kinds=allowed_doc_kinds,
     ) or Node(
         id=str(row.get("id")),
         kind=NodeKind.SECTION,
@@ -54,10 +56,12 @@ def _row_to_doc_node(row: dict[str, Any]) -> Node:
 
 
 def _row_to_code_node(row: dict[str, Any]) -> Node:
+    allowed_code_kinds = {NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.ENUM, NodeKind.TYPE, NodeKind.FILE}
     return row_to_node(
         row,
         source=NodeSource.CODE,
         fallback_kind=_coerce_code_kind(row.get("kind")),
+        allowed_kinds=allowed_code_kinds,
     ) or Node(
         id=str(row.get("id")),
         kind=NodeKind.FUNCTION,
