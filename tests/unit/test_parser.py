@@ -185,7 +185,7 @@ def test_registry_exposes_call_tracer_capability_for_supported_languages():
     assert py_handler is not None and py_handler.call_tracer is not None
     assert ts_handler is not None and ts_handler.call_tracer is not None
     assert java_handler is not None and java_handler.call_tracer is not None
-    assert js_handler is not None and js_handler.call_tracer is None
+    assert js_handler is not None and js_handler.call_tracer is not None
 
 
 def test_registry_get_handler_for_path_special_cases_env_files():

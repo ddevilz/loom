@@ -326,11 +326,22 @@ def calls(
             label_clause = f":`{k.name.title()}`"
 
         rows = await graph.query(
-            f"MATCH (n{label_clause} {{name: $name}}) RETURN n.id AS id LIMIT 2",
+            f"MATCH (n{label_clause} {{name: $name}}) RETURN n.id AS id, n.kind AS kind, n.path AS path LIMIT 10",
             {"name": node},
         )
-        if len(rows) != 1:
-            return None
+        if len(rows) == 0:
+            console.print(f"[red]Target not found:[/red] no node named [bold]{node!r}[/bold]")
+            if kind is None:
+                console.print("Tip: use [bold]--kind[/bold] (e.g. function, class, method) to narrow the search.")
+            raise typer.Exit(code=1)
+        if len(rows) > 1:
+            console.print(
+                f"[yellow]Ambiguous target[/yellow]: {len(rows)} nodes named [bold]{node!r}[/bold]. "
+                "Pass the full node id or use [bold]--kind[/bold] to disambiguate:"
+            )
+            for r in rows:
+                console.print(f"  {r.get('id')}  ({r.get('kind')} · {r.get('path')})")
+            raise typer.Exit(code=1)
         return rows[0].get("id")
 
     async def _query_call_rows(graph: LoomGraph, query: str, params: dict[str, object]) -> list[dict[str, object]]:
@@ -391,9 +402,6 @@ LIMIT $limit
             raise typer.Exit(code=1)
 
         node_id = await _resolve_node_id(graph, target)
-        if node_id is None:
-            console.print("Target not found")
-            raise typer.Exit(code=1)
 
         parent_rows, child_rows = await _query_context_rows(graph, node_id, limit=limit)
         _print_context_rows(console, heading="=== lexical parents ===", rows=parent_rows)
