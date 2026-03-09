@@ -5,7 +5,6 @@ from typing import Any, Protocol
 from loom.core import Node, NodeSource
 from loom.core.falkor.mappers import deserialize_node_props
 
-
 _DELETE_NON_HUMAN_OUTGOING_EDGES_FOR_FILE = """
 MATCH (a {path: $path})-[r]->()
 WHERE r.origin IS NULL OR r.origin <> 'human'
@@ -34,7 +33,9 @@ SET r.stale = true,
 
 
 class EdgeInvalidationGraph(Protocol):
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]: ...
 
 
 async def invalidate_edges_for_file(graph: EdgeInvalidationGraph, *, path: str) -> None:
@@ -45,7 +46,9 @@ async def invalidate_edges_for_file(graph: EdgeInvalidationGraph, *, path: str) 
 
 
 async def get_doc_nodes_for_linking(graph: EdgeInvalidationGraph) -> list[Node]:
-    rows = await graph.query("MATCH (n) WHERE n.id STARTS WITH 'doc:' RETURN properties(n) AS props")
+    rows = await graph.query(
+        "MATCH (n) WHERE n.id STARTS WITH 'doc:' RETURN properties(n) AS props"
+    )
     out: list[Node] = []
     for row in rows:
         props = row.get("props")
@@ -70,7 +73,9 @@ def merge_nodes_by_id(*node_lists: list[Node]) -> list[Node]:
 
 
 async def get_node_ids_by_path(graph: EdgeInvalidationGraph, *, path: str) -> list[str]:
-    rows = await graph.query("MATCH (n {path: $path}) RETURN n.id AS id", {"path": path})
+    rows = await graph.query(
+        "MATCH (n {path: $path}) RETURN n.id AS id", {"path": path}
+    )
     return [row.get("id") for row in rows if isinstance(row.get("id"), str)]
 
 

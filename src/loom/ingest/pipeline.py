@@ -2,25 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from inspect import isawaitable
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
-from loom.analysis.code.parser import parse_code
 from loom.analysis.code.extractor import extract_summaries
+from loom.analysis.code.parser import parse_code
 from loom.core import Edge, EdgeOrigin, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.embed.embedder import embed_nodes
+from loom.ingest.code.registry import get_registry
 from loom.ingest.code.walker import walk_repo
 from loom.ingest.errors import append_index_error
-from loom.ingest.result import IndexError, IndexResult
-from loom.ingest.utils import get_doc_nodes_for_linking, invalidate_edges_for_file, merge_nodes_by_id
-from loom.ingest.code.registry import get_registry
-from loom.linker.linker import SemanticLinker
-
 from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
+from loom.ingest.result import IndexError, IndexResult
+from loom.ingest.utils import (
+    get_doc_nodes_for_linking,
+    invalidate_edges_for_file,
+    merge_nodes_by_id,
+)
+from loom.linker.linker import SemanticLinker
 
 
 def _merge_file_result(batch: _IndexBatch, file_result: _FileProcessResult) -> None:
@@ -33,7 +37,9 @@ def _merge_file_result(batch: _IndexBatch, file_result: _FileProcessResult) -> N
 
 
 class _Graph(Protocol):
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]: ...
 
     async def bulk_create_nodes(self, nodes: list[Node]) -> None: ...
 
@@ -43,7 +49,9 @@ class _Graph(Protocol):
 _GET_FILE_NODES = "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash"
 _DELETE_NODE_BY_ID = "MATCH (n {id: $id}) DETACH DELETE n"
 _DELETE_NODES_BY_PATH = "MATCH (n {path: $path}) DETACH DELETE n"
-_DELETE_NODES_BY_PATH_PREFIX = "MATCH (n) WHERE n.path STARTS WITH $path_prefix DETACH DELETE n"
+_DELETE_NODES_BY_PATH_PREFIX = (
+    "MATCH (n) WHERE n.path STARTS WITH $path_prefix DETACH DELETE n"
+)
 _COUNT_NODES = "MATCH (n) RETURN count(n) AS c"
 _COUNT_EDGES = "MATCH ()-[r]->() RETURN count(r) AS c"
 _DEFAULT_INGEST_CONCURRENCY = 8
@@ -164,7 +172,11 @@ def _append_docs_batch(docs_path: str, batch: _IndexBatch) -> None:
 async def _append_jira_batch(jira: JiraConfig, batch: _IndexBatch) -> None:
     try:
         jira_nodes_result = fetch_jira_nodes(jira)
-        jira_nodes = await jira_nodes_result if isawaitable(jira_nodes_result) else jira_nodes_result
+        jira_nodes = (
+            await jira_nodes_result
+            if isawaitable(jira_nodes_result)
+            else jira_nodes_result
+        )
         batch.nodes_to_upsert.extend(jira_nodes)
     except Exception as e:
         append_index_error(batch.errors, path=jira.project_key, phase="jira", error=e)
@@ -269,7 +281,9 @@ async def _persist_batch(graph: _Graph, root: str, batch: _IndexBatch) -> None:
             append_index_error(batch.errors, path=root, phase="persist", error=e)
 
 
-async def _query_graph_counts(graph: _Graph, root: str, errors: list[IndexError]) -> tuple[int, int]:
+async def _query_graph_counts(
+    graph: _Graph, root: str, errors: list[IndexError]
+) -> tuple[int, int]:
     node_count = 0
     edge_count = 0
     try:
@@ -332,7 +346,9 @@ async def index_repo(
                 batch=_FileProcessResult(),
             )
 
-    async def _process_file_tagged(fp: str) -> tuple[str, _FileProcessResult | None, Exception | None]:
+    async def _process_file_tagged(
+        fp: str,
+    ) -> tuple[str, _FileProcessResult | None, Exception | None]:
         try:
             return fp, await _process_file_bounded(fp), None
         except Exception as e:
@@ -343,7 +359,9 @@ async def index_repo(
         for completed_task in asyncio.as_completed(file_tasks):
             fp, file_result, task_error = await completed_task
             if task_error is not None:
-                append_index_error(batch.errors, path=fp, phase="process", error=task_error)
+                append_index_error(
+                    batch.errors, path=fp, phase="process", error=task_error
+                )
                 continue
             if file_result is None:
                 continue
@@ -392,7 +410,9 @@ async def index_repo(
         try:
             embedded_nodes = await embed_nodes(nodes_with_summaries)
             embedded_by_id = {node.id: node for node in embedded_nodes}
-            batch.nodes_to_upsert = [embedded_by_id.get(node.id, node) for node in batch.nodes_to_upsert]
+            batch.nodes_to_upsert = [
+                embedded_by_id.get(node.id, node) for node in batch.nodes_to_upsert
+            ]
         except Exception as e:
             append_index_error(batch.errors, path=root, phase="embed", error=e)
             # Continue without embeddings - nodes are still valid
@@ -409,7 +429,11 @@ async def index_repo(
             try:
                 await SemanticLinker().link(code_nodes, doc_nodes, graph)
             except Exception as e:
-                link_path = str(docs_path) if docs_path is not None else (jira.project_key if jira is not None else root)
+                link_path = (
+                    str(docs_path)
+                    if docs_path is not None
+                    else (jira.project_key if jira is not None else root)
+                )
                 append_index_error(batch.errors, path=link_path, phase="link", error=e)
 
     node_count, edge_count = await _query_graph_counts(graph, root, batch.errors)

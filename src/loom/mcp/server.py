@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from loom.core import LoomGraph
-from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
+from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_metadata_value, row_to_node
-from loom.query.traceability import impact_of_ticket, tickets_for_function, unimplemented_tickets
+from loom.query.traceability import (
+    impact_of_ticket,
+    tickets_for_function,
+    unimplemented_tickets,
+)
 from loom.search.searcher import search
 
 _CALLS_REL = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
@@ -32,7 +35,9 @@ def _row_to_edge(row: dict[str, object]) -> Edge | None:
     to_id = row.get("to_id")
     if not isinstance(from_id, str) or not isinstance(to_id, str):
         return None
-    return Edge(from_id=from_id, to_id=to_id, kind=EdgeType.LOOM_IMPLEMENTS, metadata={})
+    return Edge(
+        from_id=from_id, to_id=to_id, kind=EdgeType.LOOM_IMPLEMENTS, metadata={}
+    )
 
 
 def _row_to_doc_node(row: dict[str, object]) -> Node | None:
@@ -40,7 +45,13 @@ def _row_to_doc_node(row: dict[str, object]) -> Node | None:
         row,
         source=NodeSource.DOC,
         fallback_kind=NodeKind.SECTION,
-        allowed_kinds={NodeKind.DOCUMENT, NodeKind.CHAPTER, NodeKind.SECTION, NodeKind.SUBSECTION, NodeKind.PARAGRAPH},
+        allowed_kinds={
+            NodeKind.DOCUMENT,
+            NodeKind.CHAPTER,
+            NodeKind.SECTION,
+            NodeKind.SUBSECTION,
+            NodeKind.PARAGRAPH,
+        },
         require_str_id=True,
         summary_must_be_str=True,
     )
@@ -60,11 +71,15 @@ def _row_to_ast_drift(row: dict[str, object]) -> dict[str, object] | None:
         if isinstance(metadata, dict):
             metadata_reasons = metadata.get("reasons")
             if isinstance(metadata_reasons, list):
-                normalized_reasons = [reason for reason in metadata_reasons if isinstance(reason, str)]
+                normalized_reasons = [
+                    reason for reason in metadata_reasons if isinstance(reason, str)
+                ]
     if not normalized_reasons:
         link_reason = row.get("link_reason")
         if isinstance(link_reason, str) and link_reason:
-            normalized_reasons = [part.strip() for part in link_reason.split(";") if part.strip()]
+            normalized_reasons = [
+                part.strip() for part in link_reason.split(";") if part.strip()
+            ]
     return {"node_id": node_id, "reasons": normalized_reasons}
 
 
@@ -78,7 +93,15 @@ def build_server(graph_name: str = "loom"):
     async def search_code(query: str, limit: int = 10) -> list[dict[str, object]]:
         graph = LoomGraph(graph_name=graph_name)
         results = await search(query, graph, limit=limit)
-        return [{"id": r.node.id, "name": r.node.name, "path": r.node.path, "score": r.score} for r in results]
+        return [
+            {
+                "id": r.node.id,
+                "name": r.node.name,
+                "path": r.node.path,
+                "score": r.score,
+            }
+            for r in results
+        ]
 
     @mcp.tool()
     async def get_callers(node_id: str) -> list[dict[str, object]]:
@@ -104,7 +127,11 @@ def build_server(graph_name: str = "loom"):
             "RETURN f.id AS node_id, r.link_reason AS link_reason, r.metadata AS metadata",
             {"id": node_id},
         )
-        ast_drift = [report for row in drift_rows if (report := _row_to_ast_drift(row)) is not None]
+        ast_drift = [
+            report
+            for row in drift_rows
+            if (report := _row_to_ast_drift(row)) is not None
+        ]
 
         return {"ast_drift": ast_drift}
 

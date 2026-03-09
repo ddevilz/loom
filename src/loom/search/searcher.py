@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from loom.core import EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
-from loom.embed.embedder import FastEmbedder, Embedder, cosine_similarity
+from loom.embed.embedder import Embedder, FastEmbedder, cosine_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,9 @@ _QUERY_CANDIDATES_FALLBACK = (
 
 
 class _Graph(Protocol):
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]: ...
 
     async def neighbors(
         self,
@@ -85,9 +87,15 @@ async def search(
 
     query_vector = (await asyncio.to_thread(embedder.embed, [query_text]))[0]
     try:
-        rows = await graph.query(_QUERY_CANDIDATES, {"k": limit * 3, "vec": query_vector})
+        rows = await graph.query(
+            _QUERY_CANDIDATES, {"k": limit * 3, "vec": query_vector}
+        )
         base = [
-            SearchResult(node=_row_to_node(row), score=float(row.get("score", 0.0)), matched_via="vector")
+            SearchResult(
+                node=_row_to_node(row),
+                score=float(row.get("score", 0.0)),
+                matched_via="vector",
+            )
             for row in rows
             if row.get("id") is not None
         ][:limit]
@@ -101,13 +109,13 @@ async def search(
         # Limit fallback to prevent memory exhaustion on large graphs
         fallback_limit = min(limit * 100, 10000)
         rows = await graph.query(_QUERY_CANDIDATES_FALLBACK, {"limit": fallback_limit})
-        
+
         if len(rows) >= fallback_limit:
             logger.warning(
                 f"Fallback search hit limit of {fallback_limit} nodes. "
                 "Results may be incomplete. Vector index is recommended for large graphs."
             )
-        
+
         nodes = [_row_to_node(row) for row in rows]
         scored: list[SearchResult] = []
         for node in nodes:
@@ -116,7 +124,9 @@ async def search(
             score = cosine_similarity(query_vector, node.embedding)
             if score <= 0.0:
                 continue
-            scored.append(SearchResult(node=node, score=score, matched_via="vector_fallback"))
+            scored.append(
+                SearchResult(node=node, score=score, matched_via="vector_fallback")
+            )
         scored.sort(key=lambda r: r.score, reverse=True)
         base = scored[:limit]
 
@@ -127,7 +137,11 @@ async def search(
                 graph.neighbors(
                     res.node.id,
                     depth=expand_depth,
-                    edge_types=[EdgeType.CALLS, EdgeType.LOOM_IMPLEMENTS, EdgeType.CONTAINS],
+                    edge_types=[
+                        EdgeType.CALLS,
+                        EdgeType.LOOM_IMPLEMENTS,
+                        EdgeType.CONTAINS,
+                    ],
                 )
                 for res in base
             ]
@@ -135,7 +149,9 @@ async def search(
         for res, neighbors in zip(base, neighbor_batches, strict=False):
             for neighbor in neighbors:
                 score = res.score * 0.85
-                candidate = SearchResult(node=neighbor, score=score, matched_via="graph")
+                candidate = SearchResult(
+                    node=neighbor, score=score, matched_via="graph"
+                )
                 current = expanded.get(neighbor.id)
                 if current is None or candidate.score > current.score:
                     expanded[neighbor.id] = candidate

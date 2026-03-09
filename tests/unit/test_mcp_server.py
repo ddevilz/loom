@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from loom.core import NodeKind
-from loom.mcp.server import _row_to_ast_drift, _row_to_code_node, _row_to_doc_node, build_server
+from loom.mcp.server import (
+    _row_to_ast_drift,
+    _row_to_code_node,
+    _row_to_doc_node,
+    build_server,
+)
 
 
 def test_build_server_returns_instance_when_fastmcp_available() -> None:
@@ -146,10 +151,18 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
         def __init__(self) -> None:
             self.queries: list[tuple[str, dict[str, Any] | None]] = []
 
-        async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        async def query(
+            self, cypher: str, params: dict[str, Any] | None = None
+        ) -> list[dict[str, Any]]:
             self.queries.append((cypher, params))
             if "LOOM_VIOLATES" in cypher:
-                return [{"node_id": "function:x:f", "link_reason": "signature_changed: a -> b", "metadata": '{"reasons": ["signature_changed: a -> b"]}'}]
+                return [
+                    {
+                        "node_id": "function:x:f",
+                        "link_reason": "signature_changed: a -> b",
+                        "metadata": '{"reasons": ["signature_changed: a -> b"]}',
+                    }
+                ]
             return []
 
     fake_graph = _FakeGraph()
@@ -159,7 +172,13 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
 
     output = asyncio.run(tool(node_id="function:x:f"))
 
-    assert output["ast_drift"] == [{"node_id": "function:x:f", "reasons": ["signature_changed: a -> b"]}]
-    drift_query = next(cypher for cypher, _ in fake_graph.queries if "link_method = 'ast_diff'" in cypher)
+    assert output["ast_drift"] == [
+        {"node_id": "function:x:f", "reasons": ["signature_changed: a -> b"]}
+    ]
+    drift_query = next(
+        cypher
+        for cypher, _ in fake_graph.queries
+        if "link_method = 'ast_diff'" in cypher
+    )
     assert "[r:LOOM_VIOLATES]" in drift_query
     assert "r.kind" not in drift_query

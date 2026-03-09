@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterable, Awaitable, Callable
 from pathlib import Path
-from typing import Any, AsyncIterable, Awaitable, Callable, Protocol
+from typing import Any, Protocol
 
 from watchfiles import Change, awatch
 
-from loom.core import LoomGraph, EdgeType
+from loom.core import EdgeType, LoomGraph
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
+from loom.ingest.pipeline import index_repo
 from loom.ingest.utils import (
     delete_nodes_by_ids,
     get_node_ids_by_path,
@@ -14,11 +16,12 @@ from loom.ingest.utils import (
     mark_human_edges_stale_for_node,
     node_has_human_edges,
 )
-from loom.ingest.pipeline import index_repo
 
 
 class _Graph(Protocol):
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]: ...
 
 
 WatcherFactory = Callable[[str], AsyncIterable[set[tuple[Change, str]]]]
@@ -49,7 +52,9 @@ SET r.stale = true,
     )
 
 
-def _watch_stream(repo_path: str, *, debounce_ms: int) -> AsyncIterable[set[tuple[Change, str]]]:
+def _watch_stream(
+    repo_path: str, *, debounce_ms: int
+) -> AsyncIterable[set[tuple[Change, str]]]:
     return awatch(repo_path, debounce=debounce_ms)
 
 
@@ -62,7 +67,9 @@ async def watch_repo(
     indexer: Indexer | None = None,
     stop_after_events: int | None = None,
 ) -> None:
-    watcher = watcher_factory or (lambda path: _watch_stream(path, debounce_ms=debounce_ms))
+    watcher = watcher_factory or (
+        lambda path: _watch_stream(path, debounce_ms=debounce_ms)
+    )
     indexer = indexer or _default_indexer
 
     processed = 0
@@ -82,7 +89,9 @@ async def watch_repo(
             for node_id in ids:
                 if await node_has_human_edges(graph, node_id=node_id):
                     preserved.append(node_id)
-                    await mark_human_edges_stale_for_node(graph, node_id=node_id, reason="file_deleted")
+                    await mark_human_edges_stale_for_node(
+                        graph, node_id=node_id, reason="file_deleted"
+                    )
             deletable = [node_id for node_id in ids if node_id not in set(preserved)]
             await delete_nodes_by_ids(graph, deletable)
 

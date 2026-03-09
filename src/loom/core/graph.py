@@ -6,12 +6,10 @@ from typing import Any, Protocol
 from loom.config import LOOM_EMBED_DIM
 
 from .edge import Edge, EdgeType
-from .node import Node, NodeKind
-
 from .falkor.gateway import FalkorGateway
 from .falkor.repositories import EdgeRepository, NodeRepository, TraversalRepository
 from .falkor.schema import invalidate_schema_init, schema_init
-
+from .node import Node, NodeKind
 
 _SCHEMA_LOCKS: dict[str, asyncio.Lock] = {}
 _SCHEMA_LOCKS_LOCK = asyncio.Lock()
@@ -22,7 +20,13 @@ class _Gateway(Protocol):
 
     def reconnect(self) -> None: ...
 
-    def run(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None): ...
+    def run(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ): ...
 
     def query_rows(
         self,
@@ -34,7 +38,9 @@ class _Gateway(Protocol):
 
 
 class LoomGraph:
-    def __init__(self, graph_name: str = "loom", *, gateway: _Gateway | None = None) -> None:
+    def __init__(
+        self, graph_name: str = "loom", *, gateway: _Gateway | None = None
+    ) -> None:
         self.graph_name = graph_name
         self._gw: _Gateway = gateway or FalkorGateway(graph_name=graph_name)
         self._nodes = NodeRepository(self._gw)  # type: ignore[arg-type]
@@ -47,7 +53,7 @@ class LoomGraph:
             if self.graph_name not in _SCHEMA_LOCKS:
                 _SCHEMA_LOCKS[self.graph_name] = asyncio.Lock()
             lock = _SCHEMA_LOCKS[self.graph_name]
-        
+
         # Use the shared lock to ensure schema init happens once per graph_name
         async with lock:
             await asyncio.to_thread(schema_init, self._gw, embedding_dim=LOOM_EMBED_DIM)
@@ -60,7 +66,9 @@ class LoomGraph:
         self._gw.reconnect()
         invalidate_schema_init(self.graph_name)
 
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         await self.schema_init()
         return await asyncio.to_thread(self._gw.query_rows, cypher, params)
 

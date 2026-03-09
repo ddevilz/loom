@@ -12,7 +12,13 @@ class _FakeGateway:
     rows: list[dict[str, Any]]
     run_calls: list[tuple[str, dict[str, Any] | None]] | None = None
 
-    def run(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None):
+    def run(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ):
         if self.run_calls is not None:
             self.run_calls.append((cypher, params))
         return None
@@ -20,7 +26,13 @@ class _FakeGateway:
     def reconnect(self) -> None:
         return None
 
-    def query_rows(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None):
+    def query_rows(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ):
         return self.rows
 
 
@@ -33,7 +45,9 @@ def test_node_repository_get_returns_none_for_missing_props() -> None:
 
 
 def test_node_repository_get_returns_none_for_invalid_props() -> None:
-    repo = NodeRepository(_FakeGateway(rows=[{"props": {"id": "function:x:f", "kind": "not_a_kind"}}]))  # type: ignore[arg-type]
+    repo = NodeRepository(
+        _FakeGateway(rows=[{"props": {"id": "function:x:f", "kind": "not_a_kind"}}])
+    )  # type: ignore[arg-type]
 
     node = repo.get("function:x:f")
 

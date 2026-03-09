@@ -4,7 +4,6 @@ from typer.testing import CliRunner
 
 import loom.cli
 
-
 runner = CliRunner()
 
 

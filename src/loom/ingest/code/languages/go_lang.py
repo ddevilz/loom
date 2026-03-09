@@ -3,15 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tree_sitter import Language
+from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter import Parser
 from tree_sitter_go import language as go_language
 
 from loom.core import Node, NodeKind, NodeSource
-
 from loom.core.content_hash import content_hash_for_line_span
-
 from loom.ingest.code.languages.constants import (
     LANG_GO,
     META_RECEIVER,
@@ -31,7 +28,7 @@ _GO_LANGUAGE = Language(go_language())
 class _Context:
     type_stack: tuple[str, ...] = ()
 
-    def push_type(self, name: str) -> "_Context":
+    def push_type(self, name: str) -> _Context:
         return _Context(type_stack=self.type_stack + (name,))
 
     def qualname(self, name: str) -> str:
@@ -76,9 +73,16 @@ def _extract_from_def(
 
                 # Check if it's a struct or interface
                 type_node = child.child_by_field_name("type")
-                if type_node and type_node.type in {TS_GO_STRUCT_TYPE, TS_GO_INTERFACE_TYPE}:
+                if type_node and type_node.type in {
+                    TS_GO_STRUCT_TYPE,
+                    TS_GO_INTERFACE_TYPE,
+                }:
                     start_line, end_line = _lines(child)
-                    kind = NodeKind.INTERFACE if type_node.type == TS_GO_INTERFACE_TYPE else NodeKind.CLASS
+                    kind = (
+                        NodeKind.INTERFACE
+                        if type_node.type == TS_GO_INTERFACE_TYPE
+                        else NodeKind.CLASS
+                    )
 
                     out.append(
                         Node(
@@ -87,7 +91,9 @@ def _extract_from_def(
                             source=NodeSource.CODE,
                             name=name,
                             path=path,
-                            content_hash=content_hash_for_line_span(src, start_line, end_line),
+                            content_hash=content_hash_for_line_span(
+                                src, start_line, end_line
+                            ),
                             start_line=start_line,
                             end_line=end_line,
                             language=LANG_GO,
@@ -96,7 +102,13 @@ def _extract_from_def(
                     )
 
                     # Walk the type body for nested definitions
-                    _walk(path=path, src=src, n=type_node, ctx=ctx.push_type(name), out=out)
+                    _walk(
+                        path=path,
+                        src=src,
+                        n=type_node,
+                        ctx=ctx.push_type(name),
+                        out=out,
+                    )
         return
 
     if n.type == TS_GO_FUNCTION_DECL:
@@ -175,5 +187,7 @@ def parse_go(path: str, *, exclude_tests: bool = False) -> list[Node]:
     tree = parser.parse(src)
 
     out: list[Node] = []
-    _walk(path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out)
+    _walk(
+        path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out
+    )
     return out

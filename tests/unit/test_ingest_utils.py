@@ -12,7 +12,9 @@ from loom.ingest.utils import invalidate_edges_for_file
 class _FakeGraph:
     calls: list[tuple[str, dict[str, Any] | None]] = field(default_factory=list)
 
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         self.calls.append((cypher.strip(), params))
         return []
 

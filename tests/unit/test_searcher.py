@@ -25,7 +25,13 @@ class _FakeGraph:
             }
         ]
 
-    async def neighbors(self, node_id: str, depth: int = 1, edge_types: list[EdgeType] | None = None, kind=None):
+    async def neighbors(
+        self,
+        node_id: str,
+        depth: int = 1,
+        edge_types: list[EdgeType] | None = None,
+        kind=None,
+    ):
         return [
             Node(
                 id="doc:spec:s1",
@@ -41,7 +47,9 @@ class _FakeGraph:
 
 @pytest.mark.asyncio
 async def test_search_returns_ranked_results_with_graph_expansion() -> None:
-    results = await search("authentication", _FakeGraph(), limit=5, embedder=_FakeEmbedder())
+    results = await search(
+        "authentication", _FakeGraph(), limit=5, embedder=_FakeEmbedder()
+    )
     assert results
     assert results[0].node.id == "function:x:f"
     assert any(r.matched_via == "graph" for r in results)
@@ -72,7 +80,13 @@ class _MultiBaseGraph:
             },
         ]
 
-    async def neighbors(self, node_id: str, depth: int = 1, edge_types: list[EdgeType] | None = None, kind=None):
+    async def neighbors(
+        self,
+        node_id: str,
+        depth: int = 1,
+        edge_types: list[EdgeType] | None = None,
+        kind=None,
+    ):
         return [
             Node(
                 id="doc:spec:s1",
@@ -88,7 +102,9 @@ class _MultiBaseGraph:
 
 @pytest.mark.asyncio
 async def test_search_graph_dedupe_keeps_highest_scoring_expansion() -> None:
-    results = await search("authentication", _MultiBaseGraph(), limit=5, embedder=_FakeEmbedder())
+    results = await search(
+        "authentication", _MultiBaseGraph(), limit=5, embedder=_FakeEmbedder()
+    )
 
     graph_results = [result for result in results if result.node.id == "doc:spec:s1"]
 
@@ -98,34 +114,65 @@ async def test_search_graph_dedupe_keeps_highest_scoring_expansion() -> None:
 
 
 def test_row_to_node_falls_back_for_invalid_doc_kind() -> None:
-    node = _row_to_node({"id": "doc:spec:s1", "kind": "not_a_kind", "name": "Spec", "summary": "s", "path": "spec", "metadata": {}})
+    node = _row_to_node(
+        {
+            "id": "doc:spec:s1",
+            "kind": "not_a_kind",
+            "name": "Spec",
+            "summary": "s",
+            "path": "spec",
+            "metadata": {},
+        }
+    )
 
     assert node.kind == NodeKind.SECTION
     assert node.source == NodeSource.DOC
 
 
 def test_row_to_node_uses_safe_name_and_path_fallbacks() -> None:
-    node = _row_to_node({"id": "function:x:f", "kind": "function", "summary": "s", "metadata": {}})
+    node = _row_to_node(
+        {"id": "function:x:f", "kind": "function", "summary": "s", "metadata": {}}
+    )
 
     assert node.name == "function:x:f"
     assert node.path == ""
 
 
 def test_row_to_node_decodes_json_metadata() -> None:
-    node = _row_to_node({"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": '{"owner": "team-a"}'})
+    node = _row_to_node(
+        {
+            "id": "function:x:f",
+            "kind": "function",
+            "name": "f",
+            "summary": "s",
+            "path": "x",
+            "metadata": '{"owner": "team-a"}',
+        }
+    )
 
     assert node.metadata == {"owner": "team-a"}
 
 
 def test_row_to_node_preserves_module_kind_for_module_ids() -> None:
-    node = _row_to_node({"id": "module:x:m", "kind": "module", "name": "m", "summary": "s", "path": "x", "metadata": {}})
+    node = _row_to_node(
+        {
+            "id": "module:x:m",
+            "kind": "module",
+            "name": "m",
+            "summary": "s",
+            "path": "x",
+            "metadata": {},
+        }
+    )
 
     assert node.kind == NodeKind.MODULE
     assert node.source == NodeSource.CODE
 
 
 def test_row_to_node_falls_back_for_missing_code_kind() -> None:
-    node = _row_to_node({"id": "function:x:f", "name": "f", "summary": "s", "path": "x", "metadata": {}})
+    node = _row_to_node(
+        {"id": "function:x:f", "name": "f", "summary": "s", "path": "x", "metadata": {}}
+    )
 
     assert node.kind == NodeKind.FUNCTION
     assert node.source == NodeSource.CODE

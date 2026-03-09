@@ -8,7 +8,12 @@ from loom.ingest.integrations.jira import JiraConfig, _build_jql, fetch_jira_nod
 
 @pytest.mark.asyncio
 async def test_fetch_jira_nodes_maps_issue_to_node(monkeypatch) -> None:
-    cfg = JiraConfig(base_url="https://jira.example.com", email="a@b.com", api_token="tok", project_key="PROJ")
+    cfg = JiraConfig(
+        base_url="https://jira.example.com",
+        email="a@b.com",
+        api_token="tok",
+        project_key="PROJ",
+    )
 
     monkeypatch.setattr(
         "loom.ingest.integrations.jira._fetch_search_results",
@@ -47,4 +52,4 @@ def test_build_jql_uses_incremental_sync_clause() -> None:
     )
     jql = _build_jql(cfg)
     assert "project = PROJ" in jql
-    assert 'updated >=' in jql
+    assert "updated >=" in jql

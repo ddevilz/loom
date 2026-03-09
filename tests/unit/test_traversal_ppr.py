@@ -11,20 +11,71 @@ from loom.core.falkor.repositories import TraversalRepository
 class _FakeGateway:
     graph_name: str = "test"
 
-    def run(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None):
+    def run(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ):
         return None
 
     def reconnect(self) -> None:
         return None
 
-    def query_rows(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None):
+    def query_rows(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ):
         ids = set((params or {}).get("ids") or [])
         rows: list[dict[str, Any]] = []
         if "a" in ids:
-            rows.append({"from_id": "a", "to_id": "function:b.py:b", "props": {"id": "function:b.py:b", "kind": "function", "source": "code", "name": "b", "path": "b.py", "metadata": {}}})
-            rows.append({"from_id": "a", "to_id": "function:d.py:d", "props": {"id": "function:d.py:d", "kind": "function", "source": "code", "name": "d", "path": "d.py", "metadata": {}}})
+            rows.append(
+                {
+                    "from_id": "a",
+                    "to_id": "function:b.py:b",
+                    "props": {
+                        "id": "function:b.py:b",
+                        "kind": "function",
+                        "source": "code",
+                        "name": "b",
+                        "path": "b.py",
+                        "metadata": {},
+                    },
+                }
+            )
+            rows.append(
+                {
+                    "from_id": "a",
+                    "to_id": "function:d.py:d",
+                    "props": {
+                        "id": "function:d.py:d",
+                        "kind": "function",
+                        "source": "code",
+                        "name": "d",
+                        "path": "d.py",
+                        "metadata": {},
+                    },
+                }
+            )
         if "function:b.py:b" in ids:
-            rows.append({"from_id": "function:b.py:b", "to_id": "function:c.py:c", "props": {"id": "function:c.py:c", "kind": "function", "source": "code", "name": "c", "path": "c.py", "metadata": {}}})
+            rows.append(
+                {
+                    "from_id": "function:b.py:b",
+                    "to_id": "function:c.py:c",
+                    "props": {
+                        "id": "function:c.py:c",
+                        "kind": "function",
+                        "source": "code",
+                        "name": "c",
+                        "path": "c.py",
+                        "metadata": {},
+                    },
+                }
+            )
         return rows
 
 
@@ -41,18 +92,43 @@ def test_traversal_repository_ranks_neighbors_with_ppr() -> None:
 class _MalformedRowGateway:
     graph_name: str = "test"
 
-    def run(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None):
+    def run(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ):
         return None
 
     def reconnect(self) -> None:
         return None
 
-    def query_rows(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None):
+    def query_rows(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ):
         ids = set((params or {}).get("ids") or [])
         rows: list[dict[str, Any]] = []
         if "a" in ids:
             rows.append({"from_id": "a", "to_id": "broken", "props": "not-a-dict"})
-            rows.append({"from_id": "a", "to_id": "function:b.py:b", "props": {"id": "function:b.py:b", "kind": "function", "source": "code", "name": "b", "path": "b.py", "metadata": {}}})
+            rows.append(
+                {
+                    "from_id": "a",
+                    "to_id": "function:b.py:b",
+                    "props": {
+                        "id": "function:b.py:b",
+                        "kind": "function",
+                        "source": "code",
+                        "name": "b",
+                        "path": "b.py",
+                        "metadata": {},
+                    },
+                }
+            )
         return rows
 
 

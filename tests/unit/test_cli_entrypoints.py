@@ -4,7 +4,6 @@ from typer.testing import CliRunner
 
 import loom.cli
 
-
 runner = CliRunner()
 
 
@@ -20,12 +19,23 @@ def test_cli_entrypoints_runs_queries(monkeypatch):
             if "RETURN type(r)" in cypher:
                 return [{"t": "calls", "c": 1}]
             if "out_calls" in cypher:
-                return [{"out_calls": 3, "kind": "function", "name": "main", "path": "x"}]
-            return [{"kind": "function", "name": "main", "path": "x", "id": "function:x:main"}]
+                return [
+                    {"out_calls": 3, "kind": "function", "name": "main", "path": "x"}
+                ]
+            return [
+                {
+                    "kind": "function",
+                    "name": "main",
+                    "path": "x",
+                    "id": "function:x:main",
+                }
+            ]
 
     monkeypatch.setattr("loom.core.LoomGraph", FakeGraph)
 
-    r = runner.invoke(loom.cli.app, ["entrypoints", "--graph-name", "g", "--limit", "5"])
+    r = runner.invoke(
+        loom.cli.app, ["entrypoints", "--graph-name", "g", "--limit", "5"]
+    )
     assert r.exit_code == 0
     assert "name-based candidates" in r.stdout
     assert "relationship types" in r.stdout

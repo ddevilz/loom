@@ -4,15 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tree_sitter import Language
+from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter import Parser
 from tree_sitter_python import language as python_language
 
 from loom.core import Node, NodeKind, NodeSource
-
 from loom.core.content_hash import content_hash_for_line_span
-
 from loom.ingest.code.languages.constants import (
     DEC_ACTION,
     DEC_API_VIEW,
@@ -52,7 +49,6 @@ from loom.ingest.code.languages.constants import (
     TS_PY_IDENTIFIER,
 )
 
-
 _PY_LANGUAGE = Language(python_language())
 
 
@@ -61,11 +57,15 @@ class _Context:
     class_stack: tuple[str, ...] = ()
     func_stack: tuple[str, ...] = ()
 
-    def push_class(self, name: str) -> "_Context":
-        return _Context(class_stack=self.class_stack + (name,), func_stack=self.func_stack)
+    def push_class(self, name: str) -> _Context:
+        return _Context(
+            class_stack=self.class_stack + (name,), func_stack=self.func_stack
+        )
 
-    def push_func(self, name: str) -> "_Context":
-        return _Context(class_stack=self.class_stack, func_stack=self.func_stack + (name,))
+    def push_func(self, name: str) -> _Context:
+        return _Context(
+            class_stack=self.class_stack, func_stack=self.func_stack + (name,)
+        )
 
     def qualname(self, name: str) -> str:
         parts: list[str] = []
@@ -135,8 +135,12 @@ def _split_params(text: str) -> list[str]:
 def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict[str, Any]:
     params_node = n.child_by_field_name("parameters")
     return_node = n.child_by_field_name("return_type")
-    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
-    return_type = _node_text(src, return_node).strip() if return_node is not None else None
+    params = (
+        _split_params(_node_text(src, params_node)) if params_node is not None else []
+    )
+    return_type = (
+        _node_text(src, return_node).strip() if return_node is not None else None
+    )
     signature = f"{name}({', '.join(params)})"
     if return_type:
         signature = f"{signature} -> {return_type}"
@@ -180,9 +184,7 @@ def _get_decorators(src: bytes, decorated_node: TSNode) -> list[str]:
             # decorator children: "@" + expression
             # expression can be: identifier, attribute, call
             for part in child.children:
-                if part.type == TS_PY_IDENTIFIER:
-                    decorators.append(_node_text(src, part))
-                elif part.type == TS_PY_ATTRIBUTE:
+                if part.type == TS_PY_IDENTIFIER or part.type == TS_PY_ATTRIBUTE:
                     decorators.append(_node_text(src, part))
                 elif part.type == TS_PY_CALL:
                     fn = part.child_by_field_name("function")
@@ -218,7 +220,9 @@ def _extract_from_def(
         decs = _get_decorators(src, n)
         inner = n.child_by_field_name("definition")
         if inner is not None:
-            _extract_from_def(path=path, src=src, n=inner, ctx=ctx, out=out, decorators=decs)
+            _extract_from_def(
+                path=path, src=src, n=inner, ctx=ctx, out=out, decorators=decs
+            )
         return
 
     if n.type == TS_PY_CLASS_DEF:
@@ -277,7 +281,7 @@ def _extract_from_def(
             if hint:
                 meta[META_FRAMEWORK_HINT] = hint
         if _is_async_function(src, n):
-            meta['is_async'] = True
+            meta["is_async"] = True
         body = n.child_by_field_name("body")
         out.append(
             Node(
@@ -366,7 +370,9 @@ def _try_extract_assignment(
                             source=NodeSource.CODE,
                             name=name,
                             path=path,
-                            content_hash=content_hash_for_line_span(src, start_line, end_line),
+                            content_hash=content_hash_for_line_span(
+                                src, start_line, end_line
+                            ),
                             start_line=start_line,
                             end_line=end_line,
                             language=LANG_PYTHON,
@@ -402,5 +408,7 @@ def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
     tree = parser.parse(src)
 
     out: list[Node] = []
-    _walk(path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out)
+    _walk(
+        path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out
+    )
     return out

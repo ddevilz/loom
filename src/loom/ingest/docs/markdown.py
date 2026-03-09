@@ -4,7 +4,12 @@ from pathlib import Path
 
 from loom.core import Edge, Node, NodeKind
 
-from .base import make_child_of, make_document_node, make_paragraph_node, make_section_node
+from .base import (
+    make_child_of,
+    make_document_node,
+    make_paragraph_node,
+    make_section_node,
+)
 
 
 def _kind_for_depth(depth: int) -> NodeKind:

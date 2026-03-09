@@ -10,9 +10,7 @@ CLEAR_GRAPH = "MATCH (n) DETACH DELETE n"
 CREATE_OR_UPDATE_NODE = "MERGE (n:Node {id: $id}) SET n += $props RETURN n"
 
 BULK_CREATE_OR_UPDATE_NODES = (
-    "UNWIND $nodes AS n "
-    "MERGE (node:Node {id: n.id}) "
-    "SET node += n.props"
+    "UNWIND $nodes AS n MERGE (node:Node {id: n.id}) SET node += n.props"
 )
 
 NEIGHBORS_STEP = (
@@ -40,8 +38,12 @@ def create_or_update_edge(rel_type: str) -> str:
 
 
 def create_or_update_node_with_label(label: str) -> str:
-    stale_labels = [kind.name.title() for kind in NodeKind if kind.name.title() != label]
-    remove_clause = " ".join(f"REMOVE n:`{stale_label}`" for stale_label in stale_labels)
+    stale_labels = [
+        kind.name.title() for kind in NodeKind if kind.name.title() != label
+    ]
+    remove_clause = " ".join(
+        f"REMOVE n:`{stale_label}`" for stale_label in stale_labels
+    )
     return (
         "MERGE (n:Node {id: $id}) "
         "SET n += $props "
@@ -53,8 +55,12 @@ def create_or_update_node_with_label(label: str) -> str:
 
 
 def bulk_create_or_update_nodes_with_label(label: str) -> str:
-    stale_labels = [kind.name.title() for kind in NodeKind if kind.name.title() != label]
-    remove_clause = " ".join(f"REMOVE node:`{stale_label}`" for stale_label in stale_labels)
+    stale_labels = [
+        kind.name.title() for kind in NodeKind if kind.name.title() != label
+    ]
+    remove_clause = " ".join(
+        f"REMOVE node:`{stale_label}`" for stale_label in stale_labels
+    )
     return (
         "UNWIND $nodes AS n "
         "MERGE (node:Node {id: n.id}) "

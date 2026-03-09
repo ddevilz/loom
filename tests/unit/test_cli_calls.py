@@ -4,7 +4,6 @@ from typer.testing import CliRunner
 
 import loom.cli
 
-
 runner = CliRunner()
 
 
@@ -28,7 +27,10 @@ def test_cli_calls_dump(monkeypatch):
 
     monkeypatch.setattr("loom.core.LoomGraph", FakeGraph)
 
-    r = runner.invoke(loom.cli.app, ["calls", "--direction", "dump", "--graph-name", "g", "--limit", "1"])
+    r = runner.invoke(
+        loom.cli.app,
+        ["calls", "--direction", "dump", "--graph-name", "g", "--limit", "1"],
+    )
     assert r.exit_code == 0
     assert "App" in r.stdout
 
@@ -46,14 +48,31 @@ def test_cli_calls_callees_resolves_plain_name(monkeypatch):
                 return [{"id": "function:x:App"}]
             if "MATCH (a {id: $id})-[r:CALLS]->(b)" in cypher:
                 seen["callees"] = True
-                return [{"kind": "function", "name": "render", "path": "x", "confidence": 1.0}]
+                return [
+                    {
+                        "kind": "function",
+                        "name": "render",
+                        "path": "x",
+                        "confidence": 1.0,
+                    }
+                ]
             return []
 
     monkeypatch.setattr("loom.core.LoomGraph", FakeGraph)
 
     r = runner.invoke(
         loom.cli.app,
-        ["calls", "--graph-name", "g", "--target", "App", "--direction", "callees", "--limit", "5"],
+        [
+            "calls",
+            "--graph-name",
+            "g",
+            "--target",
+            "App",
+            "--direction",
+            "callees",
+            "--limit",
+            "5",
+        ],
     )
     assert r.exit_code == 0
     assert seen["resolved"]
@@ -67,9 +86,23 @@ def test_cli_calls_prints_lexical_context(monkeypatch):
 
         async def query(self, cypher: str, params=None):
             if "MATCH (a)-[:CONTAINS]->(b {id: $id})" in cypher:
-                return [{"kind": "function", "name": "build_server", "path": "x", "relation": "parent"}]
+                return [
+                    {
+                        "kind": "function",
+                        "name": "build_server",
+                        "path": "x",
+                        "relation": "parent",
+                    }
+                ]
             if "MATCH (a {id: $id})-[:CONTAINS]->(b)" in cypher:
-                return [{"kind": "function", "name": "search_code", "path": "x", "relation": "child"}]
+                return [
+                    {
+                        "kind": "function",
+                        "name": "search_code",
+                        "path": "x",
+                        "relation": "child",
+                    }
+                ]
             if "MATCH (a {id: $id})-[r:CALLS]->(b)" in cypher:
                 return []
             if "MATCH (a)-[r:CALLS]->(b {id: $id})" in cypher:

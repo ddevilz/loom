@@ -16,8 +16,13 @@ class FakeGraph:
     bulk_nodes_calls: int = 0
     edges: list[dict[str, Any]] = field(default_factory=list)
 
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        if cypher.strip() == "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash":
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        if (
+            cypher.strip()
+            == "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash"
+        ):
             return [
                 {"id": node_id, "content_hash": props.get("content_hash")}
                 for node_id, props in self.nodes.items()
@@ -30,7 +35,10 @@ class FakeGraph:
         if cypher.strip() == "MATCH ()-[r]->() RETURN count(r) AS c":
             return [{"c": len(self.edges)}]
 
-        if cypher.strip() == "MATCH (n) WHERE n.id STARTS WITH 'doc:' RETURN properties(n) AS props":
+        if (
+            cypher.strip()
+            == "MATCH (n) WHERE n.id STARTS WITH 'doc:' RETURN properties(n) AS props"
+        ):
             return [
                 {"props": dict(props)}
                 for props in self.nodes.values()
@@ -47,7 +55,10 @@ class FakeGraph:
             self.nodes.pop(node_id, None)
             return []
 
-        if cypher.strip() == "MATCH (n) WHERE n.path STARTS WITH $path_prefix DETACH DELETE n":
+        if (
+            cypher.strip()
+            == "MATCH (n) WHERE n.path STARTS WITH $path_prefix DETACH DELETE n"
+        ):
             assert params is not None
             prefix = params["path_prefix"]
             for node_id in [
@@ -139,7 +150,9 @@ async def test_index_repo_force_rebuild_clears_stale_repo_nodes(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_index_repo_relinks_changed_code_nodes_against_existing_doc_nodes(tmp_path: Path, monkeypatch) -> None:
+async def test_index_repo_relinks_changed_code_nodes_against_existing_doc_nodes(
+    tmp_path: Path, monkeypatch
+) -> None:
     file_path = _write(tmp_path, "a.py", "def f():\n    return 1\n")
     abs_path = Path(file_path).resolve().as_posix()
 
@@ -166,15 +179,31 @@ async def test_index_repo_relinks_changed_code_nodes_against_existing_doc_nodes(
     )
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             await graph.bulk_create_edges(
-                [type("_EdgeLike", (), {"from_id": code_nodes[0].id, "to_id": doc_nodes[0].id, "kind": EdgeType.LOOM_IMPLEMENTS})()]
+                [
+                    type(
+                        "_EdgeLike",
+                        (),
+                        {
+                            "from_id": code_nodes[0].id,
+                            "to_id": doc_nodes[0].id,
+                            "kind": EdgeType.LOOM_IMPLEMENTS,
+                        },
+                    )()
+                ]
             )
             return []
 
-    monkeypatch.setattr("loom.ingest.pipeline.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.pipeline.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
-    g = FakeGraph(nodes={old_node.id: old_node.model_dump(), doc_node.id: doc_node.model_dump()})
+    g = FakeGraph(
+        nodes={old_node.id: old_node.model_dump(), doc_node.id: doc_node.model_dump()}
+    )
 
     Path(file_path).write_text("def f():\n    return 2\n", encoding="utf-8")
 

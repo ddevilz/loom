@@ -34,9 +34,13 @@ async def test_detect_violations_emits_loom_violates_report() -> None:
         summary="Passwords must be hashed before storage.",
         metadata={},
     )
-    edge = Edge(from_id=code.id, to_id=doc.id, kind=EdgeType.LOOM_IMPLEMENTS, metadata={})
+    edge = Edge(
+        from_id=code.id, to_id=doc.id, kind=EdgeType.LOOM_IMPLEMENTS, metadata={}
+    )
 
-    llm = _FakeLLM('{"violates": true, "confidence": 0.9, "reason": "plaintext contradicts hashing requirement"}')
+    llm = _FakeLLM(
+        '{"violates": true, "confidence": 0.9, "reason": "plaintext contradicts hashing requirement"}'
+    )
     reports = await detect_violations([code], [doc], [edge], llm=llm)
 
     assert reports
@@ -63,7 +67,9 @@ async def test_detect_violations_ignores_non_object_json_response() -> None:
         summary="Passwords must be hashed before storage.",
         metadata={},
     )
-    edge = Edge(from_id=code.id, to_id=doc.id, kind=EdgeType.LOOM_IMPLEMENTS, metadata={})
+    edge = Edge(
+        from_id=code.id, to_id=doc.id, kind=EdgeType.LOOM_IMPLEMENTS, metadata={}
+    )
 
     llm = _FakeLLM("[]")
     reports = await detect_violations([code], [doc], [edge], llm=llm)
@@ -71,7 +77,9 @@ async def test_detect_violations_ignores_non_object_json_response() -> None:
     assert reports == []
 
 
-def test_detect_ast_drift_reports_signature_return_param_and_side_effect_changes() -> None:
+def test_detect_ast_drift_reports_signature_return_param_and_side_effect_changes() -> (
+    None
+):
     old_node = Node(
         id="function:x:f",
         kind=NodeKind.FUNCTION,

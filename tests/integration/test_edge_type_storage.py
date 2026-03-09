@@ -24,7 +24,7 @@ async def test_edge_persists_with_uppercase_relationship_type():
     if not _db_available():
         pytest.skip("FalkorDB is not reachable on localhost:6379")
     graph = LoomGraph(graph_name="test_edge_storage")
-    
+
     # Create test nodes
     node_a = Node(
         id="function:test:func_a",
@@ -42,9 +42,9 @@ async def test_edge_persists_with_uppercase_relationship_type():
         path="test.py",
         metadata={},
     )
-    
+
     await graph.bulk_create_nodes([node_a, node_b])
-    
+
     # Create edge with domain EdgeType
     edge = Edge(
         from_id=node_a.id,
@@ -53,22 +53,25 @@ async def test_edge_persists_with_uppercase_relationship_type():
         confidence=0.9,
         metadata={},
     )
-    
+
     await graph.bulk_create_edges([edge])
-    
+
     # Query using uppercase relationship type (storage format)
     calls_rel = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
     rows = await graph.query(
         f"MATCH (a)-[r:{calls_rel}]->(b) WHERE a.id = $from_id AND b.id = $to_id RETURN type(r) AS rel_type, r.confidence AS confidence",
         {"from_id": node_a.id, "to_id": node_b.id},
     )
-    
+
     assert len(rows) == 1
     assert rows[0]["rel_type"] == "CALLS"  # Stored as uppercase
     assert rows[0]["confidence"] == 0.9
-    
+
     # Cleanup
-    await graph.query("MATCH (n) WHERE n.id IN [$id1, $id2] DETACH DELETE n", {"id1": node_a.id, "id2": node_b.id})
+    await graph.query(
+        "MATCH (n) WHERE n.id IN [$id1, $id2] DETACH DELETE n",
+        {"id1": node_a.id, "id2": node_b.id},
+    )
 
 
 @pytest.mark.asyncio
@@ -77,7 +80,7 @@ async def test_edge_query_with_domain_edge_type():
     if not _db_available():
         pytest.skip("FalkorDB is not reachable on localhost:6379")
     graph = LoomGraph(graph_name="test_edge_storage")
-    
+
     # Create test nodes
     node_a = Node(
         id="function:test:import_a",
@@ -95,9 +98,9 @@ async def test_edge_query_with_domain_edge_type():
         path="test.py",
         metadata={},
     )
-    
+
     await graph.bulk_create_nodes([node_a, node_b])
-    
+
     # Create IMPORTS edge
     edge = Edge(
         from_id=node_a.id,
@@ -106,21 +109,24 @@ async def test_edge_query_with_domain_edge_type():
         confidence=1.0,
         metadata={},
     )
-    
+
     await graph.bulk_create_edges([edge])
-    
+
     # Query using adapter to convert domain type to storage format
     imports_rel = EdgeTypeAdapter.to_storage(EdgeType.IMPORTS)
     rows = await graph.query(
         f"MATCH (a)-[:{imports_rel}]->(b) WHERE a.id = $from_id RETURN b.id AS to_id",
         {"from_id": node_a.id},
     )
-    
+
     assert len(rows) == 1
     assert rows[0]["to_id"] == node_b.id
-    
+
     # Cleanup
-    await graph.query("MATCH (n) WHERE n.id IN [$id1, $id2] DETACH DELETE n", {"id1": node_a.id, "id2": node_b.id})
+    await graph.query(
+        "MATCH (n) WHERE n.id IN [$id1, $id2] DETACH DELETE n",
+        {"id1": node_a.id, "id2": node_b.id},
+    )
 
 
 @pytest.mark.asyncio
@@ -129,7 +135,7 @@ async def test_multiple_edge_types_persist_correctly():
     if not _db_available():
         pytest.skip("FalkorDB is not reachable on localhost:6379")
     graph = LoomGraph(graph_name="test_edge_storage")
-    
+
     # Create test nodes
     func_node = Node(
         id="function:test:multi_func",
@@ -155,29 +161,41 @@ async def test_multiple_edge_types_persist_correctly():
         path="test.py",
         metadata={},
     )
-    
+
     await graph.bulk_create_nodes([func_node, doc_node, other_func])
-    
+
     # Create edges of different types
     edges = [
-        Edge(from_id=func_node.id, to_id=doc_node.id, kind=EdgeType.LOOM_IMPLEMENTS, confidence=0.95, metadata={}),
-        Edge(from_id=func_node.id, to_id=other_func.id, kind=EdgeType.CALLS, confidence=0.85, metadata={}),
+        Edge(
+            from_id=func_node.id,
+            to_id=doc_node.id,
+            kind=EdgeType.LOOM_IMPLEMENTS,
+            confidence=0.95,
+            metadata={},
+        ),
+        Edge(
+            from_id=func_node.id,
+            to_id=other_func.id,
+            kind=EdgeType.CALLS,
+            confidence=0.85,
+            metadata={},
+        ),
     ]
-    
+
     await graph.bulk_create_edges(edges)
-    
+
     # Query all relationship types
     rows = await graph.query(
         "MATCH (a {id: $id})-[r]->(b) RETURN type(r) AS rel_type, b.id AS to_id ORDER BY rel_type",
         {"id": func_node.id},
     )
-    
+
     assert len(rows) == 2
     # Relationship types should be uppercase (storage format)
     rel_types = [row["rel_type"] for row in rows]
     assert "CALLS" in rel_types
     assert "LOOM_IMPLEMENTS" in rel_types
-    
+
     # Cleanup
     await graph.query(
         "MATCH (n) WHERE n.id IN [$id1, $id2, $id3] DETACH DELETE n",
@@ -191,7 +209,7 @@ async def test_edge_type_value_does_not_match_storage():
     if not _db_available():
         pytest.skip("FalkorDB is not reachable on localhost:6379")
     graph = LoomGraph(graph_name="test_edge_storage")
-    
+
     # Create test nodes
     node_a = Node(
         id="function:test:value_test_a",
@@ -209,9 +227,9 @@ async def test_edge_type_value_does_not_match_storage():
         path="test.py",
         metadata={},
     )
-    
+
     await graph.bulk_create_nodes([node_a, node_b])
-    
+
     # Create CALLS edge
     edge = Edge(
         from_id=node_a.id,
@@ -220,29 +238,32 @@ async def test_edge_type_value_does_not_match_storage():
         confidence=0.9,
         metadata={},
     )
-    
+
     await graph.bulk_create_edges([edge])
-    
+
     # Query using lowercase value (WRONG - should not match)
     lowercase_value = EdgeType.CALLS.value  # "calls"
     rows = await graph.query(
         f"MATCH (a)-[:{lowercase_value}]->(b) WHERE a.id = $from_id RETURN b.id AS to_id",
         {"from_id": node_a.id},
     )
-    
+
     # Should return ZERO results because "calls" != "CALLS" in storage
     assert len(rows) == 0
-    
+
     # Query using uppercase name via adapter (CORRECT - should match)
     uppercase_name = EdgeTypeAdapter.to_storage(EdgeType.CALLS)  # "CALLS"
     rows = await graph.query(
         f"MATCH (a)-[:{uppercase_name}]->(b) WHERE a.id = $from_id RETURN b.id AS to_id",
         {"from_id": node_a.id},
     )
-    
+
     # Should return ONE result
     assert len(rows) == 1
     assert rows[0]["to_id"] == node_b.id
-    
+
     # Cleanup
-    await graph.query("MATCH (n) WHERE n.id IN [$id1, $id2] DETACH DELETE n", {"id1": node_a.id, "id2": node_b.id})
+    await graph.query(
+        "MATCH (n) WHERE n.id IN [$id1, $id2] DETACH DELETE n",
+        {"id1": node_a.id, "id2": node_b.id},
+    )

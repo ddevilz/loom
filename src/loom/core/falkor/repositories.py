@@ -21,7 +21,9 @@ class NodeRepository:
         self._gw = gw
 
     @staticmethod
-    def _split_embedding(props: dict[str, object]) -> tuple[dict[str, object], list[float] | None]:
+    def _split_embedding(
+        props: dict[str, object],
+    ) -> tuple[dict[str, object], list[float] | None]:
         raw = props.get("embedding")
         if isinstance(raw, list):
             embedding = [float(x) for x in raw if isinstance(x, (int, float))]
@@ -34,7 +36,9 @@ class NodeRepository:
         props, embedding = self._split_embedding(serialize_node_props(node))
         label = node.kind.name.title()
         query = cypher.create_or_update_node_with_label(label)
-        self._gw.run(query, params={"id": node.id, "props": props, "embedding": embedding})
+        self._gw.run(
+            query, params={"id": node.id, "props": props, "embedding": embedding}
+        )
 
     def get(self, node_id: str) -> Node | None:
         rows = self._gw.query_rows(cypher.GET_NODE_BY_ID, params={"id": node_id})
@@ -113,7 +117,9 @@ class TraversalRepository:
     def __init__(self, gw: FalkorGateway) -> None:
         self._gw = gw
 
-    def neighbors(self, node_id: str, depth: int, edge_types: list[EdgeType]) -> list[Node]:
+    def neighbors(
+        self, node_id: str, depth: int, edge_types: list[EdgeType]
+    ) -> list[Node]:
         if depth < 1:
             return []
 
@@ -160,9 +166,15 @@ class TraversalRepository:
         if not results:
             return []
 
-        ordered_ids = self._rank_by_personalized_pagerank(node_id, graph_nodes, graph_edges)
-        ranked_nodes = [results[node_id] for node_id in ordered_ids if node_id in results]
-        remaining = [node for node_id, node in results.items() if node_id not in set(ordered_ids)]
+        ordered_ids = self._rank_by_personalized_pagerank(
+            node_id, graph_nodes, graph_edges
+        )
+        ranked_nodes = [
+            results[node_id] for node_id in ordered_ids if node_id in results
+        ]
+        remaining = [
+            node for node_id, node in results.items() if node_id not in set(ordered_ids)
+        ]
         return ranked_nodes + remaining
 
     @staticmethod
@@ -178,14 +190,20 @@ class TraversalRepository:
         graph = Graph(directed=True)
         graph.add_vertices(len(ordered_node_ids))
         if edges:
-            graph.add_edges([(index_by_id[source], index_by_id[target]) for source, target in edges])
+            graph.add_edges(
+                [(index_by_id[source], index_by_id[target]) for source, target in edges]
+            )
 
         reset = [0.0] * len(ordered_node_ids)
         reset[index_by_id[seed_id]] = 1.0
         scores = graph.personalized_pagerank(directed=True, reset=reset)
 
         ranked = sorted(
-            ((node_id, scores[index_by_id[node_id]]) for node_id in ordered_node_ids if node_id != seed_id),
+            (
+                (node_id, scores[index_by_id[node_id]])
+                for node_id in ordered_node_ids
+                if node_id != seed_id
+            ),
             key=lambda item: item[1],
             reverse=True,
         )

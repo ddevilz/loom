@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Collection
+from collections.abc import Collection
+from typing import Any
 
 from ..edge import Edge
 from ..node import Node, NodeKind, NodeSource
@@ -104,8 +105,12 @@ def row_to_node(
         kind=node_kind,
         source=source,
         name=str(row.get("name") or node_id),
-        summary=summary if not summary_must_be_str or isinstance(summary, str) else None,
+        summary=summary
+        if not summary_must_be_str or isinstance(summary, str)
+        else None,
         path=str(row.get("path") or ""),
-        embedding=row.get("embedding") if allow_embedding and isinstance(row.get("embedding"), list) else None,
+        embedding=row.get("embedding")
+        if allow_embedding and isinstance(row.get("embedding"), list)
+        else None,
         metadata=deserialize_metadata_value(row.get("metadata")),
     )

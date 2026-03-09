@@ -11,7 +11,9 @@ class _FakeGateway:
     def run(self, cypher: str, params: dict[str, object] | None = None, timeout=None):
         self.calls.append((cypher, params))
 
-    def query_rows(self, cypher: str, params: dict[str, object] | None = None, timeout=None):
+    def query_rows(
+        self, cypher: str, params: dict[str, object] | None = None, timeout=None
+    ):
         raise AssertionError("query_rows should not be called in this test")
 
 

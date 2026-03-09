@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loom.core import NodeKind
 from loom.analysis.code.parser import parse_repo
+from loom.core import NodeKind
 from loom.ingest.code.languages.markup import (
     parse_css,
     parse_html,
@@ -12,8 +12,8 @@ from loom.ingest.code.languages.markup import (
     parse_yaml,
 )
 
-
 # ── HTML parsing ────────────────────────────────────────────────────
+
 
 def test_parse_html_extracts_title(tmp_path: Path):
     p = tmp_path / "index.html"
@@ -54,10 +54,10 @@ def test_parse_html_detects_jinja2_template(tmp_path: Path):
 def test_parse_html_extracts_scripts_and_styles(tmp_path: Path):
     p = tmp_path / "page.html"
     p.write_text(
-        '<html><head>'
+        "<html><head>"
         '<link rel="stylesheet" href="/static/main.css">'
         '<script src="/static/app.js"></script>'
-        '</head></html>',
+        "</head></html>",
         encoding="utf-8",
     )
     nodes = parse_html(str(p))
@@ -66,6 +66,7 @@ def test_parse_html_extracts_scripts_and_styles(tmp_path: Path):
 
 
 # ── XML parsing ─────────────────────────────────────────────────────
+
 
 def test_parse_xml_extracts_root_tag(tmp_path: Path):
     p = tmp_path / "config.xml"
@@ -100,9 +101,12 @@ def test_parse_xml_handles_invalid_xml(tmp_path: Path):
 
 # ── JSON parsing ────────────────────────────────────────────────────
 
+
 def test_parse_json_extracts_top_level_keys(tmp_path: Path):
     p = tmp_path / "data.json"
-    p.write_text('{"name": "test", "version": "1.0", "author": "dev"}', encoding="utf-8")
+    p.write_text(
+        '{"name": "test", "version": "1.0", "author": "dev"}', encoding="utf-8"
+    )
     nodes = parse_json(str(p))
     assert len(nodes) == 1
     assert nodes[0].kind == NodeKind.FILE
@@ -147,6 +151,7 @@ def test_parse_json_handles_invalid_json(tmp_path: Path):
 
 # ── CSS parsing ─────────────────────────────────────────────────────
 
+
 def test_parse_css_extracts_classes(tmp_path: Path):
     p = tmp_path / "style.css"
     p.write_text(
@@ -186,6 +191,7 @@ def test_parse_css_extracts_css_variables(tmp_path: Path):
 
 
 # ── YAML parsing ────────────────────────────────────────────────────
+
 
 def test_parse_yaml_extracts_top_level_keys(tmp_path: Path):
     p = tmp_path / "config.yaml"
@@ -229,16 +235,25 @@ def test_parse_yaml_detects_github_actions(tmp_path: Path):
 
 # ── Integration with parse_repo ─────────────────────────────────────
 
+
 def test_parse_repo_includes_markup_files(tmp_path: Path):
 
     # Create a mini web project
     (tmp_path / "app.py").write_text("def index():\n    pass\n", encoding="utf-8")
-    (tmp_path / "index.html").write_text("<html><title>Home</title></html>", encoding="utf-8")
+    (tmp_path / "index.html").write_text(
+        "<html><title>Home</title></html>", encoding="utf-8"
+    )
     (tmp_path / "style.css").write_text(".btn { color: red; }", encoding="utf-8")
     (tmp_path / "config.json").write_text('{"debug": true}', encoding="utf-8")
-    (tmp_path / "docker-compose.yml").write_text("version: '3'\nservices:\n  web:\n", encoding="utf-8")
-    (tmp_path / "application.properties").write_text("spring.port=8080\n", encoding="utf-8")
-    (tmp_path / "pyproject.toml").write_text("[project]\nname = \"x\"\n", encoding="utf-8")
+    (tmp_path / "docker-compose.yml").write_text(
+        "version: '3'\nservices:\n  web:\n", encoding="utf-8"
+    )
+    (tmp_path / "application.properties").write_text(
+        "spring.port=8080\n", encoding="utf-8"
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\n', encoding="utf-8"
+    )
     (tmp_path / "settings.ini").write_text("[main]\nkey=value\n", encoding="utf-8")
     (tmp_path / ".env").write_text("HELLO=world\n", encoding="utf-8")
     (tmp_path / ".env.local").write_text("LOCAL=1\n", encoding="utf-8")

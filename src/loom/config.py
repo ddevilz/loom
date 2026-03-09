@@ -6,6 +6,7 @@ from pathlib import Path
 # Load .env file if present
 try:
     from dotenv import load_dotenv
+
     env_path = Path.cwd() / ".env"
     if env_path.exists():
         load_dotenv(env_path)
@@ -26,7 +27,9 @@ LOOM_LLM_BASE_URL = os.getenv("LOOM_LLM_BASE_URL", "")
 LOOM_EMBED_MODEL = os.getenv("LOOM_EMBED_MODEL", "nomic-ai/nomic-embed-text-v1.5")
 LOOM_EMBED_DIM = int(os.getenv("LOOM_EMBED_DIM", "768"))
 LOOM_EMBED_BATCH_SIZE = int(os.getenv("LOOM_EMBED_BATCH_SIZE", "32"))
-LOOM_EMBED_CACHE_DIR = os.getenv("LOOM_EMBED_CACHE_DIR", str(Path.home() / ".loom" / "fastembed_cache"))
+LOOM_EMBED_CACHE_DIR = os.getenv(
+    "LOOM_EMBED_CACHE_DIR", str(Path.home() / ".loom" / "fastembed_cache")
+)
 
 # Jira configuration
 LOOM_JIRA_URL = os.getenv("LOOM_JIRA_URL", "")
@@ -36,7 +39,7 @@ LOOM_JIRA_API_TOKEN = os.getenv("LOOM_JIRA_API_TOKEN", "")
 
 def validate_jira_config() -> None:
     """Validate Jira configuration is complete.
-    
+
     Raises:
         ValueError: If any required Jira configuration is missing.
     """
@@ -47,7 +50,7 @@ def validate_jira_config() -> None:
         missing.append("LOOM_JIRA_EMAIL")
     if not LOOM_JIRA_API_TOKEN:
         missing.append("LOOM_JIRA_API_TOKEN")
-    
+
     if missing:
         raise ValueError(
             f"Jira integration requires the following environment variables: {', '.join(missing)}. "

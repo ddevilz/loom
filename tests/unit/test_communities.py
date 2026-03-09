@@ -4,8 +4,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from loom.analysis.code.communities import _generate_community_name
-from loom.analysis.code.communities import detect_communities
+from loom.analysis.code.communities import _generate_community_name, detect_communities
 
 
 def test_generate_community_name_from_common_prefix():

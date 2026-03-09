@@ -10,7 +10,6 @@ from rich.table import Table
 
 from loom.config import LOOM_DB_HOST, LOOM_DB_PORT
 
-
 app = typer.Typer(add_completion=False)
 
 _NONE_TEXT = "(none)"
@@ -55,16 +54,25 @@ def _print_table_or_none(
         console.print(_NONE_TEXT)
 
 
-def _print_call_rows(console: Console, *, heading: str, rows: list[dict[str, object]]) -> None:
+def _print_call_rows(
+    console: Console, *, heading: str, rows: list[dict[str, object]]
+) -> None:
     _print_table_or_none(
         console,
         heading=heading,
-        columns=[("kind", None), ("name", None), ("path", None), ("confidence", "right")],
+        columns=[
+            ("kind", None),
+            ("name", None),
+            ("path", None),
+            ("confidence", "right"),
+        ],
         rows=rows,
     )
 
 
-def _print_context_rows(console: Console, *, heading: str, rows: list[dict[str, object]]) -> None:
+def _print_context_rows(
+    console: Console, *, heading: str, rows: list[dict[str, object]]
+) -> None:
     _print_table_or_none(
         console,
         heading=heading,
@@ -77,7 +85,11 @@ async def _infer_repo_root(graph) -> str | None:
     rows = await graph.query(
         "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000"
     )
-    paths = [row.get("path") for row in rows if isinstance(row.get("path"), str) and row.get("path")]
+    paths = [
+        row.get("path")
+        for row in rows
+        if isinstance(row.get("path"), str) and row.get("path")
+    ]
     if not paths:
         return None
 
@@ -181,7 +193,9 @@ def analyze(
 
 @app.command()
 def trace(
-    mode: str = typer.Argument(..., help="unimplemented|untraced|impact|tickets|coverage"),
+    mode: str = typer.Argument(
+        ..., help="unimplemented|untraced|impact|tickets|coverage"
+    ),
     target: str | None = typer.Argument(None),
     graph_name: str = typer.Option("loom", "--graph-name"),
 ) -> None:
@@ -214,7 +228,9 @@ def trace(
                 console,
                 heading=None,
                 columns=[("kind", None), ("name", None), ("path", None)],
-                rows=[{"kind": n.kind.value, "name": n.name, "path": n.path} for n in rows],
+                rows=[
+                    {"kind": n.kind.value, "name": n.name, "path": n.path} for n in rows
+                ],
             )
             return
         if mode == "impact":
@@ -225,7 +241,9 @@ def trace(
                 console,
                 heading=None,
                 columns=[("kind", None), ("name", None), ("path", None)],
-                rows=[{"kind": n.kind.value, "name": n.name, "path": n.path} for n in rows],
+                rows=[
+                    {"kind": n.kind.value, "name": n.name, "path": n.path} for n in rows
+                ],
             )
             return
         if mode == "tickets":
@@ -276,7 +294,13 @@ def query(
         _print_table_or_none(
             console,
             heading=None,
-            columns=[("score", "right"), ("via", None), ("kind", None), ("name", None), ("path", None)],
+            columns=[
+                ("score", "right"),
+                ("via", None),
+                ("kind", None),
+                ("name", None),
+                ("path", None),
+            ],
             rows=[
                 {
                     "score": f"{result.score:.3f}",
@@ -294,9 +318,13 @@ def query(
 
 @app.command()
 def calls(
-    target: str | None = typer.Option(None, "--target", help="Node id or plain name to inspect."),
+    target: str | None = typer.Option(
+        None, "--target", help="Node id or plain name to inspect."
+    ),
     graph_name: str = typer.Option("loom", "--graph-name"),
-    kind: str | None = typer.Option(None, "--kind", help="Optional NodeKind when target is a plain name."),
+    kind: str | None = typer.Option(
+        None, "--kind", help="Optional NodeKind when target is a plain name."
+    ),
     direction: str = typer.Option(
         "callees",
         "--direction",
@@ -330,9 +358,13 @@ def calls(
             {"name": node},
         )
         if len(rows) == 0:
-            console.print(f"[red]Target not found:[/red] no node named [bold]{node!r}[/bold]")
+            console.print(
+                f"[red]Target not found:[/red] no node named [bold]{node!r}[/bold]"
+            )
             if kind is None:
-                console.print("Tip: use [bold]--kind[/bold] (e.g. function, class, method) to narrow the search.")
+                console.print(
+                    "Tip: use [bold]--kind[/bold] (e.g. function, class, method) to narrow the search."
+                )
             raise typer.Exit(code=1)
         if len(rows) > 1:
             console.print(
@@ -344,10 +376,14 @@ def calls(
             raise typer.Exit(code=1)
         return rows[0].get("id")
 
-    async def _query_call_rows(graph: LoomGraph, query: str, params: dict[str, object]) -> list[dict[str, object]]:
+    async def _query_call_rows(
+        graph: LoomGraph, query: str, params: dict[str, object]
+    ) -> list[dict[str, object]]:
         return await graph.query(query, params)
 
-    async def _query_context_rows(graph: LoomGraph, node_id: str, *, limit: int) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    async def _query_context_rows(
+        graph: LoomGraph, node_id: str, *, limit: int
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
         parent_rows = await graph.query(
             f"""
 MATCH (a)-[:{contains_rel}]->(b {{id: $id}})
@@ -404,8 +440,12 @@ LIMIT $limit
         node_id = await _resolve_node_id(graph, target)
 
         parent_rows, child_rows = await _query_context_rows(graph, node_id, limit=limit)
-        _print_context_rows(console, heading="=== lexical parents ===", rows=parent_rows)
-        _print_context_rows(console, heading="=== lexical children ===", rows=child_rows)
+        _print_context_rows(
+            console, heading="=== lexical parents ===", rows=parent_rows
+        )
+        _print_context_rows(
+            console, heading="=== lexical children ===", rows=child_rows
+        )
 
         if direction in {"callees", "both"}:
             rows = await _query_call_rows(
@@ -486,10 +526,17 @@ def entrypoints(
         _print_table_or_none(
             console,
             heading="=== call roots (no incoming CALLS) ===",
-            columns=[("out_calls", "right"), ("kind", None), ("name", None), ("path", None)],
+            columns=[
+                ("out_calls", "right"),
+                ("kind", None),
+                ("name", None),
+                ("path", None),
+            ],
             rows=r2,
         )
-        relationship_rows = [{"type": row.get("t"), "count": row.get("c")} for row in r3]
+        relationship_rows = [
+            {"type": row.get("t"), "count": row.get("c")} for row in r3
+        ]
         _print_table_or_none(
             console,
             heading="=== relationship types ===",

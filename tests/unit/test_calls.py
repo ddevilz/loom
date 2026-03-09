@@ -11,12 +11,14 @@ from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
 _PY_LANGUAGE = Language(python_language())
 
 
-def _parse_and_trace(code: str, func_name: str, all_symbols: dict[str, Node] | None = None) -> list[Edge]:
+def _parse_and_trace(
+    code: str, func_name: str, all_symbols: dict[str, Node] | None = None
+) -> list[Edge]:
     """Helper to parse code and trace calls for a specific function."""
     parser = Parser()
     parser.language = _PY_LANGUAGE
     tree = parser.parse(code.encode("utf-8"))
-    
+
     func_node = Node(
         id=f"function:test.py:{func_name}",
         kind=NodeKind.FUNCTION,
@@ -28,13 +30,15 @@ def _parse_and_trace(code: str, func_name: str, all_symbols: dict[str, Node] | N
         language="python",
         metadata={},
     )
-    
+
     symbols_by_name: dict[str, list[Node]] = {}
     if all_symbols is not None:
         for k, v in all_symbols.items():
             symbols_by_name[k] = [v]
 
-    return trace_calls(func_node, tree.root_node, symbols_by_name, src=code.encode("utf-8"))
+    return trace_calls(
+        func_node, tree.root_node, symbols_by_name, src=code.encode("utf-8")
+    )
 
 
 def test_trace_direct_function_call():
@@ -53,9 +57,9 @@ def caller():
         language="python",
         metadata={},
     )
-    
+
     edges = _parse_and_trace(code, "caller", {"callee": callee_node})
-    
+
     assert len(edges) == 1
     assert edges[0].kind == EdgeType.CALLS
     assert edges[0].to_id == callee_node.id
@@ -68,7 +72,7 @@ def caller():
     obj.method()
 """
     edges = _parse_and_trace(code, "caller")
-    
+
     assert len(edges) == 1
     assert edges[0].kind == EdgeType.CALLS
     assert "method" in edges[0].to_id
@@ -81,7 +85,7 @@ def caller():
     obj.chain.method()
 """
     edges = _parse_and_trace(code, "caller")
-    
+
     assert len(edges) == 1
     assert edges[0].kind == EdgeType.CALLS
     assert "method" in edges[0].to_id
@@ -98,7 +102,7 @@ def caller():
     list(range(5))
 """
     edges = _parse_and_trace(code, "caller")
-    
+
     assert len(edges) == 0
 
 
@@ -110,7 +114,7 @@ def caller():
     text.split(",")
 """
     edges = _parse_and_trace(code, "caller")
-    
+
     assert len(edges) == 0
 
 
@@ -141,9 +145,9 @@ def caller():
         language="python",
         metadata={},
     )
-    
+
     edges = _parse_and_trace(code, "caller", {"outer": outer_node, "inner": inner_node})
-    
+
     assert len(edges) == 2
     names = {e.to_id for e in edges}
     assert outer_node.id in names
@@ -180,9 +184,9 @@ def caller():
         language="python",
         metadata={},
     )
-    
+
     edges = _parse_and_trace(code, "caller", {"foo": foo_node, "bar": bar_node})
-    
+
     assert len(edges) == 2
     names = {e.to_id for e in edges}
     assert foo_node.id in names
@@ -206,9 +210,9 @@ def caller():
         language="python",
         metadata={},
     )
-    
+
     edges = _parse_and_trace(code, "caller", {"process": process_node})
-    
+
     assert len(edges) == 1
     assert edges[0].to_id == process_node.id
 
@@ -219,7 +223,7 @@ def caller():
     unknown_function()
 """
     edges = _parse_and_trace(code, "caller", {})
-    
+
     assert len(edges) == 1
     assert edges[0].kind == EdgeType.CALLS
     assert edges[0].to_id == "unresolved:unknown_function"
@@ -229,7 +233,7 @@ def caller():
 
 def test_trace_calls_for_file_integration(tmp_path: Path):
     from loom.ingest.code.languages.python import parse_python
-    
+
     code = """
 def helper():
     pass
@@ -238,33 +242,33 @@ def main():
     helper()
     print("done")
 """
-    
+
     test_file = tmp_path / "test.py"
     test_file.write_text(code, encoding="utf-8")
-    
+
     nodes = parse_python(str(test_file))
     edges = trace_calls_for_file(str(test_file), nodes)
-    
+
     assert len(edges) == 1
     assert edges[0].kind == EdgeType.CALLS
-    
+
     helper_node = next(n for n in nodes if n.name == "helper")
     assert edges[0].to_id == helper_node.id
 
 
 def test_trace_calls_auth_fixture_integration():
     from loom.ingest.code.languages.python import parse_python
-    
+
     auth_path = Path(__file__).parent.parent / "fixtures" / "sample_repo" / "auth.py"
     if not auth_path.exists():
         return
-    
+
     nodes = parse_python(str(auth_path))
     edges = trace_calls_for_file(str(auth_path), nodes)
-    
+
     assert len(edges) > 0
     assert all(e.kind == EdgeType.CALLS for e in edges)
-    
+
     for edge in edges:
         assert 0.5 <= edge.confidence <= 1.0
 
@@ -275,10 +279,7 @@ def test_build_file_batch_emits_contains_edges_for_nested_symbols(tmp_path: Path
 
     test_file = tmp_path / "nested.py"
     test_file.write_text(
-        "def outer():\n"
-        "    def inner():\n"
-        "        return 1\n"
-        "    return inner()\n",
+        "def outer():\n    def inner():\n        return 1\n    return inner()\n",
         encoding="utf-8",
     )
 

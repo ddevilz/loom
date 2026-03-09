@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
-from loom.core.falkor.mappers import deserialize_edge_props, deserialize_node_props, serialize_edge_props, serialize_node_props
+from loom.core.falkor.mappers import (
+    deserialize_edge_props,
+    deserialize_node_props,
+    serialize_edge_props,
+    serialize_node_props,
+)
 
 
 def test_serialize_node_props_encodes_metadata_and_keeps_content_hash() -> None:

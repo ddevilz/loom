@@ -1,5 +1,5 @@
-import socket
 import json
+import socket
 
 import pytest
 
@@ -87,7 +87,9 @@ async def test_detect_communities_creates_community_nodes():
     node_to_community = await detect_communities(g)
 
     # Verify results
-    assert len(node_to_community) >= 6, "Should cluster at least 6 nodes (2 communities × 3 min)"
+    assert len(node_to_community) >= 6, (
+        "Should cluster at least 6 nodes (2 communities × 3 min)"
+    )
 
     # Check that community nodes were created
     community_query = """
@@ -99,8 +101,9 @@ async def test_detect_communities_creates_community_nodes():
 
     # Verify community names are semantic
     community_names = {c["name"] for c in communities}
-    assert any(name in community_names for name in ["auth", "data"]), \
+    assert any(name in community_names for name in ["auth", "data"]), (
         f"Community names should be semantic, got: {community_names}"
+    )
 
     # Verify MEMBER_OF edges exist
     member_of_query = """
@@ -108,19 +111,25 @@ async def test_detect_communities_creates_community_nodes():
     RETURN count(r) AS count
     """
     member_count = await g.query(member_of_query)
-    assert member_count[0]["count"] >= 6, "Should have MEMBER_OF edges for clustered nodes"
+    assert member_count[0]["count"] >= 6, (
+        "Should have MEMBER_OF edges for clustered nodes"
+    )
 
     # Verify community_id is set on function nodes
     for node_id in list(node_to_community.keys())[:3]:
         node = await g.get_node(node_id)
         assert node is not None
-        assert node.community_id is not None, f"Node {node_id} should have community_id set"
+        assert node.community_id is not None, (
+            f"Node {node_id} should have community_id set"
+        )
         assert node.community_id == node_to_community[node_id]
 
     # Verify modularity metadata
     for comm in communities:
         raw_metadata = comm["metadata"]
-        metadata = json.loads(raw_metadata) if isinstance(raw_metadata, str) else raw_metadata
+        metadata = (
+            json.loads(raw_metadata) if isinstance(raw_metadata, str) else raw_metadata
+        )
         assert "modularity" in metadata
         assert "member_count" in metadata
         assert metadata["member_count"] >= 3
@@ -162,7 +171,9 @@ async def test_detect_communities_filters_small_communities():
     node_to_community = await detect_communities(g)
 
     # Should return empty because community has < 3 members
-    assert len(node_to_community) == 0, "Should not cluster communities with < 3 members"
+    assert len(node_to_community) == 0, (
+        "Should not cluster communities with < 3 members"
+    )
 
     # Verify no community nodes created
     community_query = "MATCH (c:Community) RETURN count(c) AS count"

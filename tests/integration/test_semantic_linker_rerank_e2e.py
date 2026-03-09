@@ -4,7 +4,7 @@ import socket
 
 import pytest
 
-from loom.core import Node, NodeKind, NodeSource, LoomGraph
+from loom.core import LoomGraph, Node, NodeKind, NodeSource
 from loom.core.falkor import cypher
 from loom.linker.linker import SemanticLinker
 

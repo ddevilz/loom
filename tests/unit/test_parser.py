@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from loom.core import Node, NodeKind
-from loom.ingest.code.registry import get_registry
 from loom.ingest.code.languages.python import parse_python
+from loom.ingest.code.registry import get_registry
 
 
 def _by_name(nodes, name: str):
@@ -87,6 +87,7 @@ def test_parse_python_edge_cases(tmp_path: Path, src: str):
 
 # ── decorator metadata extraction ───────────────────────────────────
 
+
 def test_decorated_function_has_decorator_metadata():
     path = "tests/fixtures/sample_repo/auth.py"
     nodes = parse_python(path)
@@ -126,6 +127,7 @@ def test_plain_function_has_no_decorator_metadata():
 
 # ── framework hints ─────────────────────────────────────────────────
 
+
 def test_flask_route_gets_framework_hint():
     path = "tests/fixtures/sample_repo/flask_app.py"
     nodes = parse_python(path)
@@ -153,6 +155,7 @@ def test_fastapi_route_hint(tmp_path: Path):
 
 
 # ── registry + parse_code file filtering ────────────────────────────
+
 
 def test_parse_code_skips_unsupported_extensions(tmp_path: Path):
     from loom.analysis.code.parser import parse_code
@@ -199,6 +202,7 @@ def test_registry_get_handler_for_path_special_cases_env_files():
 
 # ── parse_repo directory walker ─────────────────────────────────────
 
+
 def test_parse_repo_walks_directory(tmp_path: Path):
     from loom.analysis.code.parser import parse_repo
 
@@ -215,7 +219,7 @@ def test_parse_repo_walks_directory(tmp_path: Path):
     assert "helper" in names
     # 2 functions + 3 FILE nodes (html, css, json)
     assert len(nodes) == 5
-    
+
     # Verify we have both code and file nodes
     kinds = {n.kind for n in nodes}
     assert NodeKind.FUNCTION in kinds
@@ -260,12 +264,11 @@ def test_parse_repo_skips_hidden_dirs(tmp_path: Path):
 
 # ── Fix 4: named lambdas, TypedDict, nested classes ─────────────────
 
+
 def test_named_lambda_extracted(tmp_path: Path):
     p = tmp_path / "lambdas.py"
     p.write_text(
-        "double = lambda x: x * 2\n"
-        "class Ops:\n"
-        "    triple = lambda self, x: x * 3\n",
+        "double = lambda x: x * 2\nclass Ops:\n    triple = lambda self, x: x * 3\n",
         encoding="utf-8",
     )
     nodes = parse_python(str(p))
@@ -282,7 +285,7 @@ def test_named_lambda_extracted(tmp_path: Path):
 def test_typeddict_extracted(tmp_path: Path):
     p = tmp_path / "types.py"
     p.write_text(
-        'from typing import TypedDict\n'
+        "from typing import TypedDict\n"
         'UserDict = TypedDict("UserDict", {"name": str, "age": int})\n',
         encoding="utf-8",
     )
@@ -296,8 +299,7 @@ def test_typeddict_extracted(tmp_path: Path):
 def test_namedtuple_extracted(tmp_path: Path):
     p = tmp_path / "tuples.py"
     p.write_text(
-        'from collections import namedtuple\n'
-        'Point = namedtuple("Point", ["x", "y"])\n',
+        'from collections import namedtuple\nPoint = namedtuple("Point", ["x", "y"])\n',
         encoding="utf-8",
     )
     nodes = parse_python(str(p))
@@ -310,10 +312,7 @@ def test_namedtuple_extracted(tmp_path: Path):
 def test_nested_class_extracted(tmp_path: Path):
     p = tmp_path / "nested.py"
     p.write_text(
-        "class Outer:\n"
-        "    class Inner:\n"
-        "        def method(self):\n"
-        "            pass\n",
+        "class Outer:\n    class Inner:\n        def method(self):\n            pass\n",
         encoding="utf-8",
     )
     nodes = parse_python(str(p))
@@ -333,10 +332,7 @@ def test_nested_class_extracted(tmp_path: Path):
 def test_parse_python_nested_symbols_get_parent_id(tmp_path: Path):
     p = tmp_path / "nested_funcs.py"
     p.write_text(
-        "def outer():\n"
-        "    def inner():\n"
-        "        return 1\n"
-        "    return inner()\n",
+        "def outer():\n    def inner():\n        return 1\n    return inner()\n",
         encoding="utf-8",
     )
 
@@ -345,4 +341,6 @@ def test_parse_python_nested_symbols_get_parent_id(tmp_path: Path):
     inner = _by_name(nodes, "inner")[0]
 
     assert outer.parent_id is None
-    assert inner.parent_id == Node.make_code_id(NodeKind.FUNCTION, str(p).replace('\\', '/'), "outer")
+    assert inner.parent_id == Node.make_code_id(
+        NodeKind.FUNCTION, str(p).replace("\\", "/"), "outer"
+    )

@@ -23,14 +23,14 @@ class FileChange:
 
 def _run_git(repo_path: str, args: list[str]) -> str:
     """Run git command with timeout and error handling.
-    
+
     Args:
         repo_path: Path to git repository
         args: Git command arguments
-        
+
     Returns:
         Command stdout output
-        
+
     Raises:
         subprocess.TimeoutExpired: If command exceeds timeout
         subprocess.CalledProcessError: If git command fails
@@ -82,7 +82,9 @@ def _parse_name_status_output(out: str) -> list[FileChange]:
                 old_path = parts[1]
                 new_path = parts[2]
                 if _is_supported(new_path):
-                    changes.append(FileChange(status="R", path=new_path, old_path=old_path))
+                    changes.append(
+                        FileChange(status="R", path=new_path, old_path=old_path)
+                    )
             continue
 
         if status in {"A", "M", "D"}:
@@ -95,7 +97,9 @@ def _parse_name_status_output(out: str) -> list[FileChange]:
     return changes
 
 
-async def get_changed_files(repo_path: str, old_sha: str, new_sha: str) -> list[FileChange]:
+async def get_changed_files(
+    repo_path: str, old_sha: str, new_sha: str
+) -> list[FileChange]:
     cmd = ["diff", "--name-status", "--find-renames=10%", f"{old_sha}..{new_sha}"]
     out = await asyncio.to_thread(_run_git, repo_path, cmd)
     return _parse_name_status_output(out)

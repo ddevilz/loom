@@ -50,9 +50,7 @@ async def test_graph_bulk_and_query_roundtrip():
 
     await g.bulk_create_edges(edges)
 
-    labeled = await g.query(
-        "MATCH (n:Function) RETURN count(n) AS c"
-    )
+    labeled = await g.query("MATCH (n:Function) RETURN count(n) AS c")
     assert labeled[0]["c"] == 10
 
     count_rows = await g.query(cypher.COUNT_NODES)
