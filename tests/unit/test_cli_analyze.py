@@ -169,8 +169,9 @@ def test_cli_enrich_infers_repo_path_for_coupling(monkeypatch):
                 == "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000"
             ):
                 return [
-                    {"path": r"F:\repo\src\a.py"},
-                    {"path": r"F:\repo\src\b.py"},
+                    {"path": "/repo/src/a.py"},
+                    {"path": "/repo/src/b.py"},
+                    {"path": "/repo/README.md"},
                 ]
             return []
 
@@ -204,7 +205,7 @@ def test_cli_enrich_infers_repo_path_for_coupling(monkeypatch):
 
     assert result.exit_code == 0
     assert calls["graph_name"] == "test_graph"
-    assert Path(str(calls["repo_path"])) == Path(r"F:\repo\src")
+    assert Path(str(calls["repo_path"])) == Path("/repo")
     assert calls["months"] == 3
     assert calls["threshold"] == 0.3
 
