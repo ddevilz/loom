@@ -35,5 +35,3 @@ jobs:
             --new-sha "${{ github.sha }}" \
             --graph-name "${{ github.repository }}" \
             --repo-path .
-        env:
-          LOOM_DB_URL: ${{ secrets.LOOM_DB_URL }}

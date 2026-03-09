@@ -37,7 +37,7 @@ class AuthService:
         return self._secret
 
     @classmethod
-    def from_env(cls) -> "AuthService":
+    def from_env(cls) -> AuthService:
         return cls(secret="env")
 
     @staticmethod

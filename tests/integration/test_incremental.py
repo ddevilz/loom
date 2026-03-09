@@ -35,7 +35,9 @@ class FakeGraph:
     persisted_edges: list[dict[str, Any]] = field(default_factory=list)
     invalidated_paths: list[str] = field(default_factory=list)
 
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         q = cypher.strip()
 
         if q == "MATCH (n {path: $path}) RETURN properties(n) AS props":
@@ -47,20 +49,32 @@ class FakeGraph:
                     rows.extend({"props": dict(p)} for p in props_list)
             return rows
 
-        if q == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nRETURN count(r) AS c":
+        if (
+            q
+            == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nRETURN count(r) AS c"
+        ):
             assert params is not None
             node_id = params["id"]
             return [{"c": self.outgoing_human_edge_count_by_node_id.get(node_id, 0)}]
 
-        if q == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nRETURN count(r) AS c":
+        if (
+            q
+            == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nRETURN count(r) AS c"
+        ):
             assert params is not None
             node_id = params["id"]
             return [{"c": self.incoming_human_edge_count_by_node_id.get(node_id, 0)}]
 
-        if q == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason":
+        if (
+            q
+            == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason"
+        ):
             return []
 
-        if q == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason":
+        if (
+            q
+            == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason"
+        ):
             return []
 
         if q == "UNWIND $ids AS id MATCH (n {id: id}) DETACH DELETE n":
@@ -73,12 +87,18 @@ class FakeGraph:
                 self.invalidated_paths.append(params["path"])
             return []
 
-        if q == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin IS NULL OR r.origin <> 'human'\nDELETE r":
+        if (
+            q
+            == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin IS NULL OR r.origin <> 'human'\nDELETE r"
+        ):
             if params is not None:
                 self.invalidated_paths.append(params["path"])
             return []
 
-        if q == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = 'source_changed'":
+        if (
+            q
+            == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = 'source_changed'"
+        ):
             if params is not None:
                 self.invalidated_paths.append(params["path"])
             return []
@@ -86,7 +106,9 @@ class FakeGraph:
         if q == "MATCH (n {id: $id})-[:LOOM_IMPLEMENTS]->(d) RETURN d.id AS id":
             assert params is not None
             node_id = params["id"]
-            return [{"id": doc_id} for doc_id in self.implements_by_node_id.get(node_id, [])]
+            return [
+                {"id": doc_id} for doc_id in self.implements_by_node_id.get(node_id, [])
+            ]
 
         if q == "MATCH (n) RETURN count(n) AS c":
             # Not authoritative; just say 0
@@ -115,12 +137,16 @@ class FakeGraph:
 
     async def bulk_create_edges(self, edges) -> None:
         for e in edges:
-            self.persisted_edges.append({"from_id": e.from_id, "to_id": e.to_id, "kind": e.kind})
+            self.persisted_edges.append(
+                {"from_id": e.from_id, "to_id": e.to_id, "kind": e.kind}
+            )
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_sync_commits_touches_only_changed_files(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_touches_only_changed_files(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
 
@@ -185,7 +211,9 @@ async def test_sync_commits_touches_only_changed_files(tmp_path: Path, monkeypat
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_sync_commits_end_to_end_emits_drift_warning_and_violation_edge(tmp_path: Path) -> None:
+async def test_sync_commits_end_to_end_emits_drift_warning_and_violation_edge(
+    tmp_path: Path,
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
 
@@ -238,7 +266,9 @@ async def test_sync_commits_end_to_end_emits_drift_warning_and_violation_edge(tm
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_sync_commits_delete_preserves_node_with_incoming_human_edge(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_delete_preserves_node_with_incoming_human_edge(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
 

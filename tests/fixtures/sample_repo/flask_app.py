@@ -6,6 +6,7 @@ class app:
     def route(path):
         def wrapper(fn):
             return fn
+
         return wrapper
 
 

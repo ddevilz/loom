@@ -27,7 +27,11 @@ def diff_nodes(old: list[Node], new: list[Node]) -> NodeDiff:
         if n is None:
             deleted.append(o)
             continue
-        if o.content_hash is None or n.content_hash is None or o.content_hash != n.content_hash:
+        if (
+            o.content_hash is None
+            or n.content_hash is None
+            or o.content_hash != n.content_hash
+        ):
             changed.append((o, n))
         else:
             unchanged.append(n)

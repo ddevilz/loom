@@ -34,17 +34,20 @@ class JiraConfig:
         # Validate URL to prevent SSRF attacks
         parsed = urlparse(self.base_url)
         if parsed.scheme not in ("https", "http"):
-            raise ValueError(f"Jira base_url must use http or https scheme, got: {parsed.scheme}")
+            raise ValueError(
+                f"Jira base_url must use http or https scheme, got: {parsed.scheme}"
+            )
         if not parsed.netloc:
             raise ValueError("Jira base_url must have a valid domain")
         # Warn if using http (not https)
         if parsed.scheme == "http":
             import warnings
+
             warnings.warn(
                 f"Jira base_url uses insecure http:// scheme: {self.base_url}. "
                 "Consider using https:// for security.",
                 UserWarning,
-                stacklevel=2
+                stacklevel=2,
             )
 
 
@@ -60,7 +63,9 @@ def _build_jql(config: JiraConfig) -> str:
 
 
 def _auth_header(config: JiraConfig) -> str:
-    token = base64.b64encode(f"{config.email}:{config.api_token}".encode("utf-8")).decode("ascii")
+    token = base64.b64encode(
+        f"{config.email}:{config.api_token}".encode()
+    ).decode("ascii")
     return f"Basic {token}"
 
 
@@ -89,10 +94,16 @@ def _normalize_issue(issue: dict[str, Any], config: JiraConfig) -> Node:
         metadata={
             "ticket_type": issuetype.get("name"),
             "status": status.get("name"),
-            "epic": fields.get("customfield_epic") or fields.get("epic") or fields.get("epic_key"),
+            "epic": fields.get("customfield_epic")
+            or fields.get("epic")
+            or fields.get("epic_key"),
             "labels": fields.get("labels") or [],
-            "sprint": fields.get("customfield_sprint") or fields.get("sprint_name") or fields.get("sprint"),
-            "reporter": reporter.get("displayName") or reporter.get("emailAddress") or reporter.get("name"),
+            "sprint": fields.get("customfield_sprint")
+            or fields.get("sprint_name")
+            or fields.get("sprint"),
+            "reporter": reporter.get("displayName")
+            or reporter.get("emailAddress")
+            or reporter.get("name"),
             "created": fields.get("created"),
             "url": f"{config.base_url.rstrip('/')}/browse/{key}",
         },
@@ -118,7 +129,11 @@ def _fetch_search_results(config: JiraConfig) -> list[dict[str, Any]]:
     with urlopen(req, timeout=30) as resp:  # nosec B310
         data = json.loads(resp.read().decode("utf-8"))
     issues = data.get("issues") or []
-    return [issue for issue in issues if (issue.get("fields") or {}).get("status", {}).get("name") != "Won't Fix"]
+    return [
+        issue
+        for issue in issues
+        if (issue.get("fields") or {}).get("status", {}).get("name") != "Won't Fix"
+    ]
 
 
 async def fetch_jira_nodes(config: JiraConfig) -> list[Node]:

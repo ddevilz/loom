@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
-
 
 DocParser = Callable[[str], tuple[list[Node], list[Edge]]]
 _MARKDOWN_EXTENSIONS = frozenset({".md", ".markdown"})
@@ -64,7 +63,9 @@ def make_section_node(
     )
 
 
-def make_paragraph_node(*, doc_path: str, parent_ref: str, index: int, text: str) -> Node:
+def make_paragraph_node(
+    *, doc_path: str, parent_ref: str, index: int, text: str
+) -> Node:
     return Node(
         id=f"doc:{doc_path}:{parent_ref}:p{index}",
         kind=NodeKind.PARAGRAPH,

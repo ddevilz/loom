@@ -14,42 +14,42 @@ logger = logging.getLogger(__name__)
 
 def _generate_community_name(member_names: list[str]) -> str:
     """Generate a semantic community name from member function names.
-    
+
     Uses the most common word from function names split by underscore.
     E.g., auth_login, auth_logout, validate_auth → 'auth'
     """
     if not member_names:
         return "unnamed"
-    
+
     words: list[str] = []
     for name in member_names:
         words.extend(name.split("_"))
-    
+
     if not words:
         return member_names[0][:20]
-    
+
     word_counts = Counter(words)
     most_common = word_counts.most_common(1)[0][0]
-    
+
     return most_common
 
 
 async def detect_communities(graph: LoomGraph) -> dict[str, str]:
     """Detect communities using Leiden algorithm and create community nodes.
-    
+
     Args:
         graph: LoomGraph instance to analyze
-    
+
     Returns:
         Dictionary mapping node_id → community_id for all clustered nodes
-    
+
     Side effects:
         - Creates COMMUNITY nodes in the graph
         - Creates MEMBER_OF edges from functions to communities
         - Updates function nodes with community_id property
     """
     logger.info("Starting community detection with Leiden algorithm")
-    
+
     # Query all function/method nodes and CALLS/IMPORTS edges
     query = """
     MATCH (n)
@@ -57,16 +57,24 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
     RETURN n.id AS id, n.name AS name, n.kind AS kind
     """
     node_rows = await graph.query(query)
-    
+
     if len(node_rows) < 3:
-        logger.warning(f"Only {len(node_rows)} nodes found, skipping community detection")
+        logger.warning(
+            f"Only {len(node_rows)} nodes found, skipping community detection"
+        )
         return {}
-    
+
     # Build node index
-    node_id_to_idx: dict[str, int] = {row["id"]: idx for idx, row in enumerate(node_rows)}
-    idx_to_node_id: dict[int, str] = {idx: row["id"] for idx, row in enumerate(node_rows)}
-    idx_to_name: dict[int, str] = {idx: row["name"] for idx, row in enumerate(node_rows)}
-    
+    node_id_to_idx: dict[str, int] = {
+        row["id"]: idx for idx, row in enumerate(node_rows)
+    }
+    idx_to_node_id: dict[int, str] = {
+        idx: row["id"] for idx, row in enumerate(node_rows)
+    }
+    idx_to_name: dict[int, str] = {
+        idx: row["name"] for idx, row in enumerate(node_rows)
+    }
+
     # Query edges.
     # NOTE: edges are persisted with relationship *types* (e.g. :CALLS),
     # not via a r.kind property.
@@ -96,7 +104,9 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
 
         confidence = edge_row.get("confidence")
         w = float(confidence) if confidence is not None else 1.0
-        undirected_weight_by_pair[(i, j)] = undirected_weight_by_pair.get((i, j), 0.0) + w
+        undirected_weight_by_pair[(i, j)] = (
+            undirected_weight_by_pair.get((i, j), 0.0) + w
+        )
 
     if not undirected_weight_by_pair:
         logger.warning("No edges found for community detection")
@@ -107,7 +117,7 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
 
     g_undirected = ig.Graph(n=len(node_rows), edges=undirected_edges, directed=False)
     g_undirected.es["weight"] = undirected_weights
-    
+
     # Run Leiden algorithm
     logger.info(
         f"Running Leiden on graph with {g_undirected.vcount()} nodes and {g_undirected.ecount()} edges"
@@ -117,43 +127,45 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
         leidenalg.ModularityVertexPartition,
         weights=g_undirected.es["weight"],
     )
-    
+
     modularity = partition.modularity
     logger.info(f"Community detection complete. Modularity: {modularity:.4f}")
-    
+
     if modularity < 0.3:
-        logger.warning(f"Low modularity ({modularity:.4f}) - clustering may not be meaningful")
+        logger.warning(
+            f"Low modularity ({modularity:.4f}) - clustering may not be meaningful"
+        )
         return {}
-    
+
     # Group nodes by community
     communities: dict[int, list[int]] = {}
     for node_idx, community_id in enumerate(partition.membership):
         if community_id not in communities:
             communities[community_id] = []
         communities[community_id].append(node_idx)
-    
+
     # Filter communities with < 3 members
     valid_communities = {
         comm_id: members
         for comm_id, members in communities.items()
         if len(members) >= 3
     }
-    
+
     logger.info(
         f"Found {len(communities)} communities, "
         f"{len(valid_communities)} have >= 3 members"
     )
-    
+
     # Create community nodes and edges
     node_to_community: dict[str, str] = {}
     community_nodes: list[Node] = []
     member_edges: list[Edge] = []
-    
+
     for comm_id, member_indices in valid_communities.items():
         member_names = [idx_to_name[idx] for idx in member_indices]
         community_name = _generate_community_name(member_names)
         community_node_id = f"community:auto:{community_name}_{comm_id}"
-        
+
         # Create community node
         community_node = Node(
             id=community_node_id,
@@ -168,12 +180,12 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
             },
         )
         community_nodes.append(community_node)
-        
+
         # Create MEMBER_OF edges
         for idx in member_indices:
             node_id = idx_to_node_id[idx]
             node_to_community[node_id] = community_node_id
-            
+
             edge = Edge(
                 from_id=node_id,
                 to_id=community_node_id,
@@ -182,16 +194,16 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
                 metadata={"community_name": community_name},
             )
             member_edges.append(edge)
-    
+
     # Bulk insert into graph
     if community_nodes:
         logger.info(f"Creating {len(community_nodes)} community nodes")
         await graph.bulk_create_nodes(community_nodes)
-    
+
     if member_edges:
         logger.info(f"Creating {len(member_edges)} MEMBER_OF edges")
         await graph.bulk_create_edges(member_edges)
-    
+
     # Update function nodes with community_id (batched to avoid N+1)
     if node_to_community:
         updates = [
@@ -204,7 +216,9 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
         SET n.community_id = u.community_id
         """
         await graph.query(batch_query, {"updates": updates})
-    
-    logger.info(f"Community detection complete. {len(node_to_community)} nodes clustered.")
-    
+
+    logger.info(
+        f"Community detection complete. {len(node_to_community)} nodes clustered."
+    )
+
     return node_to_community

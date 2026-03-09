@@ -17,10 +17,16 @@ class FakeGraph:
     edges: list[dict[str, Any]] = field(default_factory=list)
     outgoing_human_edge_count_by_node_id: dict[str, int] = field(default_factory=dict)
     incoming_human_edge_count_by_node_id: dict[str, int] = field(default_factory=dict)
-    outgoing_human_edges_by_path: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
-    incoming_human_edges_by_path: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    outgoing_human_edges_by_path: dict[str, list[dict[str, Any]]] = field(
+        default_factory=dict
+    )
+    incoming_human_edges_by_path: dict[str, list[dict[str, Any]]] = field(
+        default_factory=dict
+    )
 
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         q = cypher.strip()
 
         if q == "MATCH (n {path: $path}) RETURN properties(n) AS props":
@@ -28,7 +34,10 @@ class FakeGraph:
             path = params["path"]
             rows = []
             for props in self.nodes.values():
-                if Path(str(props.get("path"))).as_posix() == Path(str(path)).as_posix():
+                if (
+                    Path(str(props.get("path"))).as_posix()
+                    == Path(str(path)).as_posix()
+                ):
                     rows.append({"props": dict(props)})
             return rows
 
@@ -38,18 +47,34 @@ class FakeGraph:
                 self.nodes.pop(node_id, None)
             return []
 
-        if q == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nRETURN count(r) AS c":
+        if (
+            q
+            == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nRETURN count(r) AS c"
+        ):
             assert params is not None
-            return [{"c": self.outgoing_human_edge_count_by_node_id.get(params["id"], 0)}]
+            return [
+                {"c": self.outgoing_human_edge_count_by_node_id.get(params["id"], 0)}
+            ]
 
-        if q == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nRETURN count(r) AS c":
+        if (
+            q
+            == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nRETURN count(r) AS c"
+        ):
             assert params is not None
-            return [{"c": self.incoming_human_edge_count_by_node_id.get(params["id"], 0)}]
+            return [
+                {"c": self.incoming_human_edge_count_by_node_id.get(params["id"], 0)}
+            ]
 
-        if q == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason":
+        if (
+            q
+            == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason"
+        ):
             return []
 
-        if q == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason":
+        if (
+            q
+            == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason"
+        ):
             return []
 
         if q == "MATCH (n {path: $path}) DETACH DELETE n":
@@ -71,33 +96,49 @@ class FakeGraph:
         if q.startswith("MATCH (a {path: $path})-[r]->()"):
             return []
 
-        if q == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin IS NULL OR r.origin <> 'human'\nDELETE r":
+        if (
+            q
+            == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin IS NULL OR r.origin <> 'human'\nDELETE r"
+        ):
             return []
 
-        if q == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = 'source_changed'":
+        if (
+            q
+            == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = 'source_changed'"
+        ):
             return []
 
-        if q == "MATCH (a {path: $path})-[r]->(b)\nWHERE r.origin = 'human'\nRETURN a.id AS from_id, b.id AS to_id, type(r) AS rel_type, properties(r) AS props":
+        if (
+            q
+            == "MATCH (a {path: $path})-[r]->(b)\nWHERE r.origin = 'human'\nRETURN a.id AS from_id, b.id AS to_id, type(r) AS rel_type, properties(r) AS props"
+        ):
             assert params is not None
             return self.outgoing_human_edges_by_path.get(params["path"], [])
 
-        if q == "MATCH (a)-[r]->(b {path: $path})\nWHERE r.origin = 'human'\nRETURN a.id AS from_id, b.id AS to_id, type(r) AS rel_type, properties(r) AS props":
+        if (
+            q
+            == "MATCH (a)-[r]->(b {path: $path})\nWHERE r.origin = 'human'\nRETURN a.id AS from_id, b.id AS to_id, type(r) AS rel_type, properties(r) AS props"
+        ):
             assert params is not None
             return self.incoming_human_edges_by_path.get(params["path"], [])
 
         if q.startswith("MATCH (a {id: $from_id}), (b {id: $to_id}) MERGE (a)-[r:`"):
             assert params is not None
-            self.edges.append({
-                "from_id": params["from_id"],
-                "to_id": params["to_id"],
-                "props": params["props"],
-            })
+            self.edges.append(
+                {
+                    "from_id": params["from_id"],
+                    "to_id": params["to_id"],
+                    "props": params["props"],
+                }
+            )
             return []
 
         if q == "MATCH (n {id: $id})-[:LOOM_IMPLEMENTS]->(d) RETURN d.id AS id":
             assert params is not None
             node_id = params["id"]
-            return [{"id": doc_id} for doc_id in self.implements_by_node_id.get(node_id, [])]
+            return [
+                {"id": doc_id} for doc_id in self.implements_by_node_id.get(node_id, [])
+            ]
 
         if q == "MATCH (n) RETURN count(n) AS c":
             return [{"c": len(self.nodes)}]
@@ -124,7 +165,9 @@ class FakeGraph:
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_modified_file_updates_only_that_path(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_modified_file_updates_only_that_path(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     p = repo / "a.py"
@@ -171,7 +214,9 @@ async def test_sync_commits_modified_file_updates_only_that_path(tmp_path: Path,
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_emits_ast_drift_warning_and_violation_edge(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_emits_ast_drift_warning_and_violation_edge(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     p = repo / "a.py"
@@ -221,11 +266,15 @@ async def test_sync_commits_emits_ast_drift_warning_and_violation_edge(tmp_path:
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_modified_file_rebuilds_file_node_and_call_edges(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_modified_file_rebuilds_file_node_and_call_edges(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     p = repo / "a.py"
-    p.write_text("def g():\n    return 1\n\ndef f():\n    return g()\n", encoding="utf-8")
+    p.write_text(
+        "def g():\n    return 1\n\ndef f():\n    return g()\n", encoding="utf-8"
+    )
     abs_path = p.resolve().as_posix()
 
     old_node = Node(
@@ -255,12 +304,16 @@ async def test_sync_commits_modified_file_rebuilds_file_node_and_call_edges(tmp_
         return nodes
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             return []
 
     monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
     monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
-    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
     res = await sync_commits(str(repo), "old", "new", g)
 
@@ -270,12 +323,16 @@ async def test_sync_commits_modified_file_rebuilds_file_node_and_call_edges(tmp_
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_rename_rebuilds_file_node_and_call_edges(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_rename_rebuilds_file_node_and_call_edges(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     old_path = repo / "a.py"
     new_path = repo / "b.py"
-    old_path.write_text("def g():\n    return 1\n\ndef f():\n    return g()\n", encoding="utf-8")
+    old_path.write_text(
+        "def g():\n    return 1\n\ndef f():\n    return g()\n", encoding="utf-8"
+    )
     old_abs = old_path.resolve().as_posix()
     new_abs = new_path.resolve().as_posix()
 
@@ -306,12 +363,16 @@ async def test_sync_commits_rename_rebuilds_file_node_and_call_edges(tmp_path: P
         return nodes
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             return []
 
     monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
     monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
-    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
     old_path.rename(new_path)
 
@@ -323,11 +384,15 @@ async def test_sync_commits_rename_rebuilds_file_node_and_call_edges(tmp_path: P
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_modified_typescript_file_rebuilds_call_edges(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_modified_typescript_file_rebuilds_call_edges(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     p = repo / "a.ts"
-    p.write_text("function g() { return 1 }\nfunction f() { return g() }\n", encoding="utf-8")
+    p.write_text(
+        "function g() { return 1 }\nfunction f() { return g() }\n", encoding="utf-8"
+    )
     abs_path = p.resolve().as_posix()
 
     old_node = Node(
@@ -357,12 +422,16 @@ async def test_sync_commits_modified_typescript_file_rebuilds_call_edges(tmp_pat
         return nodes
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             return []
 
     monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
     monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
-    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
     res = await sync_commits(str(repo), "old", "new", g)
 
@@ -371,7 +440,9 @@ async def test_sync_commits_modified_typescript_file_rebuilds_call_edges(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_modified_java_file_rebuilds_call_edges(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_modified_java_file_rebuilds_call_edges(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     p = repo / "A.java"
@@ -405,12 +476,16 @@ async def test_sync_commits_modified_java_file_rebuilds_call_edges(tmp_path: Pat
         return nodes
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             return []
 
     monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
     monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
-    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
     res = await sync_commits(str(repo), "old", "new", g)
 
@@ -419,7 +494,9 @@ async def test_sync_commits_modified_java_file_rebuilds_call_edges(tmp_path: Pat
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_relinks_changed_code_nodes_against_existing_doc_nodes(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_relinks_changed_code_nodes_against_existing_doc_nodes(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     p = repo / "a.py"
@@ -449,7 +526,9 @@ async def test_sync_commits_relinks_changed_code_nodes_against_existing_doc_node
         metadata={},
     )
 
-    g = FakeGraph(nodes={old_node.id: old_node.model_dump(), doc_node.id: doc_node.model_dump()})
+    g = FakeGraph(
+        nodes={old_node.id: old_node.model_dump(), doc_node.id: doc_node.model_dump()}
+    )
 
     class FC:
         def __init__(self, status: str, path: str, old_path: str | None = None) -> None:
@@ -464,17 +543,29 @@ async def test_sync_commits_relinks_changed_code_nodes_against_existing_doc_node
         return nodes
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             await graph.bulk_create_edges(
                 [
-                    type("_EdgeLike", (), {"from_id": code_nodes[0].id, "to_id": doc_nodes[0].id, "kind": EdgeType.LOOM_IMPLEMENTS})()
+                    type(
+                        "_EdgeLike",
+                        (),
+                        {
+                            "from_id": code_nodes[0].id,
+                            "to_id": doc_nodes[0].id,
+                            "kind": EdgeType.LOOM_IMPLEMENTS,
+                        },
+                    )()
                 ]
             )
             return []
 
     monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
     monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
-    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
     p.write_text("def f():\n    return 2\n", encoding="utf-8")
 
@@ -485,7 +576,9 @@ async def test_sync_commits_relinks_changed_code_nodes_against_existing_doc_node
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_rename_migrates_human_edge_metadata_as_dict(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_rename_migrates_human_edge_metadata_as_dict(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     old_path = repo / "a.py"
@@ -549,13 +642,17 @@ async def test_sync_commits_rename_migrates_human_edge_metadata_as_dict(tmp_path
         ]
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             return []
 
     monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
     monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
     monkeypatch.setattr("loom.ingest.incremental.parse_code", fake_parse_code)
-    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
     old_path.rename(new_path)
 
@@ -567,7 +664,9 @@ async def test_sync_commits_rename_migrates_human_edge_metadata_as_dict(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_rename_migrates_incoming_human_edge(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_rename_migrates_incoming_human_edge(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     old_path = repo / "a.py"
@@ -631,13 +730,17 @@ async def test_sync_commits_rename_migrates_incoming_human_edge(tmp_path: Path, 
         ]
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             return []
 
     monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
     monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
     monkeypatch.setattr("loom.ingest.incremental.parse_code", fake_parse_code)
-    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
     old_path.rename(new_path)
 
@@ -651,7 +754,9 @@ async def test_sync_commits_rename_migrates_incoming_human_edge(tmp_path: Path, 
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_rename_migrates_human_edge_attached_to_file_node(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_rename_migrates_human_edge_attached_to_file_node(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     old_path = repo / "a.py"
@@ -702,14 +807,20 @@ async def test_sync_commits_rename_migrates_human_edge_attached_to_file_node(tmp
         return []
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             return []
 
     monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
     monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
     monkeypatch.setattr("loom.ingest.incremental.parse_code", fake_parse_code)
-    monkeypatch.setattr("loom.ingest.incremental.content_hash_bytes", lambda _b: file_hash)
-    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.incremental.content_hash_bytes", lambda _b: file_hash
+    )
+    monkeypatch.setattr(
+        "loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
     old_path.rename(new_path)
 
@@ -723,7 +834,9 @@ async def test_sync_commits_rename_migrates_human_edge_attached_to_file_node(tmp
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_preserves_node_with_incoming_human_edge(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_preserves_node_with_incoming_human_edge(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     p = repo / "a.py"
@@ -765,7 +878,9 @@ async def test_sync_commits_preserves_node_with_incoming_human_edge(tmp_path: Pa
 
 
 @pytest.mark.asyncio
-async def test_sync_commits_relinks_renamed_code_nodes_against_existing_doc_nodes(tmp_path: Path, monkeypatch) -> None:
+async def test_sync_commits_relinks_renamed_code_nodes_against_existing_doc_nodes(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     old_path = repo / "a.py"
@@ -798,7 +913,9 @@ async def test_sync_commits_relinks_renamed_code_nodes_against_existing_doc_node
         metadata={},
     )
 
-    g = FakeGraph(nodes={old_node.id: old_node.model_dump(), doc_node.id: doc_node.model_dump()})
+    g = FakeGraph(
+        nodes={old_node.id: old_node.model_dump(), doc_node.id: doc_node.model_dump()}
+    )
 
     class FC:
         def __init__(self, status: str, path: str, old_path: str | None = None) -> None:
@@ -813,13 +930,19 @@ async def test_sync_commits_relinks_renamed_code_nodes_against_existing_doc_node
         return nodes
 
     class _FakeSemanticLinker:
-        async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph):
+        async def link(
+            self, code_nodes: list[Node], doc_nodes: list[Node], graph: FakeGraph
+        ):
             await graph.bulk_create_edges(
                 [
                     type(
                         "_EdgeLike",
                         (),
-                        {"from_id": code_nodes[0].id, "to_id": doc_nodes[0].id, "kind": EdgeType.LOOM_IMPLEMENTS},
+                        {
+                            "from_id": code_nodes[0].id,
+                            "to_id": doc_nodes[0].id,
+                            "kind": EdgeType.LOOM_IMPLEMENTS,
+                        },
                     )()
                 ]
             )
@@ -827,7 +950,9 @@ async def test_sync_commits_relinks_renamed_code_nodes_against_existing_doc_node
 
     monkeypatch.setattr("loom.ingest.incremental.get_changed_files", fake_changed)
     monkeypatch.setattr("loom.ingest.incremental.embed_nodes", fake_embed_nodes)
-    monkeypatch.setattr("loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker())
+    monkeypatch.setattr(
+        "loom.ingest.incremental.SemanticLinker", lambda: _FakeSemanticLinker()
+    )
 
     old_path.rename(new_path)
 

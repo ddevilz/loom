@@ -3,15 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tree_sitter import Language
+from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter import Parser
 from tree_sitter_javascript import language as javascript_language
 
 from loom.core import Node, NodeKind, NodeSource
-
 from loom.core.content_hash import content_hash_for_line_span
-
 from loom.ingest.code.languages.constants import (
     LANG_JAVASCRIPT,
     TS_JS_ARROW_FUNCTION,
@@ -29,11 +26,15 @@ class _Context:
     class_stack: tuple[str, ...] = ()
     func_stack: tuple[str, ...] = ()
 
-    def push_class(self, name: str) -> "_Context":
-        return _Context(class_stack=self.class_stack + (name,), func_stack=self.func_stack)
+    def push_class(self, name: str) -> _Context:
+        return _Context(
+            class_stack=self.class_stack + (name,), func_stack=self.func_stack
+        )
 
-    def push_func(self, name: str) -> "_Context":
-        return _Context(class_stack=self.class_stack, func_stack=self.func_stack + (name,))
+    def push_func(self, name: str) -> _Context:
+        return _Context(
+            class_stack=self.class_stack, func_stack=self.func_stack + (name,)
+        )
 
     def qualname(self, name: str) -> str:
         parts: list[str] = []
@@ -177,7 +178,11 @@ def _try_extract_const_function(
             continue
         if name_node.type != "identifier":
             continue
-        if value_node.type not in {TS_JS_ARROW_FUNCTION, TS_JS_FUNCTION, "function_expression"}:
+        if value_node.type not in {
+            TS_JS_ARROW_FUNCTION,
+            TS_JS_FUNCTION,
+            "function_expression",
+        }:
             continue
 
         name = _node_text(src, name_node)
@@ -216,7 +221,13 @@ def _try_extract_const_function(
 
 def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
     for child in n.children:
-        if child.type in {TS_JS_FUNCTION_DECL, TS_JS_CLASS_DECL, TS_JS_METHOD_DEF, TS_JS_FUNCTION, TS_JS_ARROW_FUNCTION}:
+        if child.type in {
+            TS_JS_FUNCTION_DECL,
+            TS_JS_CLASS_DECL,
+            TS_JS_METHOD_DEF,
+            TS_JS_FUNCTION,
+            TS_JS_ARROW_FUNCTION,
+        }:
             _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
         elif _try_extract_const_function(path=path, src=src, n=child, ctx=ctx, out=out):
             pass
@@ -233,5 +244,7 @@ def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:
     tree = parser.parse(src)
 
     out: list[Node] = []
-    _walk(path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out)
+    _walk(
+        path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out
+    )
     return out

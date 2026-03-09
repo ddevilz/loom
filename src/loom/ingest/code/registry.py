@@ -1,33 +1,32 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-import threading
 from typing import Protocol
 
-from loom.core import Edge, Node
 from loom.config import DEFAULT_SKIP_DIRS
-
+from loom.core import Edge, Node
 from loom.ingest.code.languages.constants import (
     EXT_CSS,
     EXT_CXML,
+    EXT_ENV,
     EXT_GO,
     EXT_HTM,
     EXT_HTML,
+    EXT_INI,
     EXT_JAVA,
     EXT_JS,
-    EXT_JSX,
     EXT_JSON,
+    EXT_JSX,
     EXT_PROPERTIES,
     EXT_PY,
     EXT_PYW,
     EXT_RB,
     EXT_RS,
+    EXT_TOML,
     EXT_TS,
     EXT_TSX,
-    EXT_TOML,
-    EXT_INI,
-    EXT_ENV,
     EXT_XML,
     EXT_YAML,
     EXT_YML,
@@ -48,19 +47,61 @@ class LanguageHandler:
     call_tracer: CallTracer | None = None
     call_tracer_error_message: str | None = None
 
+
 # ── known non-code extensions we always skip ────────────────────────
 # Note: HTML, XML, JSON, CSS, YAML are now parsed as FILE nodes
-SKIP_EXTENSIONS: frozenset[str] = frozenset({
-    ".scss", ".sass", ".less",  # CSS preprocessors (not yet supported)
-    ".xsl", ".xslt", ".xsd", ".dtd",  # XML schemas/transforms
-    ".svg", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp",  # images
-    ".woff", ".woff2", ".ttf", ".eot", ".otf",  # fonts
-    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",  # office docs
-    ".zip", ".tar", ".gz", ".bz2", ".7z", ".rar",  # archives
-    ".mp3", ".mp4", ".wav", ".avi", ".mov", ".mkv",  # media
-    ".pyc", ".pyo", ".so", ".dll", ".dylib", ".o", ".a",  # compiled
-    ".lock", ".map",  # build artifacts
-})
+SKIP_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".scss",
+        ".sass",
+        ".less",  # CSS preprocessors (not yet supported)
+        ".xsl",
+        ".xslt",
+        ".xsd",
+        ".dtd",  # XML schemas/transforms
+        ".svg",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".bmp",
+        ".ico",
+        ".webp",  # images
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".eot",
+        ".otf",  # fonts
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".ppt",
+        ".pptx",  # office docs
+        ".zip",
+        ".tar",
+        ".gz",
+        ".bz2",
+        ".7z",
+        ".rar",  # archives
+        ".mp3",
+        ".mp4",
+        ".wav",
+        ".avi",
+        ".mov",
+        ".mkv",  # media
+        ".pyc",
+        ".pyo",
+        ".so",
+        ".dll",
+        ".dylib",
+        ".o",
+        ".a",  # compiled
+        ".lock",
+        ".map",  # build artifacts
+    }
+)
 
 
 class LanguageRegistry:
@@ -150,13 +191,9 @@ def _register_defaults(reg: LanguageRegistry) -> None:
     from loom.analysis.code.calls import trace_calls_for_file
     from loom.analysis.code.calls_java import trace_calls_for_java_file
     from loom.analysis.code.calls_ts import trace_calls_for_ts_file
-    from loom.ingest.code.languages.python import parse_python
-    from loom.ingest.code.languages.typescript import parse_typescript
-    from loom.ingest.code.languages.javascript import parse_javascript
     from loom.ingest.code.languages.go_lang import parse_go
     from loom.ingest.code.languages.java import parse_java
-    from loom.ingest.code.languages.rust import parse_rust
-    from loom.ingest.code.languages.ruby import parse_ruby
+    from loom.ingest.code.languages.javascript import parse_javascript
     from loom.ingest.code.languages.markup import (
         parse_css,
         parse_env,
@@ -168,16 +205,55 @@ def _register_defaults(reg: LanguageRegistry) -> None:
         parse_xml,
         parse_yaml,
     )
+    from loom.ingest.code.languages.python import parse_python
+    from loom.ingest.code.languages.ruby import parse_ruby
+    from loom.ingest.code.languages.rust import parse_rust
+    from loom.ingest.code.languages.typescript import parse_typescript
 
     # Code languages
-    reg.register(EXT_PY, parse_python, call_tracer=trace_calls_for_file, call_tracer_error_message="python call tracing failed")
-    reg.register(EXT_PYW, parse_python, call_tracer=trace_calls_for_file, call_tracer_error_message="python call tracing failed")
-    reg.register(EXT_TS, parse_typescript, call_tracer=trace_calls_for_ts_file, call_tracer_error_message="typescript call tracing failed")
-    reg.register(EXT_TSX, parse_typescript, call_tracer=trace_calls_for_ts_file, call_tracer_error_message="typescript call tracing failed")
-    reg.register(EXT_JS, parse_javascript, call_tracer=trace_calls_for_ts_file, call_tracer_error_message="javascript call tracing failed")
-    reg.register(EXT_JSX, parse_javascript, call_tracer=trace_calls_for_ts_file, call_tracer_error_message="javascript call tracing failed")
+    reg.register(
+        EXT_PY,
+        parse_python,
+        call_tracer=trace_calls_for_file,
+        call_tracer_error_message="python call tracing failed",
+    )
+    reg.register(
+        EXT_PYW,
+        parse_python,
+        call_tracer=trace_calls_for_file,
+        call_tracer_error_message="python call tracing failed",
+    )
+    reg.register(
+        EXT_TS,
+        parse_typescript,
+        call_tracer=trace_calls_for_ts_file,
+        call_tracer_error_message="typescript call tracing failed",
+    )
+    reg.register(
+        EXT_TSX,
+        parse_typescript,
+        call_tracer=trace_calls_for_ts_file,
+        call_tracer_error_message="typescript call tracing failed",
+    )
+    reg.register(
+        EXT_JS,
+        parse_javascript,
+        call_tracer=trace_calls_for_ts_file,
+        call_tracer_error_message="javascript call tracing failed",
+    )
+    reg.register(
+        EXT_JSX,
+        parse_javascript,
+        call_tracer=trace_calls_for_ts_file,
+        call_tracer_error_message="javascript call tracing failed",
+    )
     reg.register(EXT_GO, parse_go)
-    reg.register(EXT_JAVA, parse_java, call_tracer=trace_calls_for_java_file, call_tracer_error_message="java call tracing failed")
+    reg.register(
+        EXT_JAVA,
+        parse_java,
+        call_tracer=trace_calls_for_java_file,
+        call_tracer_error_message="java call tracing failed",
+    )
     reg.register(EXT_RS, parse_rust)
     reg.register(EXT_RB, parse_ruby)
 

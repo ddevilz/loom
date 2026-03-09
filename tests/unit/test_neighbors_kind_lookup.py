@@ -18,7 +18,13 @@ class _FakeGateway:
     def reconnect(self) -> None:
         return None
 
-    def run(self, cypher: str, params: dict[str, Any] | None = None, *, timeout: int | None = None):
+    def run(
+        self,
+        cypher: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout: int | None = None,
+    ):
         return None
 
     def query_rows(
@@ -65,7 +71,9 @@ async def test_neighbors_resolves_plain_name_with_kind_uses_kind_label() -> None
 
 @pytest.mark.asyncio
 async def test_neighbors_returns_empty_for_ambiguous_plain_name() -> None:
-    gw = _FakeGateway(rows=[{"id": "function:src/a.py:f"}, {"id": "function:src/b.py:f"}])
+    gw = _FakeGateway(
+        rows=[{"id": "function:src/a.py:f"}, {"id": "function:src/b.py:f"}]
+    )
     g = LoomGraph(graph_name="test", gateway=gw)
 
     called = False

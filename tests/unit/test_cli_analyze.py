@@ -8,7 +8,6 @@ from typer.testing import CliRunner
 
 import loom.cli
 
-
 runner = CliRunner()
 
 
@@ -165,7 +164,10 @@ def test_cli_enrich_infers_repo_path_for_coupling(monkeypatch):
             calls["graph_name"] = graph_name
 
         async def query(self, cypher: str, params=None):
-            if cypher == "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000":
+            if (
+                cypher
+                == "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000"
+            ):
                 return [
                     {"path": r"F:\repo\src\a.py"},
                     {"path": r"F:\repo\src\b.py"},
@@ -179,15 +181,21 @@ def test_cli_enrich_infers_repo_path_for_coupling(monkeypatch):
         calls["communities_graph"] = graph
         return {}
 
-    async def fake_analyze_coupling(repo_path: str, *, months: int = 6, threshold: float = 0.3):
+    async def fake_analyze_coupling(
+        repo_path: str, *, months: int = 6, threshold: float = 0.3
+    ):
         calls["repo_path"] = repo_path
         calls["months"] = months
         calls["threshold"] = threshold
         return []
 
     monkeypatch.setattr("loom.core.LoomGraph", FakeGraph)
-    monkeypatch.setattr("loom.analysis.code.communities.detect_communities", fake_detect_communities)
-    monkeypatch.setattr("loom.analysis.code.coupling.analyze_coupling", fake_analyze_coupling)
+    monkeypatch.setattr(
+        "loom.analysis.code.communities.detect_communities", fake_detect_communities
+    )
+    monkeypatch.setattr(
+        "loom.analysis.code.coupling.analyze_coupling", fake_analyze_coupling
+    )
 
     result = runner.invoke(
         loom.cli.app,
@@ -209,7 +217,9 @@ def test_cli_enrich_uses_explicit_repo_path_override(monkeypatch):
             pass
 
         async def query(self, cypher: str, params=None):
-            raise AssertionError("repo root inference should not run when --repo-path is provided")
+            raise AssertionError(
+                "repo root inference should not run when --repo-path is provided"
+            )
 
         async def bulk_create_edges(self, edges):
             calls["edges"] = edges
@@ -217,13 +227,19 @@ def test_cli_enrich_uses_explicit_repo_path_override(monkeypatch):
     async def fake_detect_communities(graph):
         return {}
 
-    async def fake_analyze_coupling(repo_path: str, *, months: int = 6, threshold: float = 0.3):
+    async def fake_analyze_coupling(
+        repo_path: str, *, months: int = 6, threshold: float = 0.3
+    ):
         calls["repo_path"] = repo_path
         return []
 
     monkeypatch.setattr("loom.core.LoomGraph", FakeGraph)
-    monkeypatch.setattr("loom.analysis.code.communities.detect_communities", fake_detect_communities)
-    monkeypatch.setattr("loom.analysis.code.coupling.analyze_coupling", fake_analyze_coupling)
+    monkeypatch.setattr(
+        "loom.analysis.code.communities.detect_communities", fake_detect_communities
+    )
+    monkeypatch.setattr(
+        "loom.analysis.code.coupling.analyze_coupling", fake_analyze_coupling
+    )
 
     result = runner.invoke(
         loom.cli.app,

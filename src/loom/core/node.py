@@ -77,7 +77,7 @@ class Node(BaseModel):
         return super().model_dump(exclude=exclude_set, **kwargs)
 
     @model_validator(mode="after")
-    def _validate_id_convention(self) -> "Node":
+    def _validate_id_convention(self) -> Node:
         if self.source == NodeSource.DOC:
             if not self.id.startswith("doc:"):
                 raise ValueError("Doc node id must start with 'doc:'")

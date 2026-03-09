@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from itertools import combinations
 from pathlib import Path
 
@@ -20,7 +20,9 @@ def _to_file_node_id(repo_root: Path, file_path: str) -> str:
 
 async def _open_repo(repo_path: str) -> git.Repo | None:
     try:
-        return await asyncio.to_thread(git.Repo, repo_path, search_parent_directories=True)
+        return await asyncio.to_thread(
+            git.Repo, repo_path, search_parent_directories=True
+        )
     except (git.InvalidGitRepositoryError, git.NoSuchPathError) as e:
         logger.warning(f"Not a valid git repository: {repo_path} - {e}")
         return None
@@ -33,15 +35,15 @@ async def analyze_coupling(
     threshold: float = 0.3,
 ) -> list[Edge]:
     """Analyze git history to find files that frequently change together.
-    
+
     Args:
         repo_path: Path to git repository
         months: Number of months of history to analyze (default: 6)
         threshold: Minimum coupling frequency to create edge (default: 0.3)
-    
+
     Returns:
         List of COUPLED_WITH edges for file pairs exceeding threshold
-    
+
     Notes:
         - Edge confidence = coupling frequency (0.3-1.0)
         - Merge commits are handled (not double-counted)
@@ -56,14 +58,14 @@ async def analyze_coupling(
         logger.warning("Repository working tree root is unavailable for %s", repo_path)
         return []
     repo_root_path = Path(repo_root)
-    
+
     # Calculate cutoff date
-    cutoff_date = datetime.now(timezone.utc) - timedelta(days=months * 30)
-    
+    cutoff_date = datetime.now(UTC) - timedelta(days=months * 30)
+
     # Collect changed files per commit
     file_changes_per_commit: list[set[str]] = []
     file_appearance_count: dict[str, int] = defaultdict(int)
-    
+
     # Run git operations in thread pool to avoid blocking event loop
     try:
         commits = await asyncio.to_thread(
@@ -72,13 +74,13 @@ async def analyze_coupling(
     except git.GitCommandError as e:
         logger.warning(f"Failed to read commits: {e}")
         return []
-    
+
     if not commits:
         logger.info(f"No commits found in last {months} months")
         return []
-    
+
     logger.info(f"Analyzing {len(commits)} commits from last {months} months")
-    
+
     # Process commits in thread pool to avoid blocking
     def _process_commits():
         results = []
@@ -86,7 +88,7 @@ async def analyze_coupling(
         for commit in commits:
             # Get changed files for this commit
             changed_files: set[str] = set()
-            
+
             if commit.parents:
                 # Normal commit: diff against first parent
                 try:
@@ -108,43 +110,47 @@ async def analyze_coupling(
                         if item.type == "blob":  # type: ignore[union-attr]
                             changed_files.add(item.path)  # type: ignore[union-attr]
                 except Exception as e:
-                    logger.debug(f"Failed to traverse initial commit {commit.hexsha[:8]}: {e}")
+                    logger.debug(
+                        f"Failed to traverse initial commit {commit.hexsha[:8]}: {e}"
+                    )
                     continue
-            
+
             if changed_files:
                 results.append(changed_files)
                 for file_path in changed_files:
                     appearances[file_path] += 1
         return results, appearances
-    
-    file_changes_per_commit, file_appearance_count = await asyncio.to_thread(_process_commits)
-    
+
+    file_changes_per_commit, file_appearance_count = await asyncio.to_thread(
+        _process_commits
+    )
+
     if not file_changes_per_commit:
         logger.info("No file changes found in commit history")
         return []
-    
+
     # Calculate coupling frequencies
     pair_cooccurrence: dict[tuple[str, str], int] = defaultdict(int)
-    
+
     for changed_files in file_changes_per_commit:
         # Get all pairs of files that changed together
         for file_a, file_b in combinations(sorted(changed_files), 2):
             pair_cooccurrence[(file_a, file_b)] += 1
-    
+
     # Create edges for pairs exceeding threshold
     edges: list[Edge] = []
-    
+
     for (file_a, file_b), cooccurrence_count in pair_cooccurrence.items():
         # Calculate coupling frequency: how often they appear together
         # relative to how often either appears
         appearances_a = file_appearance_count[file_a]
         appearances_b = file_appearance_count[file_b]
-        
+
         # Coupling frequency = cooccurrence / max(appearances)
         # This measures: "when file A changes, how often does B also change?"
         max_appearances = max(appearances_a, appearances_b)
         coupling_frequency = cooccurrence_count / max_appearances
-        
+
         if coupling_frequency >= threshold:
             # Map coupling frequency to confidence (0.3-1.0 → 0.3-1.0)
             confidence = coupling_frequency
@@ -165,10 +171,10 @@ async def analyze_coupling(
                     },
                 )
             )
-    
+
     logger.info(
         f"Found {len(edges)} coupled file pairs "
         f"(threshold={threshold}, {len(file_changes_per_commit)} commits analyzed)"
     )
-    
+
     return edges

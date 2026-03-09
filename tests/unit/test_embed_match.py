@@ -57,7 +57,6 @@ async def test_link_by_embedding_emits_edge_above_threshold(monkeypatch):
         metadata={},
     )
 
-
     # Force embed_nodes in embed_match to use fake embedder by pre-setting embeddings.
     code = code.model_copy(update={"embedding": [1.0, 0.0]})
     doc = doc.model_copy(update={"embedding": [1.0, 0.0]})

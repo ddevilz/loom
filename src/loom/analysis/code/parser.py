@@ -52,5 +52,7 @@ def parse_repo(
         except Exception:
             logger.warning("Failed to parse %s", fp, exc_info=True)
 
-    logger.info("parse_repo: %d files parsed, %d symbols extracted", file_count, len(all_nodes))
+    logger.info(
+        "parse_repo: %d files parsed, %d symbols extracted", file_count, len(all_nodes)
+    )
     return all_nodes

@@ -88,7 +88,9 @@ def check_deps() -> int:
     root = Path(__file__).resolve().parents[2]
     pyproject = root / "pyproject.toml"
 
-    deps = _parse_deps(pyproject.read_text(encoding="utf-8")) if pyproject.exists() else []
+    deps = (
+        _parse_deps(pyproject.read_text(encoding="utf-8")) if pyproject.exists() else []
+    )
     if not deps:
         print("No dependencies declared.")
         return 0

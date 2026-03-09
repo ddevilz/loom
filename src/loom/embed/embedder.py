@@ -45,7 +45,7 @@ class FastEmbedder:
                     _EMBEDDER_CACHE[self.model] = emb
                 else:
                     emb = _EMBEDDER_CACHE[self.model]
-        
+
         try:
             return [list(v) for v in emb.embed(texts)]
         except Exception as e:
@@ -63,7 +63,7 @@ class FastEmbedder:
                 logger.error(
                     f"Embedding retry failed with model {self.model}: {retry_error}. "
                     f"Text count: {len(texts)}",
-                    exc_info=True
+                    exc_info=True,
                 )
                 raise
 
@@ -98,9 +98,10 @@ async def embed_nodes(
 
     if len(vectors) != len(texts):
         raise ValueError("embedder returned wrong number of vectors")
-    
+
     # Validate embedding dimensions match configuration
     from loom.config import LOOM_EMBED_DIM
+
     if vectors and len(vectors[0]) != LOOM_EMBED_DIM:
         raise ValueError(
             f"Embedding dimension mismatch: model produced {len(vectors[0])} dimensions "

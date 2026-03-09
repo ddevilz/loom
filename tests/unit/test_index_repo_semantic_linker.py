@@ -15,8 +15,13 @@ class _FakeGraph:
     nodes: list[Node] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
 
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        if cypher.strip() == "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash":
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        if (
+            cypher.strip()
+            == "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash"
+        ):
             return []
         if cypher.strip() == "MATCH (n) RETURN count(n) AS c":
             return [{"c": len(self.nodes)}]
@@ -35,24 +40,51 @@ class _FakeSemanticLinker:
     def __init__(self, *args, **kwargs) -> None:
         self.called = False
 
-    async def link(self, code_nodes: list[Node], doc_nodes: list[Node], graph: _FakeGraph) -> list[Edge]:
+    async def link(
+        self, code_nodes: list[Node], doc_nodes: list[Node], graph: _FakeGraph
+    ) -> list[Edge]:
         self.called = True
-        edge = Edge(from_id=code_nodes[0].id, to_id=doc_nodes[0].id, kind=EdgeType.LOOM_IMPLEMENTS, metadata={})
+        edge = Edge(
+            from_id=code_nodes[0].id,
+            to_id=doc_nodes[0].id,
+            kind=EdgeType.LOOM_IMPLEMENTS,
+            metadata={},
+        )
         await graph.bulk_create_edges([edge])
         return [edge]
 
 
 @pytest.mark.asyncio
-async def test_index_repo_with_docs_invokes_semantic_linker(monkeypatch, tmp_path: Path) -> None:
+async def test_index_repo_with_docs_invokes_semantic_linker(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr("loom.ingest.pipeline._collect_repo_files", lambda root: [])
-    doc_node = Node(id="doc:x:s1", kind=NodeKind.SECTION, source=NodeSource.DOC, name="Req", path="x", summary="req", metadata={})
+    doc_node = Node(
+        id="doc:x:s1",
+        kind=NodeKind.SECTION,
+        source=NodeSource.DOC,
+        name="Req",
+        path="x",
+        summary="req",
+        metadata={},
+    )
     monkeypatch.setattr("loom.ingest.docs.base.walk_docs", lambda p: ([doc_node], []))
 
     linker = _FakeSemanticLinker()
     monkeypatch.setattr("loom.ingest.pipeline.SemanticLinker", lambda: linker)
     monkeypatch.setattr(
         "loom.ingest.pipeline._collect_code_nodes_for_linking",
-        lambda batch: [Node(id="function:x:f", kind=NodeKind.FUNCTION, source=NodeSource.CODE, name="f", path="x", summary="req", metadata={})],
+        lambda batch: [
+            Node(
+                id="function:x:f",
+                kind=NodeKind.FUNCTION,
+                source=NodeSource.CODE,
+                name="f",
+                path="x",
+                summary="req",
+                metadata={},
+            )
+        ],
     )
 
     graph = _FakeGraph()

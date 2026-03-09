@@ -87,7 +87,11 @@ def build_sample_graph():
     edges.extend(
         [
             Edge(from_id=fid["x"], to_id=fid["validate_user"], kind=EdgeType.IMPORTS),
-            Edge(from_id=fid["validate_user"], to_id=fid["hash_pw"], kind=EdgeType.USES_TYPE),
+            Edge(
+                from_id=fid["validate_user"],
+                to_id=fid["hash_pw"],
+                kind=EdgeType.USES_TYPE,
+            ),
         ]
     )
 
@@ -164,7 +168,9 @@ def build_searchable_sample_graph():
                 )
             )
         else:
-            nodes.append(node.model_copy(update={"summary": node.name, "embedding": [0.0, 1.0]}))
+            nodes.append(
+                node.model_copy(update={"summary": node.name, "embedding": [0.0, 1.0]})
+            )
 
     return {
         "nodes": nodes,

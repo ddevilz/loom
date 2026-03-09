@@ -3,15 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tree_sitter import Language
+from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter import Parser
 from tree_sitter_java import language as java_language
 
 from loom.core import Node, NodeKind, NodeSource
-
 from loom.core.content_hash import content_hash_for_line_span
-
 from loom.ingest.code.languages.constants import (
     LANG_JAVA,
     TS_JAVA_ANNOTATION,
@@ -36,7 +33,7 @@ class _Context:
     class_stack: tuple[str, ...] = ()
     package: str = ""
 
-    def push_class(self, name: str) -> "_Context":
+    def push_class(self, name: str) -> _Context:
         return _Context(class_stack=self.class_stack + (name,), package=self.package)
 
     def qualname(self, name: str) -> str:
@@ -88,7 +85,19 @@ def _extract_modifiers(src: bytes, n: TSNode) -> list[str]:
     for child in n.children:
         if child.type == TS_JAVA_MODIFIERS:
             for mod_child in child.children:
-                if mod_child.type in {"public", "private", "protected", "static", "final", "abstract", "synchronized", "native", "strictfp", "transient", "volatile"}:
+                if mod_child.type in {
+                    "public",
+                    "private",
+                    "protected",
+                    "static",
+                    "final",
+                    "abstract",
+                    "synchronized",
+                    "native",
+                    "strictfp",
+                    "transient",
+                    "volatile",
+                }:
                     modifiers.append(mod_child.type)
     return modifiers
 
@@ -130,8 +139,12 @@ def _split_params(text: str) -> list[str]:
 def _method_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
     params_node = n.child_by_field_name("parameters")
     return_node = n.child_by_field_name("type")
-    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
-    return_type = _node_text(src, return_node).strip() if return_node is not None else None
+    params = (
+        _split_params(_node_text(src, params_node)) if params_node is not None else []
+    )
+    return_type = (
+        _node_text(src, return_node).strip() if return_node is not None else None
+    )
     signature = f"{name}({', '.join(params)})"
     if return_type:
         signature = f"{signature} -> {return_type}"
@@ -145,17 +158,17 @@ def _method_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
 
 def _count_lambdas_and_refs(src: bytes, n: TSNode) -> dict[str, int]:
     """Count lambda expressions and method references in a node tree."""
-    counts = {'lambda_count': 0, 'method_ref_count': 0}
-    
+    counts = {"lambda_count": 0, "method_ref_count": 0}
+
     def _count_recursive(node: TSNode):
         if node.type == TS_JAVA_LAMBDA_EXPRESSION:
-            counts['lambda_count'] += 1
+            counts["lambda_count"] += 1
         elif node.type == TS_JAVA_METHOD_REFERENCE:
-            counts['method_ref_count'] += 1
-        
+            counts["method_ref_count"] += 1
+
         for child in node.children:
             _count_recursive(child)
-    
+
     _count_recursive(n)
     return counts
 
@@ -175,13 +188,19 @@ def _extract_from_def(
     out: list[Node],
 ) -> None:
     # Java: class_declaration, interface_declaration, enum_declaration, annotation_type_declaration, record_declaration
-    if n.type in {TS_JAVA_CLASS_DECL, TS_JAVA_INTERFACE_DECL, TS_JAVA_ENUM_DECL, TS_JAVA_ANNOTATION_TYPE_DECL, TS_JAVA_RECORD_DECL}:
+    if n.type in {
+        TS_JAVA_CLASS_DECL,
+        TS_JAVA_INTERFACE_DECL,
+        TS_JAVA_ENUM_DECL,
+        TS_JAVA_ANNOTATION_TYPE_DECL,
+        TS_JAVA_RECORD_DECL,
+    }:
         name = _get_name(src, n)
         if not name:
             return
 
         start_line, end_line = _lines(n)
-        
+
         if n.type == TS_JAVA_INTERFACE_DECL:
             kind = NodeKind.INTERFACE
         elif n.type == TS_JAVA_ENUM_DECL:
@@ -199,24 +218,24 @@ def _extract_from_def(
         annotations = _extract_annotations(src, n)
         if annotations:
             metadata["annotations"] = annotations
-        
+
         modifiers = _extract_modifiers(src, n)
         if modifiers:
             metadata["modifiers"] = modifiers
-        
+
         if n.type == TS_JAVA_CLASS_DECL:
             superclass = _extract_superclass(src, n)
             if superclass:
                 metadata["extends"] = superclass
-        
+
         interfaces = _extract_interfaces(src, n)
         if interfaces:
             metadata["implements"] = interfaces
-        
+
         type_params = _extract_type_parameters(src, n)
         if type_params:
             metadata["type_parameters"] = type_params
-        
+
         # Mark records
         if n.type == TS_JAVA_RECORD_DECL:
             metadata["is_record"] = True
@@ -248,7 +267,7 @@ def _extract_from_def(
             return
 
         start_line, end_line = _lines(n)
-        
+
         # Methods inside classes are METHOD, top-level would be FUNCTION (rare in Java)
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
         symbol = ctx.qualname(name) if ctx.class_stack else name
@@ -260,19 +279,19 @@ def _extract_from_def(
         annotations = _extract_annotations(src, n)
         if annotations:
             metadata["annotations"] = annotations
-        
+
         modifiers = _extract_modifiers(src, n)
         if modifiers:
             metadata["modifiers"] = modifiers
-        
+
         # Count lambdas and method references in method body
         body = n.child_by_field_name("body")
         if body:
             functional_counts = _count_lambdas_and_refs(src, body)
-            if functional_counts['lambda_count'] > 0:
-                metadata['lambda_count'] = functional_counts['lambda_count']
-            if functional_counts['method_ref_count'] > 0:
-                metadata['method_ref_count'] = functional_counts['method_ref_count']
+            if functional_counts["lambda_count"] > 0:
+                metadata["lambda_count"] = functional_counts["lambda_count"]
+            if functional_counts["method_ref_count"] > 0:
+                metadata["method_ref_count"] = functional_counts["method_ref_count"]
 
         out.append(
             Node(
@@ -330,5 +349,11 @@ def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     package = _extract_package(src, tree.root_node)
     out: list[Node] = []
-    _walk(path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(package=package), out=out)
+    _walk(
+        path=path.replace("\\", "/"),
+        src=src,
+        n=tree.root_node,
+        ctx=_Context(package=package),
+        out=out,
+    )
     return out

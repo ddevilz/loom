@@ -111,7 +111,9 @@ async def test_bulk_edges_mixed_types_and_neighbor_filtering():
     assert nodes[1].id in calls_ids
     assert nodes[2].id not in calls_ids
 
-    all_neighbors = await g.neighbors(nodes[0].id, depth=1, edge_types=[EdgeType.CALLS, EdgeType.IMPORTS])
+    all_neighbors = await g.neighbors(
+        nodes[0].id, depth=1, edge_types=[EdgeType.CALLS, EdgeType.IMPORTS]
+    )
     all_ids = {n.id for n in all_neighbors}
     assert nodes[1].id in all_ids
     assert nodes[2].id in all_ids

@@ -14,8 +14,13 @@ class FakeGraph:
     nodes: list[Node] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
 
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        if cypher.strip() == "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash":
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        if (
+            cypher.strip()
+            == "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash"
+        ):
             return [
                 {"id": node.id, "content_hash": node.content_hash}
                 for node in self.nodes
@@ -43,7 +48,9 @@ class FakeGraph:
 
 
 @pytest.mark.asyncio
-async def test_index_repo_with_docs_path_upserts_doc_nodes(monkeypatch, tmp_path) -> None:
+async def test_index_repo_with_docs_path_upserts_doc_nodes(
+    monkeypatch, tmp_path
+) -> None:
     # Avoid parsing a real repo; make file list empty.
     monkeypatch.setattr("loom.ingest.pipeline._collect_repo_files", lambda root: [])
 
@@ -73,7 +80,9 @@ async def test_index_repo_with_docs_path_upserts_doc_nodes(monkeypatch, tmp_path
 
 
 @pytest.mark.asyncio
-async def test_index_repo_deletes_all_nodes_for_removed_file(monkeypatch, tmp_path) -> None:
+async def test_index_repo_deletes_all_nodes_for_removed_file(
+    monkeypatch, tmp_path
+) -> None:
     removed_path = str((tmp_path / "gone.py").resolve())
     file_node = Node(
         id=f"file:{removed_path}",

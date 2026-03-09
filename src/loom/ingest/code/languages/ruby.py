@@ -3,15 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tree_sitter import Language
+from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter import Parser
 from tree_sitter_ruby import language as ruby_language
 
 from loom.core import Node, NodeKind, NodeSource
-
 from loom.core.content_hash import content_hash_for_line_span
-
 from loom.ingest.code.languages.constants import (
     LANG_RUBY,
     TS_RUBY_CLASS,
@@ -27,7 +24,7 @@ _RUBY_LANGUAGE = Language(ruby_language())
 class _Context:
     class_stack: tuple[str, ...] = ()
 
-    def push_class(self, name: str) -> "_Context":
+    def push_class(self, name: str) -> _Context:
         return _Context(class_stack=self.class_stack + (name,))
 
     def qualname(self, name: str) -> str:
@@ -37,18 +34,40 @@ class _Context:
 
 
 # Rails DSL method names we want to capture as class metadata
-_RAILS_DSL_METHODS = frozenset({
-    "has_many", "has_one", "belongs_to", "has_and_belongs_to_many",
-    "validates", "validates_presence_of", "validates_uniqueness_of",
-    "scope", "default_scope",
-    "before_action", "after_action", "around_action",
-    "before_filter", "after_filter", "skip_before_action",
-    "before_save", "after_save", "before_create", "after_create",
-    "before_update", "after_update", "before_destroy", "after_destroy",
-    "before_validation", "after_validation",
-    "attr_accessor", "attr_reader", "attr_writer",
-    "delegate", "alias_method",
-})
+_RAILS_DSL_METHODS = frozenset(
+    {
+        "has_many",
+        "has_one",
+        "belongs_to",
+        "has_and_belongs_to_many",
+        "validates",
+        "validates_presence_of",
+        "validates_uniqueness_of",
+        "scope",
+        "default_scope",
+        "before_action",
+        "after_action",
+        "around_action",
+        "before_filter",
+        "after_filter",
+        "skip_before_action",
+        "before_save",
+        "after_save",
+        "before_create",
+        "after_create",
+        "before_update",
+        "after_update",
+        "before_destroy",
+        "after_destroy",
+        "before_validation",
+        "after_validation",
+        "attr_accessor",
+        "attr_reader",
+        "attr_writer",
+        "delegate",
+        "alias_method",
+    }
+)
 
 
 def _node_text(src: bytes, n: TSNode) -> str:
@@ -153,7 +172,7 @@ def _extract_from_def(
             return
 
         start_line, end_line = _lines(n)
-        
+
         # Methods inside classes are METHOD, top-level are FUNCTION
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
         symbol = ctx.qualname(name) if ctx.class_stack else name
@@ -177,7 +196,12 @@ def _extract_from_def(
 
 def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
     for child in n.children:
-        if child.type in {TS_RUBY_CLASS, TS_RUBY_MODULE, TS_RUBY_METHOD, TS_RUBY_SINGLETON_METHOD}:
+        if child.type in {
+            TS_RUBY_CLASS,
+            TS_RUBY_MODULE,
+            TS_RUBY_METHOD,
+            TS_RUBY_SINGLETON_METHOD,
+        }:
             _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
         else:
             if child.child_count:
@@ -192,5 +216,7 @@ def parse_ruby(path: str, *, exclude_tests: bool = False) -> list[Node]:
     tree = parser.parse(src)
 
     out: list[Node] = []
-    _walk(path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out)
+    _walk(
+        path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out
+    )
     return out

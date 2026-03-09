@@ -13,16 +13,16 @@ _DB_SINGLETON_LOCK = threading.Lock()
 
 def get_falkordb_singleton() -> FalkorDB:
     """Get or create FalkorDB singleton with thread-safe double-checked locking.
-    
+
     This prevents multiple threads from creating duplicate FalkorDB instances,
     which could lead to connection pool exhaustion.
     """
     global _DB_SINGLETON
-    
+
     # Fast path: return if already initialized
     if _DB_SINGLETON is not None:
         return _DB_SINGLETON
-    
+
     # Acquire lock for initialization
     with _DB_SINGLETON_LOCK:
         # Double-check after acquiring lock
@@ -42,7 +42,7 @@ class FalkorGateway:
 
     def reconnect(self) -> None:
         """Reconnect to FalkorDB by resetting singleton and reconnecting.
-        
+
         Thread-safe: acquires lock before resetting singleton.
         """
         global _DB_SINGLETON

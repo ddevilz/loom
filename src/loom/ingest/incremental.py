@@ -4,18 +4,18 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Protocol
 
-from loom.analysis.code.parser import parse_code
 from loom.analysis.code.extractor import extract_summaries
+from loom.analysis.code.parser import parse_code
 from loom.core import Edge, EdgeOrigin, EdgeType, LoomGraph, Node, NodeKind, NodeSource
+from loom.core.content_hash import content_hash_bytes
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_edge_props, deserialize_node_props
-from loom.core.content_hash import content_hash_bytes
 from loom.drift.detector import detect_ast_drift
 from loom.embed.embedder import embed_nodes
+from loom.ingest.code.registry import get_registry
 from loom.ingest.differ import diff_nodes
 from loom.ingest.errors import append_index_error
 from loom.ingest.git import get_changed_files
-from loom.ingest.code.registry import get_registry
 from loom.ingest.result import IndexError, IndexResult
 from loom.ingest.utils import (
     delete_nodes_by_ids,
@@ -26,7 +26,6 @@ from loom.ingest.utils import (
     node_has_human_edges,
 )
 from loom.linker.linker import SemanticLinker
-
 
 _LOOM_IMPL_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
 
@@ -92,7 +91,9 @@ async def _run_or_append_error(
         return default
 
 
-async def _get_outgoing_human_edges(graph: _Graph, *, path: str) -> list[dict[str, Any]]:
+async def _get_outgoing_human_edges(
+    graph: _Graph, *, path: str
+) -> list[dict[str, Any]]:
     return await graph.query(
         """
 MATCH (a {path: $path})-[r]->(b)
@@ -103,7 +104,9 @@ RETURN a.id AS from_id, b.id AS to_id, type(r) AS rel_type, properties(r) AS pro
     )
 
 
-async def _get_incoming_human_edges(graph: _Graph, *, path: str) -> list[dict[str, Any]]:
+async def _get_incoming_human_edges(
+    graph: _Graph, *, path: str
+) -> list[dict[str, Any]]:
     return await graph.query(
         """
 MATCH (a)-[r]->(b {path: $path})
@@ -130,7 +133,9 @@ async def _create_edge(
 
 
 class _Graph(Protocol):
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]: ...
 
     async def bulk_create_nodes(self, nodes: list[Node]) -> None: ...
 
@@ -258,12 +263,16 @@ async def sync_commits(
                     errors,
                     path=abs_path,
                     phase="persist",
-                    op=lambda nid=old_node.id: _get_loom_implements_targets(graph, node_id=nid),
+                    op=lambda nid=old_node.id: _get_loom_implements_targets(
+                        graph, node_id=nid
+                    ),
                     default=[],
                 )
                 if not doc_ids:
                     continue
-                warning = f"AST drift detected for {new_node.id}: {'; '.join(drift.reasons)}"
+                warning = (
+                    f"AST drift detected for {new_node.id}: {'; '.join(drift.reasons)}"
+                )
                 warnings.append(warning)
                 for doc_id in doc_ids:
                     drift_edges.append(
@@ -429,7 +438,9 @@ async def sync_commits(
                             props=props,
                         )
                     except Exception as e:
-                        append_index_error(errors, path=abs_path, phase="persist", error=e)
+                        append_index_error(
+                            errors, path=abs_path, phase="persist", error=e
+                        )
 
             # Remove old nodes after migration.
             try:
@@ -449,7 +460,7 @@ async def sync_commits(
             nodes_to_upsert = await embed_nodes(nodes_to_upsert)
         except Exception as e:
             append_index_error(errors, path=repo_path, phase="embed", error=e)
-        
+
         try:
             await graph.bulk_create_nodes(nodes_to_upsert)
         except Exception as e:

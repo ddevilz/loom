@@ -43,7 +43,11 @@ def detect_ast_drift(old_node: Node, new_node: Node) -> AstDriftReport:
 
     old_signature = old_node.metadata.get("signature")
     new_signature = new_node.metadata.get("signature")
-    if isinstance(old_signature, str) and isinstance(new_signature, str) and old_signature != new_signature:
+    if (
+        isinstance(old_signature, str)
+        and isinstance(new_signature, str)
+        and old_signature != new_signature
+    ):
         reasons.append(f"signature_changed: {old_signature} -> {new_signature}")
 
     old_return_type = old_node.metadata.get("return_type")
@@ -82,7 +86,7 @@ async def detect_violations(
 ) -> list[ViolationReport]:
     code_by_id = {n.id: n for n in code_nodes}
     doc_by_id = {n.id: n for n in doc_nodes}
-    
+
     # Filter valid edges upfront
     valid_edges: list[tuple[Edge, Node, Node]] = []
     for edge in implements_edges:
@@ -93,16 +97,18 @@ async def detect_violations(
         if code is None or doc is None or not code.summary:
             continue
         valid_edges.append((edge, code, doc))
-    
+
     if not valid_edges:
         return []
-    
+
     # Process LLM calls concurrently with semaphore
     semaphore = asyncio.Semaphore(max_concurrent_llm_calls)
-    
+
     async def _check_one(edge: Edge, code: Node, doc: Node) -> ViolationReport | None:
         async with semaphore:
-            prompt = drift_detection_prompt(code_summary=code.summary, doc_text=doc.summary or doc.name)
+            prompt = drift_detection_prompt(
+                code_summary=code.summary, doc_text=doc.summary or doc.name
+            )
             raw = await llm.complete(prompt=prompt, model=model)
             try:
                 data: dict[str, Any] = json.loads(raw)
@@ -136,6 +142,8 @@ async def detect_violations(
                 reason=str(reason) if reason is not None else None,
                 edge=violation_edge,
             )
-    
-    results = await asyncio.gather(*[_check_one(edge, code, doc) for edge, code, doc in valid_edges])
+
+    results = await asyncio.gather(
+        *[_check_one(edge, code, doc) for edge, code, doc in valid_edges]
+    )
     return [r for r in results if r is not None]

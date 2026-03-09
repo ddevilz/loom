@@ -17,7 +17,9 @@ _VECTOR_CANDIDATES_QUERY = (
 
 
 class _Graph(Protocol):
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]: ...
 
 
 async def _candidate_doc_ids_from_vector_index(
@@ -60,7 +62,9 @@ async def link_by_embedding(
             continue
         candidate_doc_ids = None
         if graph is not None:
-            candidate_doc_ids = await _candidate_doc_ids_from_vector_index(c, doc_by_id, graph)
+            candidate_doc_ids = await _candidate_doc_ids_from_vector_index(
+                c, doc_by_id, graph
+            )
         candidate_docs = (
             [doc_by_id[doc_id] for doc_id in candidate_doc_ids]
             if candidate_doc_ids is not None

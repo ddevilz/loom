@@ -6,7 +6,6 @@ from typer.testing import CliRunner
 
 import loom.cli
 
-
 runner = CliRunner()
 
 
@@ -31,7 +30,9 @@ def test_cli_sync_happy_path(monkeypatch):
 
     async def fake_get_changed_files(repo_path: str, old_sha: str, new_sha: str):
         class FC:
-            def __init__(self, status: str, path: str, old_path: str | None = None) -> None:
+            def __init__(
+                self, status: str, path: str, old_path: str | None = None
+            ) -> None:
                 self.status = status
                 self.path = path
                 self.old_path = old_path

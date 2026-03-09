@@ -18,7 +18,7 @@ class _FakeLLM:
 
 class _ListLLM:
     async def complete(self, *, prompt: str, model: str | None = None) -> str:
-        return '[]'
+        return "[]"
 
 
 @pytest.mark.asyncio

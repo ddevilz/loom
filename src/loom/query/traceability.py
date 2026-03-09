@@ -3,16 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from loom.core import Node, NodeKind, NodeSource, EdgeType
+from loom.core import EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
-from loom.core.falkor.mappers import coerce_row_node_kind, deserialize_metadata_value, row_to_node
-
+from loom.core.falkor.mappers import (
+    coerce_row_node_kind,
+    deserialize_metadata_value,
+    row_to_node,
+)
 
 _LOOM_IMPL_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
 
 
 class _Graph(Protocol):
-    async def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]: ...
+    async def query(
+        self, cypher: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -23,23 +28,49 @@ class TraceCoverageReport:
 
 
 def _coerce_code_kind(raw_kind: Any) -> NodeKind:
-    return coerce_row_node_kind(
-        raw_kind,
-        fallback=NodeKind.FUNCTION,
-        allowed_kinds={NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.ENUM, NodeKind.TYPE, NodeKind.FILE},
-    ) or NodeKind.FUNCTION
+    return (
+        coerce_row_node_kind(
+            raw_kind,
+            fallback=NodeKind.FUNCTION,
+            allowed_kinds={
+                NodeKind.FUNCTION,
+                NodeKind.METHOD,
+                NodeKind.CLASS,
+                NodeKind.INTERFACE,
+                NodeKind.ENUM,
+                NodeKind.TYPE,
+                NodeKind.FILE,
+            },
+        )
+        or NodeKind.FUNCTION
+    )
 
 
 def _coerce_doc_kind(raw_kind: Any) -> NodeKind:
-    return coerce_row_node_kind(
-        raw_kind,
-        fallback=NodeKind.SECTION,
-        allowed_kinds={NodeKind.DOCUMENT, NodeKind.CHAPTER, NodeKind.SECTION, NodeKind.SUBSECTION, NodeKind.PARAGRAPH},
-    ) or NodeKind.SECTION
+    return (
+        coerce_row_node_kind(
+            raw_kind,
+            fallback=NodeKind.SECTION,
+            allowed_kinds={
+                NodeKind.DOCUMENT,
+                NodeKind.CHAPTER,
+                NodeKind.SECTION,
+                NodeKind.SUBSECTION,
+                NodeKind.PARAGRAPH,
+            },
+        )
+        or NodeKind.SECTION
+    )
 
 
 def _row_to_doc_node(row: dict[str, Any]) -> Node:
-    allowed_doc_kinds = {NodeKind.DOCUMENT, NodeKind.CHAPTER, NodeKind.SECTION, NodeKind.SUBSECTION, NodeKind.PARAGRAPH}
+    allowed_doc_kinds = {
+        NodeKind.DOCUMENT,
+        NodeKind.CHAPTER,
+        NodeKind.SECTION,
+        NodeKind.SUBSECTION,
+        NodeKind.PARAGRAPH,
+    }
     return row_to_node(
         row,
         source=NodeSource.DOC,
@@ -56,7 +87,15 @@ def _row_to_doc_node(row: dict[str, Any]) -> Node:
 
 
 def _row_to_code_node(row: dict[str, Any]) -> Node:
-    allowed_code_kinds = {NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.CLASS, NodeKind.INTERFACE, NodeKind.ENUM, NodeKind.TYPE, NodeKind.FILE}
+    allowed_code_kinds = {
+        NodeKind.FUNCTION,
+        NodeKind.METHOD,
+        NodeKind.CLASS,
+        NodeKind.INTERFACE,
+        NodeKind.ENUM,
+        NodeKind.TYPE,
+        NodeKind.FILE,
+    }
     return row_to_node(
         row,
         source=NodeSource.CODE,
@@ -89,7 +128,9 @@ async def untraced_functions_limited(
     limit: int = 100,
     path_prefix: str | None = None,
 ) -> list[Node]:
-    where_clause = f"f.kind IN ['function','method'] AND NOT ( (f)-[:{_LOOM_IMPL_REL}]->() )"
+    where_clause = (
+        f"f.kind IN ['function','method'] AND NOT ( (f)-[:{_LOOM_IMPL_REL}]->() )"
+    )
     params: dict[str, Any] = {"limit": limit}
     if path_prefix is not None:
         where_clause += " AND f.path STARTS WITH $path_prefix"

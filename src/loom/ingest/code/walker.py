@@ -6,7 +6,6 @@ from pathlib import Path
 from pathspec import PathSpec
 
 from loom.config import DEFAULT_SKIP_DIRS
-from loom.ingest.code.registry import get_registry
 from loom.ingest.code.languages.constants import (
     EXT_CSS,
     EXT_CXML,
@@ -14,22 +13,22 @@ from loom.ingest.code.languages.constants import (
     EXT_GO,
     EXT_HTM,
     EXT_HTML,
+    EXT_INI,
     EXT_JAVA,
     EXT_JS,
-    EXT_JSX,
     EXT_JSON,
+    EXT_JSX,
     EXT_PROPERTIES,
     EXT_PY,
     EXT_PYW,
     EXT_RB,
     EXT_RS,
+    EXT_TOML,
     EXT_TS,
     EXT_TSX,
-    EXT_TOML,
     EXT_XML,
     EXT_YAML,
     EXT_YML,
-    EXT_INI,
     LANG_CSS,
     LANG_ENV,
     LANG_GO,
@@ -38,17 +37,17 @@ from loom.ingest.code.languages.constants import (
     LANG_JAVA,
     LANG_JAVASCRIPT,
     LANG_JSON,
-    LANG_PYTHON,
     LANG_PROPERTIES,
+    LANG_PYTHON,
     LANG_RUBY,
     LANG_RUST,
-    LANG_TSX,
     LANG_TOML,
+    LANG_TSX,
     LANG_TYPESCRIPT,
     LANG_XML,
     LANG_YAML,
 )
-
+from loom.ingest.code.registry import get_registry
 
 _EXT_TO_LANGUAGE: dict[str, str] = {
     EXT_PY: LANG_PYTHON,

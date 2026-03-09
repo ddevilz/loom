@@ -51,6 +51,13 @@ def rerank_edges(
         score = reranker.rerank(code, doc)
         if score < threshold:
             continue
-        reranked.append(edge.model_copy(update={"confidence": float(score), "link_reason": f"cross_encoder={score:.3f}"}))
+        reranked.append(
+            edge.model_copy(
+                update={
+                    "confidence": float(score),
+                    "link_reason": f"cross_encoder={score:.3f}",
+                }
+            )
+        )
 
     return sorted(reranked, key=lambda edge: edge.confidence, reverse=True)

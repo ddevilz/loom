@@ -55,13 +55,29 @@ def test_walk_repo_respects_gitignore(tmp_path: Path):
 def test_walk_repo_skips_default_dirs(tmp_path: Path):
     _touch(tmp_path / "app.py", "def app():\n  pass\n")
 
-    for d in ["node_modules", "vendor", "dist", "build", ".venv", "__pycache__", ".git"]:
+    for d in [
+        "node_modules",
+        "vendor",
+        "dist",
+        "build",
+        ".venv",
+        "__pycache__",
+        ".git",
+    ]:
         _touch(tmp_path / d / "x.py", "def x():\n  pass\n")
 
     out = walk_repo(str(tmp_path))
 
     assert any(p.endswith("app.py") for p in out.get("python", []))
-    for d in ["node_modules", "vendor", "dist", "build", ".venv", "__pycache__", ".git"]:
+    for d in [
+        "node_modules",
+        "vendor",
+        "dist",
+        "build",
+        ".venv",
+        "__pycache__",
+        ".git",
+    ]:
         assert not any(d in p.replace("\\", "/") for p in out.get("python", []))
 
 

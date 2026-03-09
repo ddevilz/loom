@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum
-from enum import StrEnum
+from enum import Enum, StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -18,7 +17,7 @@ class EdgeType(StrEnum):
     STEP_IN = "step_in"
     COUPLED_WITH = "coupled_with"
     CONTAINS = "contains"
-    
+
     # dynamic/reflection edges
     DYNAMIC_CALL = "dynamic_call"
     REFLECTS_CALL = "reflects_call"
@@ -70,7 +69,7 @@ class Edge(BaseModel):
         }
 
     @model_validator(mode="after")
-    def _validate_edge(self) -> "Edge":
+    def _validate_edge(self) -> Edge:
         if not (0.0 <= self.confidence <= 1.0):
             raise ValueError("confidence must be between 0.0 and 1.0")
 
@@ -80,6 +79,8 @@ class Edge(BaseModel):
                 raise ValueError("link_reason requires link_method for LOOM_* edges")
         else:
             if self.link_method is not None or self.link_reason is not None:
-                raise ValueError("link_method/link_reason are only allowed for LOOM_* edges")
+                raise ValueError(
+                    "link_method/link_reason are only allowed for LOOM_* edges"
+                )
 
         return self

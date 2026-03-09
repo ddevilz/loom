@@ -4,8 +4,8 @@ import json
 from typing import Any
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
-from loom.llm.client import LLMClient
 from loom.linker.prompts import llm_match_prompt
+from loom.llm.client import LLMClient
 
 
 async def link_by_llm(

@@ -17,7 +17,9 @@ class _FakeGraph:
 
 
 class _FakeSummaryLLM:
-    async def summarize(self, *, prompt: str, max_tokens: int = 200, model: str | None = None) -> str:
+    async def summarize(
+        self, *, prompt: str, max_tokens: int = 200, model: str | None = None
+    ) -> str:
         return "hashes password with bcrypt"
 
 
@@ -41,7 +43,9 @@ async def test_semantic_linker_persists_cross_domain_edges() -> None:
         embedding=[1.0, 0.0],
         metadata={},
     )
-    code = code.model_copy(update={"summary": "hashes password with bcrypt", "embedding": [1.0, 0.0]})
+    code = code.model_copy(
+        update={"summary": "hashes password with bcrypt", "embedding": [1.0, 0.0]}
+    )
 
     graph = _FakeGraph()
     linker = SemanticLinker(summary_llm=_FakeSummaryLLM())
@@ -81,10 +85,33 @@ def test_semantic_linker_dedupe_preserves_human_edge() -> None:
 
 
 @pytest.mark.asyncio
-async def test_semantic_linker_allows_later_tier_to_link_second_code_to_same_doc(monkeypatch) -> None:
-    code1 = Node(id="function:x:f1", kind=NodeKind.FUNCTION, source=NodeSource.CODE, name="f1", path="x", metadata={})
-    code2 = Node(id="function:x:f2", kind=NodeKind.FUNCTION, source=NodeSource.CODE, name="f2", path="x", metadata={})
-    doc = Node(id="doc:spec.md:s1", kind=NodeKind.SECTION, source=NodeSource.DOC, name="Spec", path="spec.md", metadata={})
+async def test_semantic_linker_allows_later_tier_to_link_second_code_to_same_doc(
+    monkeypatch,
+) -> None:
+    code1 = Node(
+        id="function:x:f1",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="f1",
+        path="x",
+        metadata={},
+    )
+    code2 = Node(
+        id="function:x:f2",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="f2",
+        path="x",
+        metadata={},
+    )
+    doc = Node(
+        id="doc:spec.md:s1",
+        kind=NodeKind.SECTION,
+        source=NodeSource.DOC,
+        name="Spec",
+        path="spec.md",
+        metadata={},
+    )
 
     tier1_edge = Edge(
         from_id=code1.id,
@@ -107,9 +134,14 @@ async def test_semantic_linker_allows_later_tier_to_link_second_code_to_same_doc
         metadata={},
     )
 
-    monkeypatch.setattr("loom.linker.linker.link_by_name", lambda code_nodes, doc_nodes, threshold=0.6: [tier1_edge])
+    monkeypatch.setattr(
+        "loom.linker.linker.link_by_name",
+        lambda code_nodes, doc_nodes, threshold=0.6: [tier1_edge],
+    )
 
-    async def _fake_link_by_embedding(code_nodes, doc_nodes, *, threshold=0.75, graph=None):
+    async def _fake_link_by_embedding(
+        code_nodes, doc_nodes, *, threshold=0.75, graph=None
+    ):
         assert [node.id for node in code_nodes] == [code1.id, code2.id]
         assert [node.id for node in doc_nodes] == [doc.id]
         return [tier2_edge]
@@ -128,10 +160,33 @@ async def test_semantic_linker_allows_later_tier_to_link_second_code_to_same_doc
 
 
 @pytest.mark.asyncio
-async def test_semantic_linker_llm_fallback_can_link_same_code_to_second_doc(monkeypatch) -> None:
-    code = Node(id="function:x:f", kind=NodeKind.FUNCTION, source=NodeSource.CODE, name="f", path="x", metadata={})
-    doc1 = Node(id="doc:spec.md:s1", kind=NodeKind.SECTION, source=NodeSource.DOC, name="Spec 1", path="spec.md", metadata={})
-    doc2 = Node(id="doc:spec.md:s2", kind=NodeKind.SECTION, source=NodeSource.DOC, name="Spec 2", path="spec.md", metadata={})
+async def test_semantic_linker_llm_fallback_can_link_same_code_to_second_doc(
+    monkeypatch,
+) -> None:
+    code = Node(
+        id="function:x:f",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="f",
+        path="x",
+        metadata={},
+    )
+    doc1 = Node(
+        id="doc:spec.md:s1",
+        kind=NodeKind.SECTION,
+        source=NodeSource.DOC,
+        name="Spec 1",
+        path="spec.md",
+        metadata={},
+    )
+    doc2 = Node(
+        id="doc:spec.md:s2",
+        kind=NodeKind.SECTION,
+        source=NodeSource.DOC,
+        name="Spec 2",
+        path="spec.md",
+        metadata={},
+    )
 
     tier1_edge = Edge(
         from_id=code.id,
@@ -154,9 +209,14 @@ async def test_semantic_linker_llm_fallback_can_link_same_code_to_second_doc(mon
         metadata={},
     )
 
-    monkeypatch.setattr("loom.linker.linker.link_by_name", lambda code_nodes, doc_nodes, threshold=0.6: [tier1_edge])
+    monkeypatch.setattr(
+        "loom.linker.linker.link_by_name",
+        lambda code_nodes, doc_nodes, threshold=0.6: [tier1_edge],
+    )
 
-    async def _fake_link_by_embedding(code_nodes, doc_nodes, *, threshold=0.75, graph=None):
+    async def _fake_link_by_embedding(
+        code_nodes, doc_nodes, *, threshold=0.75, graph=None
+    ):
         return []
 
     async def _fake_link_by_llm(code_nodes, doc_nodes, *, llm, threshold=0.6):

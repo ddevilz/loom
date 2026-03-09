@@ -10,12 +10,13 @@ from loom.linker.llm_match import link_by_llm
 from loom.linker.name_match import link_by_name
 from loom.linker.reranker import PairReranker, rerank_edges
 
-
 logger = logging.getLogger(__name__)
 
 
 class SummaryLLMClient(Protocol):
-    async def summarize(self, *, prompt: str, max_tokens: int = 200, model: str | None = None) -> str: ...
+    async def summarize(
+        self, *, prompt: str, max_tokens: int = 200, model: str | None = None
+    ) -> str: ...
 
 
 class _Graph(Protocol):
@@ -68,7 +69,9 @@ class SemanticLinker:
                 )
                 all_edges = self._dedupe_edges([*all_edges, *tier3])
             else:
-                logger.debug("LLM not configured — skipping LLM match tier. Set LOOM_LLM_MODEL to enable.")
+                logger.debug(
+                    "LLM not configured — skipping LLM match tier. Set LOOM_LLM_MODEL to enable."
+                )
 
         if all_edges:
             await graph.bulk_create_edges(all_edges)

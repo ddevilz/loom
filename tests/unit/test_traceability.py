@@ -3,7 +3,16 @@ from __future__ import annotations
 import pytest
 
 from loom.core import NodeKind
-from loom.query.traceability import _row_to_code_node, _row_to_doc_node, impact_of_ticket, sprint_code_coverage, tickets_for_function, unimplemented_tickets, untraced_functions, untraced_functions_limited
+from loom.query.traceability import (
+    _row_to_code_node,
+    _row_to_doc_node,
+    impact_of_ticket,
+    sprint_code_coverage,
+    tickets_for_function,
+    unimplemented_tickets,
+    untraced_functions,
+    untraced_functions_limited,
+)
 
 
 class _FakeGraph:
@@ -18,22 +27,64 @@ class _FakeGraph:
 
 @pytest.mark.asyncio
 async def test_unimplemented_tickets_returns_doc_nodes() -> None:
-    graph = _FakeGraph([{"id": "doc:jira:PROJ-1", "name": "PROJ-1", "summary": "s", "path": "jira://PROJ/PROJ-1", "metadata": {}}])
+    graph = _FakeGraph(
+        [
+            {
+                "id": "doc:jira:PROJ-1",
+                "name": "PROJ-1",
+                "summary": "s",
+                "path": "jira://PROJ/PROJ-1",
+                "metadata": {},
+            }
+        ]
+    )
     rows = await unimplemented_tickets(graph)
     assert rows[0].name == "PROJ-1"
 
 
 @pytest.mark.asyncio
 async def test_untraced_functions_returns_code_nodes() -> None:
-    graph = _FakeGraph([{"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": {}}])
+    graph = _FakeGraph(
+        [
+            {
+                "id": "function:x:f",
+                "kind": "function",
+                "name": "f",
+                "summary": "s",
+                "path": "x",
+                "metadata": {},
+            }
+        ]
+    )
     rows = await untraced_functions(graph)
     assert rows[0].name == "f"
 
 
 @pytest.mark.asyncio
 async def test_impact_of_ticket_and_tickets_for_function() -> None:
-    code_graph = _FakeGraph([{"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": {}}])
-    doc_graph = _FakeGraph([{"id": "doc:jira:PROJ-1", "name": "PROJ-1", "summary": "s", "path": "jira://PROJ/PROJ-1", "metadata": {}}])
+    code_graph = _FakeGraph(
+        [
+            {
+                "id": "function:x:f",
+                "kind": "function",
+                "name": "f",
+                "summary": "s",
+                "path": "x",
+                "metadata": {},
+            }
+        ]
+    )
+    doc_graph = _FakeGraph(
+        [
+            {
+                "id": "doc:jira:PROJ-1",
+                "name": "PROJ-1",
+                "summary": "s",
+                "path": "jira://PROJ/PROJ-1",
+                "metadata": {},
+            }
+        ]
+    )
     impact = await impact_of_ticket("PROJ-1", code_graph)
     impact_by_id = await impact_of_ticket("doc:jira:PROJ-1", code_graph)
     tickets = await tickets_for_function("function:x:f", doc_graph)
@@ -44,7 +95,18 @@ async def test_impact_of_ticket_and_tickets_for_function() -> None:
 
 @pytest.mark.asyncio
 async def test_untraced_functions_limited_passes_limit_and_path_prefix() -> None:
-    graph = _FakeGraph([{"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": {}}])
+    graph = _FakeGraph(
+        [
+            {
+                "id": "function:x:f",
+                "kind": "function",
+                "name": "f",
+                "summary": "s",
+                "path": "x",
+                "metadata": {},
+            }
+        ]
+    )
     rows = await untraced_functions_limited(graph, limit=25, path_prefix="src/")
     assert rows[0].name == "f"
     _, params = graph.calls[-1]
@@ -60,12 +122,26 @@ async def test_sprint_code_coverage_returns_report() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sprint_code_coverage_decodes_json_metadata_and_counts_distinct_matches() -> None:
+async def test_sprint_code_coverage_decodes_json_metadata_and_counts_distinct_matches() -> (
+    None
+):
     graph = _FakeGraph(
         [
-            {"function_id": "function:x:f1", "ticket_id": "doc:jira:PROJ-1", "metadata": '{"sprint": "Sprint 1"}'},
-            {"function_id": "function:x:f2", "ticket_id": "doc:jira:PROJ-1", "metadata": '{"sprint": "Sprint 1"}'},
-            {"function_id": "function:x:f3", "ticket_id": "doc:jira:PROJ-2", "metadata": {"sprint": "Sprint 2"}},
+            {
+                "function_id": "function:x:f1",
+                "ticket_id": "doc:jira:PROJ-1",
+                "metadata": '{"sprint": "Sprint 1"}',
+            },
+            {
+                "function_id": "function:x:f2",
+                "ticket_id": "doc:jira:PROJ-1",
+                "metadata": '{"sprint": "Sprint 1"}',
+            },
+            {
+                "function_id": "function:x:f3",
+                "ticket_id": "doc:jira:PROJ-2",
+                "metadata": {"sprint": "Sprint 2"},
+            },
         ]
     )
 
@@ -76,30 +152,75 @@ async def test_sprint_code_coverage_decodes_json_metadata_and_counts_distinct_ma
 
 
 def test_row_to_code_node_falls_back_to_function_for_invalid_kind() -> None:
-    node = _row_to_code_node({"id": "function:x:f", "kind": "not_a_kind", "name": "f", "summary": "s", "path": "x", "metadata": {}})
+    node = _row_to_code_node(
+        {
+            "id": "function:x:f",
+            "kind": "not_a_kind",
+            "name": "f",
+            "summary": "s",
+            "path": "x",
+            "metadata": {},
+        }
+    )
 
     assert node.kind == NodeKind.FUNCTION
 
 
 def test_row_to_code_node_decodes_json_metadata() -> None:
-    node = _row_to_code_node({"id": "function:x:f", "kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": '{"owner": "team-a"}'})
+    node = _row_to_code_node(
+        {
+            "id": "function:x:f",
+            "kind": "function",
+            "name": "f",
+            "summary": "s",
+            "path": "x",
+            "metadata": '{"owner": "team-a"}',
+        }
+    )
 
     assert node.metadata == {"owner": "team-a"}
 
 
 def test_row_to_doc_node_preserves_valid_doc_kind() -> None:
-    node = _row_to_doc_node({"id": "doc:spec:ch1", "kind": "chapter", "name": "Chapter 1", "summary": "s", "path": "spec.md", "metadata": {}})
+    node = _row_to_doc_node(
+        {
+            "id": "doc:spec:ch1",
+            "kind": "chapter",
+            "name": "Chapter 1",
+            "summary": "s",
+            "path": "spec.md",
+            "metadata": {},
+        }
+    )
 
     assert node.kind == NodeKind.CHAPTER
 
 
 def test_row_to_doc_node_falls_back_to_section_for_invalid_kind() -> None:
-    node = _row_to_doc_node({"id": "doc:spec:s1", "kind": "function", "name": "Spec", "summary": "s", "path": "spec.md", "metadata": {}})
+    node = _row_to_doc_node(
+        {
+            "id": "doc:spec:s1",
+            "kind": "function",
+            "name": "Spec",
+            "summary": "s",
+            "path": "spec.md",
+            "metadata": {},
+        }
+    )
 
     assert node.kind == NodeKind.SECTION
 
 
 def test_row_to_doc_node_decodes_json_metadata() -> None:
-    node = _row_to_doc_node({"id": "doc:spec:s1", "kind": "section", "name": "Spec", "summary": "s", "path": "spec.md", "metadata": '{"sprint": "Sprint 1"}'})
+    node = _row_to_doc_node(
+        {
+            "id": "doc:spec:s1",
+            "kind": "section",
+            "name": "Spec",
+            "summary": "s",
+            "path": "spec.md",
+            "metadata": '{"sprint": "Sprint 1"}',
+        }
+    )
 
     assert node.metadata == {"sprint": "Sprint 1"}

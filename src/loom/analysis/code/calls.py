@@ -10,10 +10,10 @@ from tree_sitter_python import language as python_language
 from loom.analysis.code.noise_filter import should_ignore_call
 from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind
 from loom.ingest.code.languages.constants import (
-    TS_PY_CALL,
     TS_PY_ATTRIBUTE,
-    TS_PY_IDENTIFIER,
+    TS_PY_CALL,
     TS_PY_FUNCTION_DEF,
+    TS_PY_IDENTIFIER,
 )
 
 _PY_LANGUAGE = Language(python_language())
@@ -25,7 +25,7 @@ def _node_text(src: bytes, n: TSNode) -> str:
 
 def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float]:
     """Extract the function name from a call's function node.
-    
+
     Returns (name, confidence):
     - Direct call foo() -> ("foo", 1.0)
     - Method call obj.foo() -> ("foo", 0.8)
@@ -35,14 +35,14 @@ def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float
     if func_node.type == TS_PY_IDENTIFIER:
         name = _node_text(src, func_node)
         return name, 1.0
-    
+
     if func_node.type == TS_PY_ATTRIBUTE:
         attr_node = func_node.child_by_field_name("attribute")
         if attr_node:
             name = _node_text(src, attr_node)
             return name, 0.8
         return None, 0.5
-    
+
     return None, 0.5
 
 
@@ -54,13 +54,16 @@ def _find_calls_in_node(src: bytes, n: TSNode, calls: list[tuple[str, float]]) -
             name, confidence = _extract_call_name(src, func_node)
             if name and not should_ignore_call(name):
                 calls.append((name, confidence))
-    
+
     for child in n.children:
         _find_calls_in_node(src, child, calls)
 
 
-def _find_function_body(src: bytes, subtree: TSNode, func_name: str, start_line: int) -> TSNode | None:
+def _find_function_body(
+    src: bytes, subtree: TSNode, func_name: str, start_line: int
+) -> TSNode | None:
     """Find the function definition node matching the given name and line."""
+
     def _search(node: TSNode) -> TSNode | None:
         if node.type == TS_PY_FUNCTION_DEF:
             name_node = node.child_by_field_name("name")
@@ -69,13 +72,13 @@ def _find_function_body(src: bytes, subtree: TSNode, func_name: str, start_line:
                 if name == func_name and node.start_point[0] + 1 == start_line:
                     body = node.child_by_field_name("body")
                     return body if body else node
-        
+
         for child in node.children:
             result = _search(child)
             if result:
                 return result
         return None
-    
+
     return _search(subtree)
 
 
@@ -87,22 +90,22 @@ def trace_calls(
     src: bytes | None = None,
 ) -> list[Edge]:
     """Extract CALLS edges from a function's body.
-    
+
     Args:
         function_node: The Node representing the function being analyzed
         subtree: The tree-sitter root node (or function body node)
         all_symbols: Dict mapping symbol names to candidate Nodes for resolution
         src: Source bytes (will be read from function_node.path if not provided)
-    
+
     Returns:
         List of Edge objects with kind=CALLS, including confidence scores
     """
     if src is None:
         src = Path(function_node.path).read_bytes()
-    
+
     calls: list[tuple[str, float]] = []
     _find_calls_in_node(src, subtree, calls)
-    
+
     edges: list[Edge] = []
     for callee_name, confidence in calls:
         candidates = all_symbols.get(callee_name, [])
@@ -135,37 +138,39 @@ def trace_calls(
                 metadata=metadata,
             )
         )
-    
+
     return edges
 
 
 def trace_calls_for_file(path: str, nodes: list[Node]) -> list[Edge]:
     """Trace all CALLS edges for functions in a file.
-    
+
     Args:
         path: Path to the Python file
         nodes: List of Nodes extracted from the file
-    
+
     Returns:
         List of CALLS edges for all functions in the file
     """
     p = Path(path)
     src = p.read_bytes()
-    
+
     parser = Parser(_PY_LANGUAGE)
     tree = parser.parse(src)
-    
+
     symbol_map: dict[str, list[Node]] = {}
     for n in nodes:
         if n.kind in {NodeKind.FUNCTION, NodeKind.METHOD}:
             symbol_map.setdefault(n.name, []).append(n)
-    
+
     all_edges: list[Edge] = []
     for node in nodes:
         if node.kind.value in {"function", "method"}:
-            func_body = _find_function_body(src, tree.root_node, node.name, node.start_line)
+            func_body = _find_function_body(
+                src, tree.root_node, node.name, node.start_line
+            )
             if func_body:
                 edges = trace_calls(node, func_body, symbol_map, src=src)
                 all_edges.extend(edges)
-    
+
     return all_edges

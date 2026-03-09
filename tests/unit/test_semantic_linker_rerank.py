@@ -23,8 +23,26 @@ class _FakeReranker:
 
 @pytest.mark.asyncio
 async def test_semantic_linker_uses_reranker_for_tier2_candidates() -> None:
-    code = Node(id="function:x:target", kind=NodeKind.FUNCTION, source=NodeSource.CODE, name="target", path="x", summary="hash password", embedding=[1.0, 0.0], metadata={})
-    doc = Node(id="doc:s:1", kind=NodeKind.SECTION, source=NodeSource.DOC, name="Requirement", path="s", summary="password hashing requirement", embedding=[1.0, 0.0], metadata={})
+    code = Node(
+        id="function:x:target",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="target",
+        path="x",
+        summary="hash password",
+        embedding=[1.0, 0.0],
+        metadata={},
+    )
+    doc = Node(
+        id="doc:s:1",
+        kind=NodeKind.SECTION,
+        source=NodeSource.DOC,
+        name="Requirement",
+        path="s",
+        summary="password hashing requirement",
+        embedding=[1.0, 0.0],
+        metadata={},
+    )
 
     graph = _FakeGraph()
     linker = SemanticLinker(reranker=_FakeReranker(), rerank_threshold=0.5)

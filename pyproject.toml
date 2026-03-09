@@ -1,7 +1,7 @@
 [project]
 name = "loom"
 version = "0.1.0"
-description = "Add your description here"
+description = "A code intelligence platform that turns repositories, docs, and tickets into one searchable graph."
 readme = "README.md"
 authors = [
     { name = "Devashish", email = "jadhavom24@gmail.com" }
@@ -53,6 +53,7 @@ dev = [
     "mypy>=1.19.1",
     "pytest>=9.0.2",
     "pytest-asyncio>=0.24.0",
+    "ruff>=0.9.0",
 ]
 
 [tool.mypy]
@@ -64,3 +65,37 @@ disable_error_code = ["arg-type", "assignment", "attr-defined", "misc", "no-rede
 markers = [
     "slow: marks tests as slow-running",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "DTZ", "T10", "SIM", "ARG", "PTH"]
+ignore = [
+  "E501",
+  "B006",
+  "B008",
+  "B904",
+  "ARG001",
+  "ARG002",
+  "ARG003",
+  "ARG004",
+  "ARG005",
+  "PTH211",
+  "SIM102",
+  "SIM103",
+  "SIM105",
+  "SIM110",
+  "UP022",
+  "UP036",
+  "UP042",
+  "UP046",
+  "DTZ003",
+  "W293",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

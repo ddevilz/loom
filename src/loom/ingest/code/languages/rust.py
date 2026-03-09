@@ -3,15 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tree_sitter import Language
+from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter import Parser
 from tree_sitter_rust import language as rust_language
 
 from loom.core import Node, NodeKind, NodeSource
-
 from loom.core.content_hash import content_hash_for_line_span
-
 from loom.ingest.code.languages.constants import (
     LANG_RUST,
     META_IMPL_TYPE,
@@ -29,7 +26,7 @@ _RUST_LANGUAGE = Language(rust_language())
 class _Context:
     type_stack: tuple[str, ...] = ()
 
-    def push_type(self, name: str) -> "_Context":
+    def push_type(self, name: str) -> _Context:
         return _Context(type_stack=self.type_stack + (name,))
 
     def qualname(self, name: str) -> str:
@@ -70,7 +67,7 @@ def _extract_from_def(
             return
 
         start_line, end_line = _lines(n)
-        
+
         if n.type == TS_RUST_TRAIT_ITEM:
             kind = NodeKind.INTERFACE
         elif n.type == TS_RUST_ENUM_ITEM:
@@ -103,7 +100,7 @@ def _extract_from_def(
             return
 
         start_line, end_line = _lines(n)
-        
+
         # Top-level functions
         out.append(
             Node(
@@ -148,7 +145,9 @@ def _extract_from_def(
                             source=NodeSource.CODE,
                             name=method_name,
                             path=path,
-                            content_hash=content_hash_for_line_span(src, start_line, end_line),
+                            content_hash=content_hash_for_line_span(
+                                src, start_line, end_line
+                            ),
                             start_line=start_line,
                             end_line=end_line,
                             language=LANG_RUST,
@@ -181,5 +180,7 @@ def parse_rust(path: str, *, exclude_tests: bool = False) -> list[Node]:
     tree = parser.parse(src)
 
     out: list[Node] = []
-    _walk(path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out)
+    _walk(
+        path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out
+    )
     return out
