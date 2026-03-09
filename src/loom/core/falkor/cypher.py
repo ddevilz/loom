@@ -45,6 +45,7 @@ def create_or_update_node_with_label(label: str) -> str:
     return (
         "MERGE (n:Node {id: $id}) "
         "SET n += $props "
+        "FOREACH (_ IN CASE WHEN $embedding IS NULL THEN [] ELSE [1] END | SET n.embedding = vecf32($embedding)) "
         f"{remove_clause} "
         f"SET n:`{label}` "
         "RETURN n"
@@ -58,6 +59,7 @@ def bulk_create_or_update_nodes_with_label(label: str) -> str:
         "UNWIND $nodes AS n "
         "MERGE (node:Node {id: n.id}) "
         "SET node += n.props "
+        "FOREACH (_ IN CASE WHEN n.embedding IS NULL THEN [] ELSE [1] END | SET node.embedding = vecf32(n.embedding)) "
         f"{remove_clause} "
         f"SET node:`{label}`"
     )

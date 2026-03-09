@@ -95,7 +95,8 @@ async def search(
         # Vector index query failed - fall back to brute force search
         logger.warning(
             f"Vector index query failed: {e}. Falling back to brute-force similarity search. "
-            "This is significantly slower. Consider checking vector index health."
+            "This is significantly slower. To fix: ensure FalkorDB is running and the vector index "
+            "was created correctly. Try re-indexing with 'loom analyze' to recreate the index."
         )
         # Limit fallback to prevent memory exhaustion on large graphs
         fallback_limit = min(limit * 100, 10000)
@@ -126,7 +127,7 @@ async def search(
                 graph.neighbors(
                     res.node.id,
                     depth=expand_depth,
-                    edge_types=[EdgeType.CALLS, EdgeType.LOOM_IMPLEMENTS],
+                    edge_types=[EdgeType.CALLS, EdgeType.LOOM_IMPLEMENTS, EdgeType.CONTAINS],
                 )
                 for res in base
             ]

@@ -20,11 +20,21 @@ class NodeRepository:
     def __init__(self, gw: FalkorGateway) -> None:
         self._gw = gw
 
+    @staticmethod
+    def _split_embedding(props: dict[str, object]) -> tuple[dict[str, object], list[float] | None]:
+        raw = props.get("embedding")
+        if isinstance(raw, list):
+            embedding = [float(x) for x in raw if isinstance(x, (int, float))]
+            props = dict(props)
+            props.pop("embedding", None)
+            return props, (embedding or None)
+        return props, None
+
     def upsert(self, node: Node) -> None:
-        props = serialize_node_props(node)
+        props, embedding = self._split_embedding(serialize_node_props(node))
         label = node.kind.name.title()
         query = cypher.create_or_update_node_with_label(label)
-        self._gw.run(query, params={"id": node.id, "props": props})
+        self._gw.run(query, params={"id": node.id, "props": props, "embedding": embedding})
 
     def get(self, node_id: str) -> Node | None:
         rows = self._gw.query_rows(cypher.GET_NODE_BY_ID, params={"id": node_id})
@@ -50,7 +60,10 @@ class NodeRepository:
             by_kind[n.kind.name.title()].append(n)
 
         for label, group in by_kind.items():
-            payload = [{"id": n.id, "props": serialize_node_props(n)} for n in group]
+            payload = []
+            for n in group:
+                props, embedding = self._split_embedding(serialize_node_props(n))
+                payload.append({"id": n.id, "props": props, "embedding": embedding})
             query = cypher.bulk_create_or_update_nodes_with_label(label)
             for i in range(0, len(payload), self._CHUNK_SIZE):
                 chunk = payload[i : i + self._CHUNK_SIZE]

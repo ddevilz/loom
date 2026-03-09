@@ -16,13 +16,25 @@ def invalidate_schema_init(graph_name: str | None) -> None:
         _SCHEMA_INIT_DONE.discard(graph_name)
 
 
+_ALREADY_EXISTS_FRAGMENTS = (
+    "already exists",
+    "already indexed",
+    "duplicate",
+    "index already",
+)
+
+
 def _safe_run(gw, cypher: str, params: dict[str, Any] | None = None) -> None:
     try:
         gw.run(cypher, params=params, timeout=5)
-    except Exception:
-        # FalkorDB versions differ on index DDL idempotency support.
-        # If an index already exists, CREATE INDEX often errors; we treat that as success.
-        return
+    except Exception as exc:
+        msg = str(exc).lower()
+        if any(frag in msg for frag in _ALREADY_EXISTS_FRAGMENTS):
+            return
+        import logging
+        logging.getLogger(__name__).warning(
+            "schema_init DDL failed (continuing): %s | query: %.120s", exc, cypher
+        )
 
 
 def schema_init(gw, *, embedding_dim: int = LOOM_EMBED_DIM) -> None:
@@ -60,8 +72,8 @@ def schema_init(gw, *, embedding_dim: int = LOOM_EMBED_DIM) -> None:
         _safe_run(
             gw,
             (
-                "CREATE VECTOR INDEX FOR (n:Node) ON n.embedding "
-                f"OPTIONS {{dimension: {embedding_dim}, similarityFunction: cosine}}"
+                "CREATE VECTOR INDEX FOR (n:Node) ON (n.embedding) "
+                f"OPTIONS {{dimension: {embedding_dim}, similarityFunction: 'cosine'}}"
             ),
         )
         
