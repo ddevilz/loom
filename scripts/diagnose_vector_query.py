@@ -21,7 +21,9 @@ async def main() -> None:
 
     print("=== db.idx.list ===")
     try:
-        rows = await g.query("CALL db.idx.list() YIELD type, label, properties, options")
+        rows = await g.query(
+            "CALL db.idx.list() YIELD type, label, properties, options"
+        )
         for r in rows:
             print(r)
     except Exception as e:

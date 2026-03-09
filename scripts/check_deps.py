@@ -110,7 +110,9 @@ def main() -> int:
     deps = _parse_dependencies_from_pyproject(pyproject.read_text(encoding="utf-8"))
 
     if not deps:
-        print("No dependencies declared in pyproject.toml ([project].dependencies is empty).")
+        print(
+            "No dependencies declared in pyproject.toml ([project].dependencies is empty)."
+        )
         return 0
 
     failed: list[str] = []
