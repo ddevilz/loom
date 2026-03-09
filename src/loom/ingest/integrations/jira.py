@@ -63,9 +63,9 @@ def _build_jql(config: JiraConfig) -> str:
 
 
 def _auth_header(config: JiraConfig) -> str:
-    token = base64.b64encode(
-        f"{config.email}:{config.api_token}".encode()
-    ).decode("ascii")
+    token = base64.b64encode(f"{config.email}:{config.api_token}".encode()).decode(
+        "ascii"
+    )
     return f"Basic {token}"
 
 

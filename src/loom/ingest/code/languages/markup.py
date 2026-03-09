@@ -374,9 +374,7 @@ def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
         # Detect sensitive keys
         sensitive_patterns = ["password", "secret", "key", "token", "credential"]
         sensitive = [
-            k
-            for k in properties
-            if any(p in k.lower() for p in sensitive_patterns)
+            k for k in properties if any(p in k.lower() for p in sensitive_patterns)
         ]
         if sensitive:
             meta[META_SENSITIVE_KEYS] = sensitive[:10]
@@ -426,9 +424,7 @@ def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
             "private",
         ]
         sensitive = [
-            k
-            for k in variables
-            if any(p in k.lower() for p in sensitive_patterns)
+            k for k in variables if any(p in k.lower() for p in sensitive_patterns)
         ]
         if sensitive:
             meta[META_SENSITIVE_KEYS] = sensitive[:10]
