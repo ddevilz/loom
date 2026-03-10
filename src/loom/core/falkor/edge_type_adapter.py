@@ -15,7 +15,7 @@ Usage:
 
 from __future__ import annotations
 
-from ..edge import EdgeType
+from ..edge_model import EdgeType
 
 
 class EdgeTypeAdapter:

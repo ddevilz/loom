@@ -24,6 +24,9 @@ from loom.ingest.code.languages.constants import (
     TS_JAVA_MODIFIERS,
     TS_JAVA_RECORD_DECL,
 )
+from loom.ingest.code.parser_cache import get_cached_parser
+from loom.tree_sitter_utils import get_name as _get_name
+from loom.tree_sitter_utils import node_text as _node_text
 
 _JAVA_LANGUAGE = Language(java_language())
 
@@ -44,17 +47,6 @@ class _Context:
             parts.append(".".join(self.class_stack))
         parts.append(name)
         return ".".join(parts)
-
-
-def _node_text(src: bytes, n: TSNode) -> str:
-    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
-
-
-def _get_name(src: bytes, n: TSNode) -> str | None:
-    name_node = n.child_by_field_name("name")
-    if name_node is None:
-        return None
-    return _node_text(src, name_node)
 
 
 def _extract_annotations(src: bytes, n: TSNode) -> list[str]:
@@ -344,7 +336,7 @@ def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:
     p = Path(path)
     src = p.read_bytes()
 
-    parser = Parser(_JAVA_LANGUAGE)
+    parser = get_cached_parser("java", lambda: Parser(_JAVA_LANGUAGE))
     tree = parser.parse(src)
 
     package = _extract_package(src, tree.root_node)

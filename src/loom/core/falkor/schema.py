@@ -5,7 +5,7 @@ from typing import Any
 
 from loom.config import LOOM_EMBED_DIM
 
-from ..node import NodeKind
+from ..node_model import NodeKind
 
 _SCHEMA_INIT_DONE: set[str] = set()
 _SCHEMA_INIT_LOCK = threading.Lock()

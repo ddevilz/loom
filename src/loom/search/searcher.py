@@ -29,6 +29,17 @@ _QUERY_CANDIDATES_FALLBACK = (
     "LIMIT $limit"
 )
 
+_QUERY_TEXT_CANDIDATES = (
+    "MATCH (n:Node) "
+    "WHERE n.summary IS NOT NULL "
+    "AND (toLower(coalesce(n.name, '')) CONTAINS toLower($query) "
+    "OR toLower(coalesce(n.summary, '')) CONTAINS toLower($query) "
+    "OR toLower(coalesce(n.path, '')) CONTAINS toLower($query)) "
+    "RETURN n.id AS id, n.kind AS kind, n.name AS name, n.summary AS summary, "
+    "n.path AS path, n.metadata AS metadata "
+    "LIMIT $limit"
+)
+
 
 class _Graph(Protocol):
     async def query(
@@ -40,7 +51,6 @@ class _Graph(Protocol):
         node_id: str,
         depth: int = 1,
         edge_types: list[EdgeType] | None = None,
-        kind: NodeKind | None = None,
     ) -> list[Node]: ...
 
 
@@ -74,6 +84,30 @@ def _row_to_node(row: dict[str, Any]) -> Node:
     )
 
 
+def _rrf_merge(
+    vector_results: list[SearchResult],
+    text_results: list[SearchResult],
+) -> list[SearchResult]:
+    merged: dict[str, SearchResult] = {}
+    rank_scores: dict[str, float] = {}
+    for rank, result in enumerate(vector_results, start=1):
+        merged[result.node.id] = result
+        rank_scores[result.node.id] = rank_scores.get(result.node.id, 0.0) + 1.0 / (
+            60 + rank
+        )
+    for rank, result in enumerate(text_results, start=1):
+        current = merged.get(result.node.id)
+        if current is None or current.score < result.score:
+            merged[result.node.id] = result
+        rank_scores[result.node.id] = rank_scores.get(result.node.id, 0.0) + 1.0 / (
+            60 + rank
+        )
+    return [
+        merged[node_id]
+        for node_id in sorted(rank_scores, key=rank_scores.get, reverse=True)
+    ]
+
+
 async def search(
     query_text: str,
     graph: _Graph,
@@ -90,7 +124,7 @@ async def search(
         rows = await graph.query(
             _QUERY_CANDIDATES, {"k": limit * 3, "vec": query_vector}
         )
-        base = [
+        vector_base = [
             SearchResult(
                 node=_row_to_node(row),
                 score=float(row.get("score", 0.0)),
@@ -98,7 +132,7 @@ async def search(
             )
             for row in rows
             if row.get("id") is not None
-        ][:limit]
+        ][: limit * 3]
     except Exception as e:
         # Vector index query failed - fall back to brute force search
         logger.warning(
@@ -128,7 +162,27 @@ async def search(
                 SearchResult(node=node, score=score, matched_via="vector_fallback")
             )
         scored.sort(key=lambda r: r.score, reverse=True)
-        base = scored[:limit]
+        vector_base = scored[: limit * 3]
+
+    try:
+        text_rows = await graph.query(
+            _QUERY_TEXT_CANDIDATES,
+            {"query": query_text, "limit": limit * 3},
+        )
+    except Exception:
+        text_rows = []
+
+    text_base = [
+        SearchResult(
+            node=_row_to_node(row),
+            score=float(row.get("score", 1.0)),
+            matched_via="text",
+        )
+        for row in text_rows
+        if row.get("id") is not None
+    ]
+
+    base = _rrf_merge(vector_base, text_base)[:limit]
 
     expanded: dict[str, SearchResult] = {r.node.id: r for r in base}
     if base:

@@ -1,6 +1,6 @@
 import pytest
 
-from loom.core.edge import Edge, EdgeType
+from loom.core.edge_model import Edge, EdgeType
 
 
 def test_confidence_boundary_values_allowed():

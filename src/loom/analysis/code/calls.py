@@ -15,12 +15,9 @@ from loom.ingest.code.languages.constants import (
     TS_PY_FUNCTION_DEF,
     TS_PY_IDENTIFIER,
 )
+from loom.tree_sitter_utils import node_text
 
 _PY_LANGUAGE = Language(python_language())
-
-
-def _node_text(src: bytes, n: TSNode) -> str:
-    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
 
 
 def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float]:
@@ -33,13 +30,13 @@ def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float
     - Dynamic/computed -> (None, 0.5)
     """
     if func_node.type == TS_PY_IDENTIFIER:
-        name = _node_text(src, func_node)
+        name = node_text(src, func_node)
         return name, 1.0
 
     if func_node.type == TS_PY_ATTRIBUTE:
         attr_node = func_node.child_by_field_name("attribute")
         if attr_node:
-            name = _node_text(src, attr_node)
+            name = node_text(src, attr_node)
             return name, 0.8
         return None, 0.5
 
@@ -68,7 +65,7 @@ def _find_function_body(
         if node.type == TS_PY_FUNCTION_DEF:
             name_node = node.child_by_field_name("name")
             if name_node:
-                name = _node_text(src, name_node)
+                name = node_text(src, name_node)
                 if name == func_name and node.start_point[0] + 1 == start_line:
                     body = node.child_by_field_name("body")
                     return body if body else node
@@ -157,9 +154,7 @@ def trace_calls_for_file(path: str, nodes: list[Node]) -> list[Edge]:
     Uses only file-local symbols for resolution.  For better cross-file
     accuracy use trace_calls_for_file_with_global_symbols().
     """
-    return trace_calls_for_file_with_global_symbols(
-        path, nodes, global_symbol_map=None
-    )
+    return trace_calls_for_file_with_global_symbols(path, nodes, global_symbol_map=None)
 
 
 def trace_calls_for_file_with_global_symbols(

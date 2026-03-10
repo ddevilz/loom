@@ -102,17 +102,32 @@ Typical workflow:
 
 ## Installation
 
+### From PyPI (Recommended)
+
+```bash
+pip install loom
+```
+
+Or with uv:
+
+```bash
+uv pip install loom
+```
+
+### From Source
+
+```bash
+git clone https://github.com/ddevilz/loom
+cd loom
+uv sync
+```
+
 ### Requirements
 
 - **Python** 3.12+
-- **uv** for environment and command execution
 - **Docker** for FalkorDB
 
 ### Setup
-
-```bash
-uv sync
-```
 
 Start FalkorDB:
 
@@ -199,31 +214,59 @@ uv run loom serve --graph-name myrepo
 
 ## MCP integration
 
-Loom exposes an MCP server so agents can query the graph directly.
+Loom exposes an MCP server so agents can query the graph directly. This enables AI assistants like Claude Desktop, Windsurf, and other MCP-compatible clients to access your code intelligence graph.
 
-Example Windsurf MCP config:
+### Quick Setup
 
+1. **Index your repository:**
+   ```bash
+   loom analyze . --graph-name myproject
+   ```
+
+2. **Configure your MCP client:**
+
+**Windsurf:**
 ```json
 {
   "mcpServers": {
     "loom": {
-      "command": "uv",
-      "args": ["run", "loom", "serve", "--graph-name", "loom_graph"],
-      "cwd": "F:\\loom"
+      "command": "loom",
+      "args": ["serve", "--graph-name", "myproject"]
     }
   }
 }
 ```
 
-Once connected, MCP clients can use Loom tools such as:
+**Claude Desktop:**
+```json
+{
+  "mcpServers": {
+    "loom": {
+      "command": "loom",
+      "args": ["serve", "--graph-name", "myproject"],
+      "env": {
+        "LOOM_DB_HOST": "localhost",
+        "LOOM_DB_PORT": "6379"
+      }
+    }
+  }
+}
+```
 
-- **`search_code`**
-- **`get_callers`**
-- **`get_spec`**
-- **`check_drift`** (AST drift only)
-- **`get_impact`**
-- **`get_ticket`**
-- **`unimplemented`**
+### Available Tools
+
+Once connected, MCP clients can use these tools:
+
+- **`search_code`** - Semantic code search with embeddings
+- **`get_callers`** - Find all callers of a function
+- **`get_spec`** - Get linked documentation/specs
+- **`check_drift`** - Detect AST drift and violations
+- **`get_blast_radius`** - Analyze change impact
+- **`get_impact`** - See code affected by a ticket
+- **`get_ticket`** - Retrieve Jira ticket details
+- **`unimplemented`** - Find tickets without implementation
+
+For detailed MCP documentation, examples, and troubleshooting, see **[docs/MCP.md](docs/MCP.md)**.
 
 ## Architecture overview
 

@@ -1,6 +1,6 @@
 import pytest
 
-from loom.core.edge import Edge, EdgeOrigin, EdgeType
+from loom.core.edge_model import Edge, EdgeOrigin, EdgeType
 
 
 def test_edgetype_has_required_members():

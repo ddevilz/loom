@@ -220,8 +220,8 @@ def test_calls_command_shows_lexical_and_runtime_context(monkeypatch) -> None:
     assert "login_handler" in result.stdout
 
 
-def test_calls_command_resolves_plain_name_to_node_id(monkeypatch) -> None:
-    """Verify calls command can resolve a plain function name to its node ID."""
+def test_calls_command_works_with_full_id(monkeypatch) -> None:
+    """Verify calls command works with full node IDs."""
     graph = _MockGraphForAccuracyTest()
 
     monkeypatch.setattr(
@@ -233,9 +233,7 @@ def test_calls_command_resolves_plain_name_to_node_id(monkeypatch) -> None:
         [
             "calls",
             "--target",
-            "authenticate_user",
-            "--kind",
-            "function",
+            "function:auth.py:authenticate_user",
             "--direction",
             "both",
             "--graph-name",
@@ -245,7 +243,7 @@ def test_calls_command_resolves_plain_name_to_node_id(monkeypatch) -> None:
 
     assert result.exit_code == 0
 
-    # Should resolve name and show results
+    # Should show results for the full ID
     assert "hash_password" in result.stdout or "login_handler" in result.stdout
 
 

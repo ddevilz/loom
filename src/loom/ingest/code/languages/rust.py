@@ -18,6 +18,8 @@ from loom.ingest.code.languages.constants import (
     TS_RUST_STRUCT_ITEM,
     TS_RUST_TRAIT_ITEM,
 )
+from loom.tree_sitter_utils import get_name as _get_name
+from loom.tree_sitter_utils import node_text as _node_text
 
 _RUST_LANGUAGE = Language(rust_language())
 
@@ -33,17 +35,6 @@ class _Context:
         if self.type_stack:
             return ".".join(self.type_stack) + "." + name
         return name
-
-
-def _node_text(src: bytes, n: TSNode) -> str:
-    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
-
-
-def _get_name(src: bytes, n: TSNode) -> str | None:
-    name_node = n.child_by_field_name("name")
-    if name_node is None:
-        return None
-    return _node_text(src, name_node)
 
 
 def _lines(n: TSNode) -> tuple[int, int]:

@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from loom.core import Node, NodeKind
+from loom.core.model import generate_code_id
+from loom.core.node_model import NodeKind
 from loom.ingest.code.languages.python import parse_python
 from loom.ingest.code.registry import get_registry
 
@@ -341,6 +342,6 @@ def test_parse_python_nested_symbols_get_parent_id(tmp_path: Path):
     inner = _by_name(nodes, "inner")[0]
 
     assert outer.parent_id is None
-    assert inner.parent_id == Node.make_code_id(
+    assert inner.parent_id == generate_code_id(
         NodeKind.FUNCTION, str(p).replace("\\", "/"), "outer"
     )

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- PyPI publication metadata: keywords, classifiers, project URLs
+- Smithery MCP registry configuration (`smithery.json`)
+- Comprehensive MCP documentation (`docs/MCP.md`) with examples and troubleshooting
+- PyPI installation instructions in README
+- Enhanced MCP integration section with multi-client examples
+
+## [0.1.1] - 2026-03-10
+
+### Added
 - Vector index DDL correctness and schema init error visibility
 - Embedding persistence via `vecf32()` for FalkorDB `VECTOR` type
 - Lexical context in `loom calls` (parents/children via `CONTAINS` edges)

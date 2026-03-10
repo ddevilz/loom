@@ -181,4 +181,6 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
     )
     assert "[r:LOOM_VIOLATES]" in drift_query
     assert "r.kind" not in drift_query
-    assert "link_method = 'ast_diff'" not in drift_query, "filter moved to Python, not Cypher"
+    assert "link_method = 'ast_diff'" not in drift_query, (
+        "filter moved to Python, not Cypher"
+    )

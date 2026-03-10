@@ -1,0 +1,139 @@
+{
+  "name": "loom",
+  "displayName": "Loom Code Intelligence",
+  "description": "A code intelligence platform that turns repositories, docs, and tickets into one searchable graph. Query code semantically, trace implementation, detect drift, and analyze impact.",
+  "version": "0.1.1",
+  "author": "Devashish",
+  "homepage": "https://github.com/ddevilz/loom",
+  "license": "MIT",
+  "runtime": "python",
+  "categories": [
+    "code-analysis",
+    "documentation",
+    "development-tools"
+  ],
+  "tags": [
+    "code-intelligence",
+    "graph-database",
+    "semantic-search",
+    "traceability",
+    "call-graph",
+    "jira",
+    "documentation",
+    "drift-detection"
+  ],
+  "config": {
+    "command": "uv",
+    "args": [
+      "run",
+      "loom",
+      "serve",
+      "--graph-name",
+      "{{GRAPH_NAME}}"
+    ],
+    "env": {
+      "LOOM_DB_HOST": "{{LOOM_DB_HOST:localhost}}",
+      "LOOM_DB_PORT": "{{LOOM_DB_PORT:6379}}",
+      "LOOM_LLM_MODEL": "{{LOOM_LLM_MODEL:gpt-4o-mini}}",
+      "LOOM_LLM_API_KEY": "{{LOOM_LLM_API_KEY}}"
+    }
+  },
+  "tools": [
+    {
+      "name": "search_code",
+      "description": "Search code semantically using embeddings and graph expansion",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of results",
+          "default": 10
+        }
+      }
+    },
+    {
+      "name": "get_callers",
+      "description": "Get all functions that call a specific node",
+      "parameters": {
+        "node_id": {
+          "type": "string",
+          "description": "Node ID to find callers for"
+        }
+      }
+    },
+    {
+      "name": "get_spec",
+      "description": "Get specification/documentation linked to a code node",
+      "parameters": {
+        "node_id": {
+          "type": "string",
+          "description": "Node ID to find specs for"
+        }
+      }
+    },
+    {
+      "name": "check_drift",
+      "description": "Check for AST drift and semantic violations for a code node",
+      "parameters": {
+        "node_id": {
+          "type": "string",
+          "description": "Node ID to check drift for"
+        }
+      }
+    },
+    {
+      "name": "get_blast_radius",
+      "description": "Get nodes affected if a specific node changes (impact analysis)",
+      "parameters": {
+        "node_id": {
+          "type": "string",
+          "description": "Node ID to analyze blast radius for"
+        },
+        "depth": {
+          "type": "integer",
+          "description": "Traversal depth",
+          "default": 3
+        }
+      }
+    },
+    {
+      "name": "get_impact",
+      "description": "Get code nodes impacted by a ticket/requirement",
+      "parameters": {
+        "ticket_id": {
+          "type": "string",
+          "description": "Ticket ID to analyze impact for"
+        }
+      }
+    },
+    {
+      "name": "get_ticket",
+      "description": "Get ticket details from Jira integration",
+      "parameters": {
+        "ticket_id": {
+          "type": "string",
+          "description": "Ticket ID to retrieve"
+        }
+      }
+    },
+    {
+      "name": "unimplemented",
+      "description": "Find tickets that have no implementation links",
+      "parameters": {}
+    }
+  ],
+  "requirements": {
+    "python": ">=3.12",
+    "docker": "FalkorDB instance required (docker run -d -p 6379:6379 falkordb/falkordb)"
+  },
+  "setup": [
+    "Install uv: https://docs.astral.sh/uv/",
+    "Install Loom: uv pip install loom",
+    "Start FalkorDB: docker run -d -p 6379:6379 --name loom-db falkordb/falkordb",
+    "Index your repository: uv run loom analyze . --graph-name myrepo",
+    "Configure MCP client with graph name"
+  ]
+}

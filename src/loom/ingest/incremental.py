@@ -12,11 +12,10 @@ from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_edge_props, deserialize_node_props
 from loom.drift.detector import detect_ast_drift
 from loom.embed.embedder import embed_nodes
+from loom.errors import IndexError, IndexResult, append_index_error
 from loom.ingest.code.registry import get_registry
 from loom.ingest.differ import diff_nodes
-from loom.ingest.errors import append_index_error
 from loom.ingest.git import get_changed_files
-from loom.ingest.result import IndexError, IndexResult
 from loom.ingest.utils import (
     delete_nodes_by_ids,
     delete_nodes_by_path,

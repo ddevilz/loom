@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loom.core.node import NodeKind
+from loom.core.node_model import NodeKind
 
 GET_NODE_BY_ID = "MATCH (n:Node {id: $id}) RETURN properties(n) AS props LIMIT 1"
 DELETE_NODE_BY_ID = "MATCH (n:Node {id: $id}) DETACH DELETE n"

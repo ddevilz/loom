@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, Awaitable, Callable
 from pathlib import Path
+from time import monotonic
 from typing import Any, Protocol
 
 from watchfiles import Change, awatch
@@ -63,6 +64,7 @@ async def watch_repo(
     graph: LoomGraph | _Graph,
     *,
     debounce_ms: int = 500,
+    quiet_period_s: float = 3.0,
     watcher_factory: WatcherFactory | None = None,
     indexer: Indexer | None = None,
     stop_after_events: int | None = None,
@@ -73,6 +75,8 @@ async def watch_repo(
     indexer = indexer or _default_indexer
 
     processed = 0
+    pending_paths: set[str] = set()
+    last_change_at = 0.0
     async for changes in watcher(repo_path):
         changed_paths = {Path(path).resolve().as_posix() for _, path in changes}
         deleted_paths = {
@@ -98,8 +102,15 @@ async def watch_repo(
         if changed_paths - deleted_paths:
             for path in sorted(changed_paths - deleted_paths):
                 await _flag_changed_loom_edges(graph, path=path)
+            pending_paths.update(changed_paths - deleted_paths)
+            last_change_at = monotonic()
+
+        if pending_paths and monotonic() - last_change_at >= quiet_period_s:
             await indexer(repo_path, graph)
+            pending_paths.clear()
 
         processed += len(changes)
         if stop_after_events is not None and processed >= stop_after_events:
+            if pending_paths:
+                await indexer(repo_path, graph)
             return

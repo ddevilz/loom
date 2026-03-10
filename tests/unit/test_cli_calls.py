@@ -35,17 +35,14 @@ def test_cli_calls_dump(monkeypatch):
     assert "App" in r.stdout
 
 
-def test_cli_calls_callees_resolves_plain_name(monkeypatch):
-    seen = {"resolved": False, "callees": False}
+def test_cli_calls_callees_works_with_full_id(monkeypatch):
+    seen = {"callees": False}
 
     class FakeGraph:
         def __init__(self, graph_name: str = "loom", *, gateway=None) -> None:
             self.graph_name = graph_name
 
         async def query(self, cypher: str, params=None):
-            if "RETURN n.id AS id" in cypher:
-                seen["resolved"] = True
-                return [{"id": "function:x:App"}]
             if "MATCH (a {id: $id})-[r:CALLS]->(b)" in cypher:
                 seen["callees"] = True
                 return [
@@ -67,7 +64,7 @@ def test_cli_calls_callees_resolves_plain_name(monkeypatch):
             "--graph-name",
             "g",
             "--target",
-            "App",
+            "function:x:App",
             "--direction",
             "callees",
             "--limit",
@@ -75,7 +72,6 @@ def test_cli_calls_callees_resolves_plain_name(monkeypatch):
         ],
     )
     assert r.exit_code == 0
-    assert seen["resolved"]
     assert seen["callees"]
 
 

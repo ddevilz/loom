@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from loom.core import Node, NodeKind, NodeSource
@@ -10,7 +10,7 @@ from loom.core.falkor.repositories import NodeRepository
 @dataclass
 class _FakeGateway:
     rows: list[dict[str, Any]]
-    run_calls: list[tuple[str, dict[str, Any] | None]] | None = None
+    run_calls: list[tuple[str, dict[str, Any] | None]] = field(default_factory=list)
 
     def run(
         self,
@@ -19,8 +19,7 @@ class _FakeGateway:
         *,
         timeout: int | None = None,
     ):
-        if self.run_calls is not None:
-            self.run_calls.append((cypher, params))
+        self.run_calls.append((cypher, params))
         return None
 
     def reconnect(self) -> None:

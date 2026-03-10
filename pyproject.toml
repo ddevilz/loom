@@ -1,12 +1,38 @@
 [project]
 name = "loom"
-version = "0.1.0"
+version = "0.1.1"
 description = "A code intelligence platform that turns repositories, docs, and tickets into one searchable graph."
 readme = "README.md"
 authors = [
     { name = "Devashish", email = "jadhavom24@gmail.com" }
 ]
+license = { text = "MIT" }
 requires-python = ">=3.12"
+keywords = [
+    "code-intelligence",
+    "graph-database",
+    "mcp-server",
+    "semantic-search",
+    "code-analysis",
+    "traceability",
+    "falkordb",
+    "call-graph",
+    "documentation",
+    "jira-integration"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Text Processing :: Indexing",
+    "Operating System :: OS Independent",
+]
+
 dependencies = [
     "falkordb>=1.6.0",
     "fastembed>=0.7.4",
@@ -36,6 +62,13 @@ dependencies = [
     "python-dotenv>=1.0.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ddevilz/loom"
+Repository = "https://github.com/ddevilz/loom"
+Issues = "https://github.com/ddevilz/loom/issues"
+Changelog = "https://github.com/ddevilz/loom/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/ddevilz/loom/blob/main/docs"
+
 [project.scripts]
 loom = "loom.cli:main"
 loom-test = "loom.devtools:run_tests"
@@ -59,6 +92,10 @@ dev = [
 [tool.mypy]
 ignore_missing_imports = true
 check_untyped_defs = true
+exclude = [
+    "dist/",
+    "tests/fixtures/",
+]
 disable_error_code = ["arg-type", "assignment", "attr-defined", "misc", "no-redef", "operator", "prop-decorator", "var-annotated"]
 
 [tool.pytest.ini_options]

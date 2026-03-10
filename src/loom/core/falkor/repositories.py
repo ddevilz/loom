@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..edge import Edge, EdgeType
-from ..node import Node
+from ..edge_model import Edge, EdgeType
+from ..node_model import Node
 from . import cypher
 from .edge_type_adapter import EdgeTypeAdapter
 from .gateway import FalkorGateway

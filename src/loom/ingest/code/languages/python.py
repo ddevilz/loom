@@ -8,8 +8,10 @@ from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
 from tree_sitter_python import language as python_language
 
-from loom.core import Node, NodeKind, NodeSource
+from loom.core import Node, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
+from loom.core.model import generate_code_id
+from loom.core.node_model import NodeKind
 from loom.ingest.code.languages.constants import (
     DEC_ACTION,
     DEC_API_VIEW,
@@ -48,6 +50,9 @@ from loom.ingest.code.languages.constants import (
     TS_PY_FUNCTION_DEF,
     TS_PY_IDENTIFIER,
 )
+from loom.ingest.code.parser_cache import get_cached_parser
+from loom.tree_sitter_utils import get_name as _get_name
+from loom.tree_sitter_utils import node_text as _node_text
 
 _PY_LANGUAGE = Language(python_language())
 
@@ -79,14 +84,14 @@ class _Context:
     def parent_id(self, path: str) -> str | None:
         if self.func_stack:
             if self.class_stack:
-                return Node.make_code_id(
+                return generate_code_id(
                     NodeKind.METHOD,
                     path,
                     ".".join((*self.class_stack, *self.func_stack)),
                 )
-            return Node.make_code_id(NodeKind.FUNCTION, path, ".".join(self.func_stack))
+            return generate_code_id(NodeKind.FUNCTION, path, ".".join(self.func_stack))
         if self.class_stack:
-            return Node.make_code_id(NodeKind.CLASS, path, ".".join(self.class_stack))
+            return generate_code_id(NodeKind.CLASS, path, ".".join(self.class_stack))
         return None
 
 
@@ -96,17 +101,6 @@ def _is_test_path(path: str) -> bool:
         return True
     parts = {part.lower() for part in p.parts}
     return "tests" in parts or "test" in parts
-
-
-def _node_text(src: bytes, n: TSNode) -> str:
-    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
-
-
-def _get_name(src: bytes, n: TSNode) -> str | None:
-    name_node = n.child_by_field_name("name")
-    if name_node is None:
-        return None
-    return _node_text(src, name_node)
 
 
 def _lines(n: TSNode) -> tuple[int, int]:
@@ -404,7 +398,7 @@ def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
     p = Path(path)
     src = p.read_bytes()
 
-    parser = Parser(_PY_LANGUAGE)
+    parser = get_cached_parser("python", lambda: Parser(_PY_LANGUAGE))
     tree = parser.parse(src)
 
     out: list[Node] = []

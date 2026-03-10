@@ -4,8 +4,8 @@ import json
 from collections.abc import Collection
 from typing import Any
 
-from ..edge import Edge
-from ..node import Node, NodeKind, NodeSource
+from ..edge_model import Edge
+from ..node_model import Node, NodeKind, NodeSource
 
 
 def serialize_node_props(node: Node) -> dict[str, Any]:

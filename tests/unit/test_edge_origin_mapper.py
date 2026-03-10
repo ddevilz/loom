@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from loom.core.edge import Edge, EdgeOrigin, EdgeType
+from loom.core.edge_model import Edge, EdgeOrigin, EdgeType
 from loom.core.falkor.mappers import serialize_edge_props
 
 

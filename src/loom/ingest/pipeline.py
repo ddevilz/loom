@@ -14,11 +14,10 @@ from loom.analysis.code.parser import parse_code
 from loom.core import Edge, EdgeOrigin, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.embed.embedder import embed_nodes
+from loom.errors import IndexError, IndexResult, append_index_error
 from loom.ingest.code.registry import get_registry
 from loom.ingest.code.walker import walk_repo
-from loom.ingest.errors import append_index_error
 from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
-from loom.ingest.result import IndexError, IndexResult
 from loom.ingest.utils import (
     get_doc_nodes_for_linking,
     invalidate_edges_for_file,
