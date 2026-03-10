@@ -158,6 +158,17 @@ def _get_call_tracer(path: str) -> tuple[CallTracer | None, str | None]:
     return handler.call_tracer, handler.call_tracer_error_message
 
 
+def _build_global_symbol_map(nodes: list[Node]) -> dict[str, list[Node]]:
+    """Build a cross-file name→[Node] map for all function/method nodes."""
+    from loom.core import NodeKind
+
+    symbol_map: dict[str, list[Node]] = {}
+    for n in nodes:
+        if n.kind in {NodeKind.FUNCTION, NodeKind.METHOD}:
+            symbol_map.setdefault(n.name, []).append(n)
+    return symbol_map
+
+
 def _append_docs_batch(docs_path: str, batch: _IndexBatch) -> None:
     try:
         from loom.ingest.docs.base import walk_docs
@@ -380,6 +391,44 @@ async def index_repo(
 
     if deleted_file_ids:
         await _delete_missing_files(graph, deleted_file_ids, batch.errors)
+
+    # Re-run call tracing with a global (cross-file) symbol map to resolve
+    # cross-file calls that the per-file pass left as unresolved:name.
+    try:
+        from loom.analysis.code.calls import (
+            _build_symbol_map,
+            trace_calls_for_file_with_global_symbols,
+        )
+        from loom.ingest.code.languages.constants import EXT_PY, EXT_PYW
+
+        global_symbol_map = _build_symbol_map(batch.nodes_to_upsert)
+        if global_symbol_map:
+            global_call_edges: list[Edge] = []
+            file_to_nodes: dict[str, list[Node]] = {}
+            for n in batch.nodes_to_upsert:
+                if n.path:
+                    file_to_nodes.setdefault(n.path, []).append(n)
+            for fp, file_nodes in file_to_nodes.items():
+                ext = Path(fp).suffix.lower()
+                if ext not in (EXT_PY, EXT_PYW):
+                    continue
+                try:
+                    edges = await asyncio.to_thread(
+                        trace_calls_for_file_with_global_symbols,
+                        fp,
+                        file_nodes,
+                        global_symbol_map=global_symbol_map,
+                    )
+                    global_call_edges.extend(edges)
+                except Exception:
+                    pass
+            # Replace file-local CALLS edges with globally-resolved ones.
+            batch.edges_to_upsert = [
+                e for e in batch.edges_to_upsert if e.kind != EdgeType.CALLS
+            ]
+            batch.edges_to_upsert.extend(global_call_edges)
+    except Exception as e:
+        append_index_error(batch.errors, path=root, phase="calls_global", error=e)
 
     # Extract static summaries for all nodes (no LLM calls)
     try:

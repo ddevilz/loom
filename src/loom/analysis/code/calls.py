@@ -142,15 +142,44 @@ def trace_calls(
     return edges
 
 
+def _build_symbol_map(nodes: list[Node]) -> dict[str, list[Node]]:
+    """Build a name → [Node] map for all function/method nodes."""
+    symbol_map: dict[str, list[Node]] = {}
+    for n in nodes:
+        if n.kind in {NodeKind.FUNCTION, NodeKind.METHOD}:
+            symbol_map.setdefault(n.name, []).append(n)
+    return symbol_map
+
+
 def trace_calls_for_file(path: str, nodes: list[Node]) -> list[Edge]:
     """Trace all CALLS edges for functions in a file.
 
+    Uses only file-local symbols for resolution.  For better cross-file
+    accuracy use trace_calls_for_file_with_global_symbols().
+    """
+    return trace_calls_for_file_with_global_symbols(
+        path, nodes, global_symbol_map=None
+    )
+
+
+def trace_calls_for_file_with_global_symbols(
+    path: str,
+    nodes: list[Node],
+    *,
+    global_symbol_map: dict[str, list[Node]] | None,
+) -> list[Edge]:
+    """Trace CALLS edges for functions in a file using a cross-file symbol map.
+
     Args:
-        path: Path to the Python file
-        nodes: List of Nodes extracted from the file
+        path: Path to the Python file.
+        nodes: Nodes extracted from *this* file.
+        global_symbol_map: Pre-built name→[Node] map covering the entire repo.
+            When provided, cross-file calls resolve to real node IDs instead of
+            becoming ``unresolved:<name>``.  If None, falls back to file-local
+            symbols only.
 
     Returns:
-        List of CALLS edges for all functions in the file
+        List of CALLS edges for all functions in the file.
     """
     p = Path(path)
     src = p.read_bytes()
@@ -158,10 +187,10 @@ def trace_calls_for_file(path: str, nodes: list[Node]) -> list[Edge]:
     parser = Parser(_PY_LANGUAGE)
     tree = parser.parse(src)
 
-    symbol_map: dict[str, list[Node]] = {}
-    for n in nodes:
-        if n.kind in {NodeKind.FUNCTION, NodeKind.METHOD}:
-            symbol_map.setdefault(n.name, []).append(n)
+    if global_symbol_map is not None:
+        symbol_map = global_symbol_map
+    else:
+        symbol_map = _build_symbol_map(nodes)
 
     all_edges: list[Edge] = []
     for node in nodes:

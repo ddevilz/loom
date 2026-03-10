@@ -96,6 +96,23 @@ class LoomGraph:
         await self.schema_init()
         await asyncio.to_thread(self._edges.bulk_upsert, edges)
 
+    async def blast_radius(
+        self,
+        node_id: str,
+        depth: int = 3,
+    ) -> list[Node]:
+        """Return nodes that would be affected (callers, transitively) if node_id changes.
+
+        Uses incoming CALLS BFS with PPR ranking on the CALLS-only subgraph.
+        This is the correct direction for blast radius: who breaks if I change this?
+        """
+        await self.schema_init()
+        return await asyncio.to_thread(
+            self._traversal.blast_radius,
+            node_id=node_id,
+            depth=depth,
+        )
+
     async def neighbors(
         self,
         node_id: str,
