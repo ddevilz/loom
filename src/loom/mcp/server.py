@@ -121,19 +121,44 @@ def build_server(graph_name: str = "loom"):
     @mcp.tool()
     async def check_drift(node_id: str) -> dict[str, object]:
         graph = LoomGraph(graph_name=graph_name)
+        _violates_rel = EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)
         drift_rows = await graph.query(
-            f"MATCH (f {{id: $id}})-[r:{EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)}]->() "
-            "WHERE r.link_method = 'ast_diff' "
-            "RETURN f.id AS node_id, r.link_reason AS link_reason, r.metadata AS metadata",
+            f"MATCH (f {{id: $id}})-[r:{_violates_rel}]->() "
+            "RETURN f.id AS node_id, r.link_method AS link_method, "
+            "r.link_reason AS link_reason, r.metadata AS metadata",
             {"id": node_id},
         )
         ast_drift = [
             report
             for row in drift_rows
-            if (report := _row_to_ast_drift(row)) is not None
+            if row.get("link_method") == "ast_diff"
+            and (report := _row_to_ast_drift(row)) is not None
+        ]
+        semantic_violations = [
+            report
+            for row in drift_rows
+            if row.get("link_method") != "ast_diff"
+            and (report := _row_to_ast_drift(row)) is not None
         ]
 
-        return {"ast_drift": ast_drift}
+        return {"ast_drift": ast_drift, "semantic_violations": semantic_violations}
+
+    @mcp.tool()
+    async def get_blast_radius(
+        node_id: str, depth: int = 3
+    ) -> list[dict[str, object]]:
+        """Return nodes that would be affected if node_id changes.
+
+        Walks incoming CALLS edges transitively (callers of callers) so the
+        result is the true blast radius: every node that depends on this one.
+        Results are ranked by Personalized PageRank on the CALLS subgraph.
+        """
+        graph = LoomGraph(graph_name=graph_name)
+        nodes = await graph.blast_radius(node_id, depth=depth)
+        return [
+            {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value}
+            for n in nodes
+        ]
 
     @mcp.tool()
     async def get_impact(ticket_id: str) -> list[dict[str, object]]:

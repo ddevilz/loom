@@ -159,6 +159,7 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
                 return [
                     {
                         "node_id": "function:x:f",
+                        "link_method": "ast_diff",
                         "link_reason": "signature_changed: a -> b",
                         "metadata": '{"reasons": ["signature_changed: a -> b"]}',
                     }
@@ -176,9 +177,8 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
         {"node_id": "function:x:f", "reasons": ["signature_changed: a -> b"]}
     ]
     drift_query = next(
-        cypher
-        for cypher, _ in fake_graph.queries
-        if "link_method = 'ast_diff'" in cypher
+        cypher for cypher, _ in fake_graph.queries if "LOOM_VIOLATES" in cypher
     )
     assert "[r:LOOM_VIOLATES]" in drift_query
     assert "r.kind" not in drift_query
+    assert "link_method = 'ast_diff'" not in drift_query, "filter moved to Python, not Cypher"

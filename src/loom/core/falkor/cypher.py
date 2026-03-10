@@ -27,6 +27,12 @@ NEIGHBORS_STEP_WITH_SOURCE = (
     "RETURN DISTINCT n.id AS from_id, m.id AS to_id, properties(m) AS props"
 )
 
+BLAST_RADIUS_STEP = (
+    "UNWIND $ids AS id "
+    "MATCH (caller:Node)-[r:CALLS]->(n:Node {id: id}) "
+    "RETURN DISTINCT caller.id AS from_id, n.id AS to_id, properties(caller) AS props"
+)
+
 
 def create_or_update_edge(rel_type: str) -> str:
     return (

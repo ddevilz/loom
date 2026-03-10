@@ -177,6 +177,65 @@ class TraversalRepository:
         ]
         return ranked_nodes + remaining
 
+    def blast_radius(self, node_id: str, depth: int) -> list[Node]:
+        """BFS over incoming CALLS edges to find all nodes affected if node_id changes.
+
+        Direction: caller → callee.  We walk *backwards* (who calls us, then who
+        calls them, etc.) so the result is the set of nodes that would break if
+        this node's contract changes.  PPR runs only on the CALLS subgraph so
+        CONTAINS edges don't pollute the ranking.
+        """
+        if depth < 1:
+            return []
+
+        frontier: set[str] = {node_id}
+        visited: set[str] = {node_id}
+        results: dict[str, Node] = {}
+        graph_nodes: set[str] = {node_id}
+        graph_edges: list[tuple[str, str]] = []
+
+        for _ in range(depth):
+            if not frontier:
+                break
+
+            rows = self._gw.query_rows(
+                cypher.BLAST_RADIUS_STEP,
+                params={"ids": list(frontier)},
+            )
+
+            next_frontier: set[str] = set()
+            for row in rows:
+                caller_id = row.get("from_id")
+                callee_id = row.get("to_id")
+                props = row.get("props")
+                if not isinstance(props, dict):
+                    continue
+                props = deserialize_node_props(props)
+                try:
+                    node = Node.model_validate(props)
+                except Exception:
+                    continue
+                if isinstance(caller_id, str) and isinstance(callee_id, str):
+                    graph_nodes.add(caller_id)
+                    graph_nodes.add(callee_id)
+                    graph_edges.append((caller_id, callee_id))
+                if node.id not in visited:
+                    visited.add(node.id)
+                    next_frontier.add(node.id)
+                results[node.id] = node
+
+            frontier = next_frontier
+
+        if not results:
+            return []
+
+        ordered_ids = self._rank_by_personalized_pagerank(
+            node_id, graph_nodes, graph_edges
+        )
+        ranked = [results[nid] for nid in ordered_ids if nid in results]
+        remaining = [n for nid, n in results.items() if nid not in set(ordered_ids)]
+        return ranked + remaining
+
     @staticmethod
     def _rank_by_personalized_pagerank(
         seed_id: str,
