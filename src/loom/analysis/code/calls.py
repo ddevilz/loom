@@ -157,9 +157,7 @@ def trace_calls_for_file(path: str, nodes: list[Node]) -> list[Edge]:
     Uses only file-local symbols for resolution.  For better cross-file
     accuracy use trace_calls_for_file_with_global_symbols().
     """
-    return trace_calls_for_file_with_global_symbols(
-        path, nodes, global_symbol_map=None
-    )
+    return trace_calls_for_file_with_global_symbols(path, nodes, global_symbol_map=None)
 
 
 def trace_calls_for_file_with_global_symbols(

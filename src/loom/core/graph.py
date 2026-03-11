@@ -9,10 +9,7 @@ from .edge import Edge, EdgeType
 from .falkor.gateway import FalkorGateway
 from .falkor.repositories import EdgeRepository, NodeRepository, TraversalRepository
 from .falkor.schema import invalidate_schema_init, schema_init
-from .node import Node, NodeKind
-
-_SCHEMA_LOCKS: dict[str, asyncio.Lock] = {}
-_SCHEMA_LOCKS_LOCK = asyncio.Lock()
+from .node import Node
 
 
 class _Gateway(Protocol):
@@ -43,57 +40,58 @@ class LoomGraph:
     ) -> None:
         self.graph_name = graph_name
         self._gw: _Gateway = gateway or FalkorGateway(graph_name=graph_name)
-        self._nodes = NodeRepository(self._gw)  # type: ignore[arg-type]
-        self._edges = EdgeRepository(self._gw)  # type: ignore[arg-type]
-        self._traversal = TraversalRepository(self._gw)  # type: ignore[arg-type]
+        self._nodes = NodeRepository(self._gw)
+        self._edges = EdgeRepository(self._gw)
+        self._traversal = TraversalRepository(self._gw)
+        self._schema_lock = asyncio.Lock()
+        self._schema_ready = False
 
-    async def schema_init(self) -> None:
-        # Get or create a lock for this graph_name
-        async with _SCHEMA_LOCKS_LOCK:
-            if self.graph_name not in _SCHEMA_LOCKS:
-                _SCHEMA_LOCKS[self.graph_name] = asyncio.Lock()
-            lock = _SCHEMA_LOCKS[self.graph_name]
-
-        # Use the shared lock to ensure schema init happens once per graph_name
-        async with lock:
+    async def _ensure_schema(self) -> None:
+        if self._schema_ready:
+            return
+        async with self._schema_lock:
+            if self._schema_ready:
+                return
             await asyncio.to_thread(schema_init, self._gw, embedding_dim=LOOM_EMBED_DIM)
+            self._schema_ready = True
 
     async def delete(self) -> None:
-        await self.schema_init()
+        await self._ensure_schema()
         await asyncio.to_thread(self._gw.run, "MATCH (n) DETACH DELETE n")
 
     def reconnect(self) -> None:
         self._gw.reconnect()
         invalidate_schema_init(self.graph_name)
+        self._schema_ready = False
 
     async def query(
         self, cypher: str, params: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        await self.schema_init()
+        await self._ensure_schema()
         return await asyncio.to_thread(self._gw.query_rows, cypher, params)
 
     async def create_node(self, node: Node) -> None:
-        await self.schema_init()
+        await self._ensure_schema()
         await asyncio.to_thread(self._nodes.upsert, node)
 
     async def get_node(self, node_id: str) -> Node | None:
-        await self.schema_init()
+        await self._ensure_schema()
         return await asyncio.to_thread(self._nodes.get, node_id)
 
     async def delete_node(self, node_id: str) -> None:
-        await self.schema_init()
+        await self._ensure_schema()
         await asyncio.to_thread(self._nodes.delete, node_id)
 
     async def create_edge(self, edge: Edge) -> None:
-        await self.schema_init()
+        await self._ensure_schema()
         await asyncio.to_thread(self._edges.upsert, edge)
 
     async def bulk_create_nodes(self, nodes: list[Node]) -> None:
-        await self.schema_init()
+        await self._ensure_schema()
         await asyncio.to_thread(self._nodes.bulk_upsert, nodes)
 
     async def bulk_create_edges(self, edges: list[Edge]) -> None:
-        await self.schema_init()
+        await self._ensure_schema()
         await asyncio.to_thread(self._edges.bulk_upsert, edges)
 
     async def blast_radius(
@@ -106,7 +104,7 @@ class LoomGraph:
         Uses incoming CALLS BFS with PPR ranking on the CALLS-only subgraph.
         This is the correct direction for blast radius: who breaks if I change this?
         """
-        await self.schema_init()
+        await self._ensure_schema()
         return await asyncio.to_thread(
             self._traversal.blast_radius,
             node_id=node_id,
@@ -118,26 +116,12 @@ class LoomGraph:
         node_id: str,
         depth: int = 1,
         edge_types: list[EdgeType] | None = None,
-        kind: NodeKind | None = None,
     ) -> list[Node]:
-        await self.schema_init()
-        resolved_id = node_id
-        if ":" not in node_id:
-            label_clause = ":Node"
-            if kind is not None:
-                label_clause = f":`{kind.name.title()}`"
-            rows = await self.query(
-                f"MATCH (n{label_clause} {{name: $name}}) RETURN n.id AS id LIMIT 2",
-                params={"name": node_id},
-            )
-            if len(rows) != 1:
-                return []
-            resolved_id = rows[0]["id"]
-
+        await self._ensure_schema()
         types = list(EdgeType) if edge_types is None else edge_types
         return await asyncio.to_thread(
             self._traversal.neighbors,
-            node_id=resolved_id,
+            node_id=node_id,
             depth=depth,
             edge_types=types,
         )

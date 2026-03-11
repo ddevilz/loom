@@ -1,18 +1,3 @@
-"""Storage adapter for EdgeType enum to handle name/value inconsistency.
-
-This adapter follows the Adapter pattern and Dependency Inversion Principle:
-- Domain layer uses EdgeType enum with lowercase values (e.g., EdgeType.CALLS = "calls")
-- Storage layer requires uppercase relationship types (e.g., :CALLS)
-- This adapter bridges the gap without coupling domain logic to storage format
-
-Usage:
-    # Convert domain EdgeType to storage format
-    storage_name = EdgeTypeAdapter.to_storage(EdgeType.CALLS)  # "CALLS"
-
-    # Convert storage format back to domain EdgeType
-    edge_type = EdgeTypeAdapter.from_storage("CALLS")  # EdgeType.CALLS
-"""
-
 from __future__ import annotations
 
 from ..edge import EdgeType
