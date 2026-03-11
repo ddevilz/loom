@@ -144,9 +144,7 @@ def build_server(graph_name: str = "loom"):
         return {"ast_drift": ast_drift, "semantic_violations": semantic_violations}
 
     @mcp.tool()
-    async def get_blast_radius(
-        node_id: str, depth: int = 3
-    ) -> list[dict[str, object]]:
+    async def get_blast_radius(node_id: str, depth: int = 3) -> list[dict[str, object]]:
         """Return nodes that would be affected if node_id changes.
 
         Walks incoming CALLS edges transitively (callers of callers) so the
