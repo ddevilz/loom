@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import typer
 from rich.console import Console
@@ -81,6 +81,42 @@ def _print_context_rows(
     )
 
 
+def _find_git_root(candidate: Path) -> Path | None:
+    current = candidate
+    if current.is_file():
+        current = current.parent
+    while True:
+        if current.is_dir() and (current / ".git").exists():
+            return current
+        if current.parent == current:
+            return None
+        current = current.parent
+
+
+def _infer_repo_root_from_paths(paths: list[str]) -> str | None:
+    if not paths:
+        return None
+    use_posix = all("/" in path and "\\" not in path for path in paths)
+    path_cls = PurePosixPath if use_posix else PureWindowsPath
+    path_parts = [path_cls(path).parts for path in paths if path]
+    if not path_parts:
+        return None
+    min_len = min(len(parts) for parts in path_parts)
+    shared: list[str] = []
+    for i in range(min_len):
+        value = path_parts[0][i]
+        if all(parts[i] == value for parts in path_parts[1:]):
+            shared.append(value)
+        else:
+            break
+    if not shared:
+        return None
+    candidate = path_cls(*shared)
+    if candidate.name and "." in candidate.name:
+        candidate = candidate.parent
+    return str(candidate) if str(candidate) else None
+
+
 async def _infer_repo_root(graph) -> str | None:
     rows = await graph.query(
         "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000"
@@ -93,15 +129,19 @@ async def _infer_repo_root(graph) -> str | None:
     if not paths:
         return None
 
+    if all("/" in path and "\\" not in path for path in paths):
+        return _infer_repo_root_from_paths(paths)
+
     normalized_paths = [os.path.normpath(path) for path in paths]
     common_path = os.path.commonpath(normalized_paths)
     if not common_path:
         return None
 
     candidate = Path(common_path)
-    if candidate.is_file():
-        candidate = candidate.parent
-    return str(candidate)
+    git_root = _find_git_root(candidate)
+    if git_root is not None:
+        return str(git_root)
+    return _infer_repo_root_from_paths(paths)
 
 
 @app.command()
@@ -376,38 +416,11 @@ def calls(
             raise typer.Exit(code=1)
         return rows[0].get("id")
 
-    async def _query_call_rows(
-        graph: LoomGraph, query: str, params: dict[str, object]
-    ) -> list[dict[str, object]]:
-        return await graph.query(query, params)
-
-    async def _query_context_rows(
-        graph: LoomGraph, node_id: str, *, limit: int
-    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-        parent_rows = await graph.query(
-            f"""
-MATCH (a)-[:{contains_rel}]->(b {{id: $id}})
-RETURN a.kind AS kind, a.name AS name, a.path AS path, 'parent' AS relation
-LIMIT $limit
-""",
-            {"id": node_id, "limit": limit},
-        )
-        child_rows = await graph.query(
-            f"""
-MATCH (a {{id: $id}})-[:{contains_rel}]->(b)
-RETURN b.kind AS kind, b.name AS name, b.path AS path, 'child' AS relation
-LIMIT $limit
-""",
-            {"id": node_id, "limit": limit},
-        )
-        return parent_rows, child_rows
-
     async def _run() -> None:
         graph = LoomGraph(graph_name=graph_name)
 
         if direction == "dump":
-            rows = await _query_call_rows(
-                graph,
+            rows = await graph.query(
                 f"""
                     MATCH (a)-[r:{calls_rel}]->(b)
                     RETURN a.name AS from_name, a.path AS from_path,
@@ -439,7 +452,22 @@ LIMIT $limit
 
         node_id = await _resolve_node_id(graph, target)
 
-        parent_rows, child_rows = await _query_context_rows(graph, node_id, limit=limit)
+        parent_rows = await graph.query(
+            f"""
+MATCH (a)-[:{contains_rel}]->(b {{id: $id}})
+RETURN a.kind AS kind, a.name AS name, a.path AS path, 'parent' AS relation
+LIMIT $limit
+""",
+            {"id": node_id, "limit": limit},
+        )
+        child_rows = await graph.query(
+            f"""
+MATCH (a {{id: $id}})-[:{contains_rel}]->(b)
+RETURN b.kind AS kind, b.name AS name, b.path AS path, 'child' AS relation
+LIMIT $limit
+""",
+            {"id": node_id, "limit": limit},
+        )
         _print_context_rows(
             console, heading="=== lexical parents ===", rows=parent_rows
         )
@@ -448,12 +476,10 @@ LIMIT $limit
         )
 
         if direction in {"callees", "both"}:
-            rows = await _query_call_rows(
-                graph,
+            rows = await graph.query(
                 f"""
 MATCH (a {{id: $id}})-[r:{calls_rel}]->(b)
 RETURN b.kind AS kind, b.name AS name, b.path AS path, r.confidence AS confidence
-ORDER BY confidence DESC
 LIMIT $limit
 """,
                 {"id": node_id, "limit": limit},
@@ -461,12 +487,10 @@ LIMIT $limit
             _print_call_rows(console, heading="=== callees ===", rows=rows)
 
         if direction in {"callers", "both"}:
-            rows = await _query_call_rows(
-                graph,
+            rows = await graph.query(
                 f"""
 MATCH (a)-[r:{calls_rel}]->(b {{id: $id}})
 RETURN a.kind AS kind, a.name AS name, a.path AS path, r.confidence AS confidence
-ORDER BY confidence DESC
 LIMIT $limit
 """,
                 {"id": node_id, "limit": limit},
@@ -695,13 +719,13 @@ def sync(
                     ("nodes", str(res.node_count)),
                     ("edges", str(res.edge_count)),
                     ("errors", str(res.error_count)),
-                    ("warnings", str(len(getattr(res, "warnings", [])))),
+                    ("warnings", str(len(res.warnings))),
                     ("seconds", f"{res.duration_ms / 1000.0:.2f}"),
                 ]
             )
         )
 
-        warnings = getattr(res, "warnings", [])
+        warnings = res.warnings
         if warnings:
             console.print("Drift warnings:")
             for warning in warnings[:20]:

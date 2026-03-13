@@ -12,7 +12,39 @@ from loom.core import EdgeType
 
 
 def _file_node_id(repo_root: str, rel_path: str) -> str:
-    return f"file:{str((Path(repo_root) / rel_path).resolve())}"
+    return f"file:{(Path(repo_root) / rel_path).resolve().as_posix()}"
+
+
+async def test_analyze_coupling_merge_commit_uses_all_parents():
+    mock_repo = Mock(spec=git.Repo)
+
+    commit = Mock()
+    commit.hexsha = "merge1234"
+    parent_a = Mock()
+    parent_b = Mock()
+    commit.parents = [parent_a, parent_b]
+
+    diff_a = Mock(a_path="src/file_a.py", b_path="src/file_a.py")
+    diff_b = Mock(a_path="src/file_b.py", b_path="src/file_b.py")
+
+    def _diff(parent):
+        if parent is parent_a:
+            return [diff_a]
+        if parent is parent_b:
+            return [diff_b]
+        return []
+
+    commit.diff.side_effect = _diff
+
+    mock_repo.iter_commits.return_value = [commit]
+    mock_repo.working_tree_dir = "/fake/path"
+
+    with patch("git.Repo", return_value=mock_repo):
+        edges = await analyze_coupling("/fake/path", threshold=0.9)
+
+    assert len(edges) == 1
+    assert edges[0].from_id == _file_node_id("/fake/path", "src/file_a.py")
+    assert edges[0].to_id == _file_node_id("/fake/path", "src/file_b.py")
 
 
 async def test_analyze_coupling_invalid_repo(tmp_path: Path):

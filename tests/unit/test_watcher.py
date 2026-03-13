@@ -41,6 +41,14 @@ class _FakeGraph:
             return [
                 {"c": self.incoming_human_edge_count_by_node_id.get(params["id"], 0)}
             ]
+        if (
+            q
+            == "MATCH (n {id: $id})-[r]-()\nWHERE r.origin = 'human'\nRETURN count(r) AS c"
+        ):
+            assert params is not None
+            out_c = self.outgoing_human_edge_count_by_node_id.get(params["id"], 0)
+            in_c = self.incoming_human_edge_count_by_node_id.get(params["id"], 0)
+            return [{"c": out_c + in_c}]
         return []
 
 
@@ -64,14 +72,11 @@ async def test_watch_repo_reindexes_on_file_change(tmp_path: Path) -> None:
         stop_after_events=1,
     )
 
-    assert seen == [(str(tmp_path), 2)]
+    assert seen == [(str(tmp_path), 1)]
     loom_queries = [q[0] for q in graph.queries if "LOOM_IMPLEMENTS" in q[0]]
-    assert len(loom_queries) == 2
+    assert len(loom_queries) == 1
     assert any(
-        "MATCH (n {path: $path})-[r:LOOM_IMPLEMENTS]->()" in q for q in loom_queries
-    )
-    assert any(
-        "MATCH ()-[r:LOOM_IMPLEMENTS]->(n {path: $path})" in q for q in loom_queries
+        "MATCH (n {path: $path})-[r:LOOM_IMPLEMENTS]-()" in q for q in loom_queries
     )
 
 
@@ -104,7 +109,7 @@ async def test_watch_repo_flags_modified_file_edges_before_reindex(
         stop_after_events=1,
     )
 
-    assert call_order == ["flag", "flag", "index"]
+    assert call_order == ["flag", "index"]
 
 
 @pytest.mark.asyncio
@@ -126,7 +131,7 @@ async def test_watch_repo_deletes_nodes_on_removed_file(tmp_path: Path) -> None:
     delete_index = next(
         i for i, q in enumerate(graph.queries) if "DETACH DELETE" in q[0]
     )
-    assert len(loom_queries) == 2
+    assert len(loom_queries) == 1
     assert all(index < delete_index for index in loom_queries)
 
 
@@ -159,7 +164,7 @@ async def test_watch_repo_preserves_deleted_nodes_with_human_edges(
     invalidation_queries = [
         params
         for q, params in graph.queries
-        if q.strip().startswith("MATCH (a {path: $path})-[r]->()")
+        if q.strip().startswith("MATCH (n {path: $path})-[r:LOOM_IMPLEMENTS]-()")
         or q.strip()
         == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin IS NULL OR r.origin <> 'human'\nDELETE r"
         or q.strip()
@@ -169,7 +174,6 @@ async def test_watch_repo_preserves_deleted_nodes_with_human_edges(
     assert len(stale_queries) == 2
     assert delete_by_ids_queries == []
     assert invalidation_queries == [
-        {"path": abs_path},
         {"path": abs_path},
         {"path": abs_path},
         {"path": abs_path},

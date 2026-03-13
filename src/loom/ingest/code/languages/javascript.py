@@ -9,6 +9,15 @@ from tree_sitter_javascript import language as javascript_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
+from loom.ingest.code.languages._ts_utils import (
+    get_name as _get_name,
+)
+from loom.ingest.code.languages._ts_utils import (
+    lines as _lines,
+)
+from loom.ingest.code.languages._ts_utils import (
+    node_text as _node_text,
+)
 from loom.ingest.code.languages.constants import (
     LANG_JAVASCRIPT,
     TS_JS_ARROW_FUNCTION,
@@ -44,23 +53,6 @@ class _Context:
             parts.append(".".join(self.func_stack))
         parts.append(name)
         return ".".join(parts)
-
-
-def _node_text(src: bytes, n: TSNode) -> str:
-    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
-
-
-def _get_name(src: bytes, n: TSNode) -> str | None:
-    name_node = n.child_by_field_name("name")
-    if name_node is None:
-        return None
-    return _node_text(src, name_node)
-
-
-def _lines(n: TSNode) -> tuple[int, int]:
-    start_line = n.start_point[0] + 1
-    end_line = n.end_point[0] + 1
-    return start_line, end_line
 
 
 def _extract_from_def(

@@ -3,14 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
 from loom.linker.prompts import drift_detection_prompt
-
-
-class DriftLLM(Protocol):
-    async def complete(self, *, prompt: str, model: str | None = None) -> str: ...
+from loom.llm.client import LLMClient as DriftLLM
 
 
 @dataclass(frozen=True)
@@ -50,8 +47,8 @@ def detect_ast_drift(old_node: Node, new_node: Node) -> AstDriftReport:
     ):
         reasons.append(f"signature_changed: {old_signature} -> {new_signature}")
 
-    old_return_type = old_node.metadata.get("return_type")
-    new_return_type = new_node.metadata.get("return_type")
+    old_return_type = old_node.metadata.get("return_type") or None
+    new_return_type = new_node.metadata.get("return_type") or None
     if old_return_type != new_return_type:
         reasons.append(f"return_type_changed: {old_return_type} -> {new_return_type}")
 
@@ -68,8 +65,16 @@ def detect_ast_drift(old_node: Node, new_node: Node) -> AstDriftReport:
     for key in sorted(_SIDE_EFFECT_KEYS):
         old_value = old_node.metadata.get(key)
         new_value = new_node.metadata.get(key)
+        if old_value == new_value:
+            continue
         if old_value is None and new_value is not None:
             reasons.append(f"added_side_effect_indicator: {key}={new_value}")
+        elif old_value is not None and new_value is None:
+            reasons.append(f"removed_side_effect_indicator: {key}={old_value}")
+        else:
+            reasons.append(
+                f"changed_side_effect_indicator: {key}: {old_value} -> {new_value}"
+            )
 
     return AstDriftReport(node_id=new_node.id, changed=bool(reasons), reasons=reasons)
 
@@ -84,6 +89,12 @@ async def detect_violations(
     model: str | None = None,
     max_concurrent_llm_calls: int = 10,
 ) -> list[ViolationReport]:
+    """Check whether code nodes violate linked doc requirements via LLM.
+
+    Returns `ViolationReport` objects for LOOM_IMPLEMENTS pairs whose violation
+    confidence meets `threshold`. The caller is responsible for persisting the
+    resulting edges, e.g. `await graph.bulk_create_edges([r.edge for r in reports])`.
+    """
     code_by_id = {n.id: n for n in code_nodes}
     doc_by_id = {n.id: n for n in doc_nodes}
 

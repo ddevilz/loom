@@ -6,72 +6,7 @@ from pathlib import Path
 from pathspec import PathSpec
 
 from loom.config import DEFAULT_SKIP_DIRS
-from loom.ingest.code.languages.constants import (
-    EXT_CSS,
-    EXT_CXML,
-    EXT_ENV,
-    EXT_GO,
-    EXT_HTM,
-    EXT_HTML,
-    EXT_INI,
-    EXT_JAVA,
-    EXT_JS,
-    EXT_JSON,
-    EXT_JSX,
-    EXT_PROPERTIES,
-    EXT_PY,
-    EXT_PYW,
-    EXT_RB,
-    EXT_RS,
-    EXT_TOML,
-    EXT_TS,
-    EXT_TSX,
-    EXT_XML,
-    EXT_YAML,
-    EXT_YML,
-    LANG_CSS,
-    LANG_ENV,
-    LANG_GO,
-    LANG_HTML,
-    LANG_INI,
-    LANG_JAVA,
-    LANG_JAVASCRIPT,
-    LANG_JSON,
-    LANG_PROPERTIES,
-    LANG_PYTHON,
-    LANG_RUBY,
-    LANG_RUST,
-    LANG_TOML,
-    LANG_TSX,
-    LANG_TYPESCRIPT,
-    LANG_XML,
-    LANG_YAML,
-)
 from loom.ingest.code.registry import get_registry
-
-_EXT_TO_LANGUAGE: dict[str, str] = {
-    EXT_PY: LANG_PYTHON,
-    EXT_PYW: LANG_PYTHON,
-    EXT_TS: LANG_TYPESCRIPT,
-    EXT_TSX: LANG_TSX,
-    EXT_JS: LANG_JAVASCRIPT,
-    EXT_JSX: LANG_JAVASCRIPT,
-    EXT_GO: LANG_GO,
-    EXT_JAVA: LANG_JAVA,
-    EXT_RS: LANG_RUST,
-    EXT_RB: LANG_RUBY,
-    EXT_HTML: LANG_HTML,
-    EXT_HTM: LANG_HTML,
-    EXT_XML: LANG_XML,
-    EXT_CXML: LANG_XML,
-    EXT_JSON: LANG_JSON,
-    EXT_CSS: LANG_CSS,
-    EXT_YAML: LANG_YAML,
-    EXT_YML: LANG_YAML,
-    EXT_PROPERTIES: LANG_PROPERTIES,
-    EXT_TOML: LANG_TOML,
-    EXT_INI: LANG_INI,
-}
 
 
 def _load_gitignore(root: Path) -> PathSpec:
@@ -155,11 +90,10 @@ def walk_repo(
                     if spec.match_file(rel):
                         continue
 
-                    ext = registry.get_extension_for_path(str(entry_path))
                     if registry.should_skip_path(str(entry_path)):
                         continue
 
-                    lang = LANG_ENV if ext == EXT_ENV else _EXT_TO_LANGUAGE.get(ext)
+                    lang = registry.get_language_for_path(str(entry_path))
                     if lang is None:
                         continue
 

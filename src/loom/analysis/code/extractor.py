@@ -30,7 +30,7 @@ def extract_summary(node: Node) -> str:
     params = node.metadata.get("params")
     if isinstance(params, list) and params:
         lines.append(f"params: {', '.join(str(p) for p in params)}")
-    elif params is not None:
+    elif params is not None and not isinstance(params, list):
         lines.append("params: none")
 
     # Return type
@@ -44,14 +44,14 @@ def extract_summary(node: Node) -> str:
     raises = node.metadata.get("raises")
     if isinstance(raises, list) and raises:
         lines.append(f"raises: {', '.join(str(r) for r in raises)}")
-    elif raises is not None:
+    elif raises is not None and not isinstance(raises, list):
         lines.append("raises: none")
 
     # Calls (if available from metadata)
     calls = node.metadata.get("calls")
     if isinstance(calls, list) and calls:
         lines.append(f"calls: {', '.join(str(c) for c in calls)}")
-    elif calls is not None:
+    elif calls is not None and not isinstance(calls, list):
         lines.append("calls: none")
 
     # Module/path

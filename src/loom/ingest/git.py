@@ -48,14 +48,19 @@ def _run_git(repo_path: str, args: list[str]) -> str:
         return p.stdout
     except subprocess.TimeoutExpired:
         logger.error(
-            f"Git command timed out after {_GIT_TIMEOUT}s: git {' '.join(args)} "
-            f"in {repo_path}"
+            "Git command timed out after %ss: git %s in %s",
+            _GIT_TIMEOUT,
+            " ".join(args),
+            repo_path,
         )
         raise
     except subprocess.CalledProcessError as e:
         logger.error(
-            f"Git command failed: git {' '.join(args)} in {repo_path}. "
-            f"Exit code: {e.returncode}, stderr: {e.stderr}"
+            "Git command failed: git %s in %s. Exit code: %s, stderr: %s",
+            " ".join(args),
+            repo_path,
+            e.returncode,
+            e.stderr,
         )
         raise
 

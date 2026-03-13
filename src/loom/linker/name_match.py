@@ -19,7 +19,11 @@ def _tokenize_name(name: str) -> set[str]:
 
 
 def _tokenize_text(text: str) -> set[str]:
-    return {t.lower() for t in re.findall(r"[a-zA-Z][a-zA-Z0-9_]+", text)}
+    tokens: set[str] = set()
+    for word in re.findall(r"[a-zA-Z][a-zA-Z0-9_]*", text):
+        camel = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", word)
+        tokens.update(t.lower() for t in camel.split() if t)
+    return tokens
 
 
 def link_by_name(

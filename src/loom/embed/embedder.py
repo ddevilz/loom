@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from loom.config import LOOM_EMBED_BATCH_SIZE, LOOM_EMBED_CACHE_DIR, LOOM_EMBED_MODEL
+from loom.config import (
+    LOOM_EMBED_BATCH_SIZE,
+    LOOM_EMBED_CACHE_DIR,
+    LOOM_EMBED_DIM,
+    LOOM_EMBED_MODEL,
+)
 from loom.core import Node
 
 logger = logging.getLogger(__name__)
@@ -51,8 +56,11 @@ class FastEmbedder:
         except Exception as e:
             # On error, recreate the embedder (thread-safe)
             logger.warning(
-                f"Embedding failed with model {self.model}: {e}. "
-                f"Recreating embedder and retrying. Text count: {len(texts)}"
+                "Embedding failed with model %s: %s. "
+                "Recreating embedder and retrying. Text count: %d",
+                self.model,
+                e,
+                len(texts),
             )
             with _EMBEDDER_CACHE_LOCK:
                 emb = TextEmbedding(model_name=self.model, cache_dir=str(cache_dir))
@@ -61,8 +69,10 @@ class FastEmbedder:
                 return [list(v) for v in emb.embed(texts)]
             except Exception as retry_error:
                 logger.error(
-                    f"Embedding retry failed with model {self.model}: {retry_error}. "
-                    f"Text count: {len(texts)}",
+                    "Embedding retry failed with model %s: %s. Text count: %d",
+                    self.model,
+                    retry_error,
+                    len(texts),
                     exc_info=True,
                 )
                 raise
@@ -94,20 +104,17 @@ async def embed_nodes(
     vectors: list[list[float]] = []
     for start in range(0, len(texts), batch_size):
         batch = texts[start : start + batch_size]
-        vectors.extend(await asyncio.to_thread(embedder.embed, batch))
+        batch_vectors = await asyncio.to_thread(embedder.embed, batch)
+        if batch_vectors and len(batch_vectors[0]) != LOOM_EMBED_DIM:
+            raise ValueError(
+                f"Embedding dimension mismatch: model produced {len(batch_vectors[0])} dimensions "
+                f"but LOOM_EMBED_DIM is configured as {LOOM_EMBED_DIM}. "
+                f"Please update LOOM_EMBED_DIM to match your model."
+            )
+        vectors.extend(batch_vectors)
 
     if len(vectors) != len(texts):
         raise ValueError("embedder returned wrong number of vectors")
-
-    # Validate embedding dimensions match configuration
-    from loom.config import LOOM_EMBED_DIM
-
-    if vectors and len(vectors[0]) != LOOM_EMBED_DIM:
-        raise ValueError(
-            f"Embedding dimension mismatch: model produced {len(vectors[0])} dimensions "
-            f"but LOOM_EMBED_DIM is configured as {LOOM_EMBED_DIM}. "
-            f"Please update LOOM_EMBED_DIM to match your model."
-        )
 
     out = list(nodes)
     for idx, vec in zip(to_embed, vectors, strict=True):

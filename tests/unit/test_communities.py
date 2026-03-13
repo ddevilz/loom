@@ -21,6 +21,12 @@ def test_generate_community_name_mixed_words():
     assert result == "validate"
 
 
+def test_generate_community_name_filters_trivial_words():
+    names = ["get_user", "get_post", "get_order"]
+    result = _generate_community_name(names)
+    assert result in ["user", "post", "order"]
+
+
 def test_generate_community_name_single_word_functions():
     """Test community naming with single-word function names."""
     names = ["login", "logout", "authenticate"]
@@ -91,9 +97,29 @@ async def test_detect_communities_skips_low_modularity(monkeypatch) -> None:
         modularity = 0.1
         membership = [0, 0, 0]
 
+    class _FakeIgraphModule:
+        class Graph:
+            def __init__(self, n, edges, directed):
+                self._n = n
+                self._edges = edges
+                self.es = {}
+
+            def vcount(self):
+                return self._n
+
+            def ecount(self):
+                return len(self._edges)
+
+    class _FakeLeidenalgModule:
+        ModularityVertexPartition = object()
+
+        @staticmethod
+        def find_partition(*args, **kwargs):
+            return _FakePartition()
+
     monkeypatch.setattr(
-        "loom.analysis.code.communities.leidenalg.find_partition",
-        lambda *args, **kwargs: _FakePartition(),
+        "loom.analysis.code.communities._get_community_modules",
+        lambda: (_FakeIgraphModule, _FakeLeidenalgModule),
     )
 
     graph = _FakeGraph(

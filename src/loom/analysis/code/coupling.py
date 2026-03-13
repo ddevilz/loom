@@ -12,10 +12,11 @@ import git
 from loom.core import Edge, EdgeType, NodeKind
 
 logger = logging.getLogger(__name__)
+_GIT_SINCE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def _to_file_node_id(repo_root: Path, file_path: str) -> str:
-    return f"{NodeKind.FILE.value}:{str((repo_root / file_path).resolve())}"
+    return f"{NodeKind.FILE.value}:{(repo_root / file_path).resolve().as_posix()}"
 
 
 async def _open_repo(repo_path: str) -> git.Repo | None:
@@ -69,7 +70,9 @@ async def analyze_coupling(
     # Run git operations in thread pool to avoid blocking event loop
     try:
         commits = await asyncio.to_thread(
-            lambda: list(repo.iter_commits(since=cutoff_date.isoformat()))
+            lambda: list(
+                repo.iter_commits(since=cutoff_date.strftime(_GIT_SINCE_FORMAT))
+            )
         )
     except git.GitCommandError as e:
         logger.warning(f"Failed to read commits: {e}")
@@ -90,19 +93,23 @@ async def analyze_coupling(
             changed_files: set[str] = set()
 
             if commit.parents:
-                # Normal commit: diff against first parent
-                try:
-                    diffs = commit.diff(commit.parents[0])
-                    for diff_item in diffs:
-                        # Use a_path (source path) for changed files
-                        if diff_item.a_path:
-                            changed_files.add(diff_item.a_path)
-                        # Also check b_path for new files
-                        if diff_item.b_path and diff_item.a_path != diff_item.b_path:
-                            changed_files.add(diff_item.b_path)
-                except Exception as e:
-                    logger.debug(f"Failed to diff commit {commit.hexsha[:8]}: {e}")
-                    continue
+                for parent in commit.parents:
+                    try:
+                        diffs = commit.diff(parent)
+                        for diff_item in diffs:
+                            if diff_item.a_path:
+                                changed_files.add(diff_item.a_path)
+                            if (
+                                diff_item.b_path
+                                and diff_item.a_path != diff_item.b_path
+                            ):
+                                changed_files.add(diff_item.b_path)
+                    except Exception as e:
+                        logger.debug(
+                            "Failed to diff commit %s against parent: %s",
+                            commit.hexsha[:8],
+                            e,
+                        )
             else:
                 # Initial commit: all files are new
                 try:

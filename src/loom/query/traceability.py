@@ -5,11 +5,7 @@ from typing import Any, Protocol
 
 from loom.core import EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
-from loom.core.falkor.mappers import (
-    coerce_row_node_kind,
-    deserialize_metadata_value,
-    row_to_node,
-)
+from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
 
 _LOOM_IMPL_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
 
@@ -63,7 +59,7 @@ def _coerce_doc_kind(raw_kind: Any) -> NodeKind:
     )
 
 
-def _row_to_doc_node(row: dict[str, Any]) -> Node:
+def _row_to_doc_node(row: dict[str, Any]) -> Node | None:
     allowed_doc_kinds = {
         NodeKind.DOCUMENT,
         NodeKind.CHAPTER,
@@ -76,17 +72,10 @@ def _row_to_doc_node(row: dict[str, Any]) -> Node:
         source=NodeSource.DOC,
         fallback_kind=_coerce_doc_kind(row.get("kind")),
         allowed_kinds=allowed_doc_kinds,
-    ) or Node(
-        id=str(row.get("id")),
-        kind=NodeKind.SECTION,
-        source=NodeSource.DOC,
-        name=str(row.get("id")),
-        path="",
-        metadata={},
     )
 
 
-def _row_to_code_node(row: dict[str, Any]) -> Node:
+def _row_to_code_node(row: dict[str, Any]) -> Node | None:
     allowed_code_kinds = {
         NodeKind.FUNCTION,
         NodeKind.METHOD,
@@ -101,13 +90,6 @@ def _row_to_code_node(row: dict[str, Any]) -> Node:
         source=NodeSource.CODE,
         fallback_kind=_coerce_code_kind(row.get("kind")),
         allowed_kinds=allowed_code_kinds,
-    ) or Node(
-        id=str(row.get("id")),
-        kind=NodeKind.FUNCTION,
-        source=NodeSource.CODE,
-        name=str(row.get("id")),
-        path="",
-        metadata={},
     )
 
 
@@ -115,7 +97,7 @@ async def unimplemented_tickets(graph: _Graph) -> list[Node]:
     rows = await graph.query(
         f"MATCH (t {{source: 'doc'}}) WHERE t.path STARTS WITH 'jira://' AND NOT ( ()-[:{_LOOM_IMPL_REL}]->(t) ) RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata"
     )
-    return [_row_to_doc_node(row) for row in rows]
+    return [n for row in rows if (n := _row_to_doc_node(row)) is not None]
 
 
 async def untraced_functions(graph: _Graph) -> list[Node]:
@@ -139,7 +121,7 @@ async def untraced_functions_limited(
         f"MATCH (f {{source: 'code'}}) WHERE {where_clause} RETURN f.id AS id, f.kind AS kind, f.name AS name, f.summary AS summary, f.path AS path, f.metadata AS metadata LIMIT $limit",
         params,
     )
-    return [_row_to_code_node(row) for row in rows]
+    return [n for row in rows if (n := _row_to_code_node(row)) is not None]
 
 
 async def impact_of_ticket(ticket_id: str, graph: _Graph) -> list[Node]:
@@ -147,7 +129,7 @@ async def impact_of_ticket(ticket_id: str, graph: _Graph) -> list[Node]:
         f"MATCH (f)-[:{_LOOM_IMPL_REL}]->(t) WHERE t.name = $ticket_id OR t.id = $ticket_id RETURN f.id AS id, f.kind AS kind, f.name AS name, f.summary AS summary, f.path AS path, f.metadata AS metadata",
         {"ticket_id": ticket_id},
     )
-    return [_row_to_code_node(row) for row in rows]
+    return [n for row in rows if (n := _row_to_code_node(row)) is not None]
 
 
 async def tickets_for_function(node_id: str, graph: _Graph) -> list[Node]:
@@ -155,20 +137,20 @@ async def tickets_for_function(node_id: str, graph: _Graph) -> list[Node]:
         f"MATCH (f {{id: $node_id}})-[:{_LOOM_IMPL_REL}]->(t) WHERE t.path STARTS WITH 'jira://' RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
         {"node_id": node_id},
     )
-    return [_row_to_doc_node(row) for row in rows]
+    return [n for row in rows if (n := _row_to_doc_node(row)) is not None]
 
 
 async def sprint_code_coverage(sprint_name: str, graph: _Graph) -> TraceCoverageReport:
     rows = await graph.query(
-        f"MATCH (f)-[:{_LOOM_IMPL_REL}]->(t) WHERE t.path STARTS WITH 'jira://' RETURN DISTINCT f.id AS function_id, t.id AS ticket_id, t.metadata AS metadata",
+        f"MATCH (f)-[:{_LOOM_IMPL_REL}]->(t) "
+        "WHERE t.path STARTS WITH 'jira://' AND t.metadata.sprint = $sprint_name "
+        "RETURN DISTINCT f.id AS function_id, t.id AS ticket_id",
+        {"sprint_name": sprint_name},
     )
 
     matching_ticket_ids: set[str] = set()
     matching_function_ids: set[str] = set()
     for row in rows:
-        metadata = deserialize_metadata_value(row.get("metadata"))
-        if not isinstance(metadata, dict) or metadata.get("sprint") != sprint_name:
-            continue
         ticket_id = row.get("ticket_id")
         function_id = row.get("function_id")
         if isinstance(ticket_id, str):

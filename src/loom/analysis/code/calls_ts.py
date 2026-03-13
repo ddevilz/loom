@@ -57,7 +57,6 @@ def _enclosing_named_function(src: bytes, n: TSNode) -> tuple[str | None, int] |
                     if maybe is not None and maybe.type == _TS_IDENTIFIER:
                         start_line = cur.start_point[0] + 1
                         return _node_text(src, maybe), start_line
-            return None
 
         cur = cur.parent
     return None

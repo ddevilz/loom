@@ -82,6 +82,9 @@ async def search(
     expand_depth: int = 1,
     embedder: Embedder | None = None,
 ) -> list[SearchResult]:
+    limit = max(1, min(limit, 100))
+    expand_depth = max(0, min(expand_depth, 10))
+
     if embedder is None:
         embedder = FastEmbedder()
 
@@ -96,15 +99,14 @@ async def search(
                 score=float(row.get("score", 0.0)),
                 matched_via="vector",
             )
-            for row in rows
+            for row in rows[:limit]
             if row.get("id") is not None
-        ][:limit]
+        ]
     except Exception as e:
         # Vector index query failed - fall back to brute force search
         logger.warning(
-            f"Vector index query failed: {e}. Falling back to brute-force similarity search. "
-            "This is significantly slower. To fix: ensure FalkorDB is running and the vector index "
-            "was created correctly. Try re-indexing with 'loom analyze' to recreate the index."
+            "Vector index query failed: %s. Falling back to brute-force similarity search.",
+            e,
         )
         # Limit fallback to prevent memory exhaustion on large graphs
         fallback_limit = min(limit * 100, 10000)
@@ -112,8 +114,9 @@ async def search(
 
         if len(rows) >= fallback_limit:
             logger.warning(
-                f"Fallback search hit limit of {fallback_limit} nodes. "
-                "Results may be incomplete. Vector index is recommended for large graphs."
+                "Fallback search hit limit of %d nodes. "
+                "Results may be incomplete. Vector index is recommended for large graphs.",
+                fallback_limit,
             )
 
         nodes = [_row_to_node(row) for row in rows]

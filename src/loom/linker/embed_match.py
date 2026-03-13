@@ -5,6 +5,7 @@ from typing import Any, Protocol
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
 from loom.embed.embedder import cosine_similarity, embed_nodes
 
+_VECTOR_K_LIMIT = 50
 _FALLBACK_DOC_CANDIDATE_LIMIT = 1000
 
 
@@ -32,7 +33,10 @@ async def _candidate_doc_ids_from_vector_index(
     try:
         rows = await graph.query(
             _VECTOR_CANDIDATES_QUERY,
-            {"k": max(10, len(doc_by_id)), "vec": code_node.embedding},
+            {
+                "k": min(max(10, len(doc_by_id)), _VECTOR_K_LIMIT),
+                "vec": code_node.embedding,
+            },
         )
     except Exception:
         return None
@@ -68,7 +72,7 @@ async def link_by_embedding(
         candidate_docs = (
             [doc_by_id[doc_id] for doc_id in candidate_doc_ids]
             if candidate_doc_ids is not None
-            else doc_nodes[:_FALLBACK_DOC_CANDIDATE_LIMIT]
+            else list(doc_by_id.values())[:_FALLBACK_DOC_CANDIDATE_LIMIT]
         )
         for d in candidate_docs:
             if d.embedding is None:

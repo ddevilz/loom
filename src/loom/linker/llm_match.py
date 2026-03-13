@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -15,50 +16,54 @@ async def link_by_llm(
     llm: LLMClient,
     threshold: float = 0.6,
     model: str | None = None,
+    max_concurrent_llm_calls: int = 10,
 ) -> list[Edge]:
-    edges: list[Edge] = []
+    semaphore = asyncio.Semaphore(max_concurrent_llm_calls)
+    pairs = [
+        (c, d)
+        for c in code_nodes
+        if c.summary
+        for d in doc_nodes
+        if (d.summary or d.name)
+    ]
 
-    for c in code_nodes:
-        if not c.summary:
-            continue
-        for d in doc_nodes:
-            doc_text = d.summary or d.name
-            if not doc_text:
-                continue
-
-            prompt = llm_match_prompt(code_summary=c.summary, doc_text=doc_text)
+    async def _check_one(code_node: Node, doc_node: Node) -> Edge | None:
+        async with semaphore:
+            doc_text = doc_node.summary or doc_node.name
+            prompt = llm_match_prompt(code_summary=code_node.summary, doc_text=doc_text)
             raw = await llm.complete(prompt=prompt, model=model)
 
-            data: dict[str, Any]
-            try:
-                data = json.loads(raw)
-            except Exception:
-                continue
-            if not isinstance(data, dict):
-                continue
+        data: dict[str, Any]
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
 
-            impl = data.get("implements")
-            conf = data.get("confidence")
-            reason = data.get("reason")
+        impl = data.get("implements")
+        conf = data.get("confidence")
+        reason = data.get("reason")
 
-            if impl is not True:
-                continue
-            if not isinstance(conf, (int, float)):
-                continue
-            if float(conf) < threshold:
-                continue
+        if impl is not True:
+            return None
+        if not isinstance(conf, (int, float)):
+            return None
+        if float(conf) < threshold:
+            return None
 
-            edges.append(
-                Edge(
-                    from_id=c.id,
-                    to_id=d.id,
-                    kind=EdgeType.LOOM_IMPLEMENTS,
-                    origin=EdgeOrigin.LLM_MATCH,
-                    confidence=float(conf),
-                    link_method="llm_match",
-                    link_reason=str(reason) if reason is not None else None,
-                    metadata={},
-                )
-            )
+        return Edge(
+            from_id=code_node.id,
+            to_id=doc_node.id,
+            kind=EdgeType.LOOM_IMPLEMENTS,
+            origin=EdgeOrigin.LLM_MATCH,
+            confidence=float(conf),
+            link_method="llm_match",
+            link_reason=str(reason) if reason is not None else None,
+            metadata={},
+        )
 
-    return edges
+    results = await asyncio.gather(
+        *[_check_one(code_node, doc_node) for code_node, doc_node in pairs]
+    )
+    return [edge for edge in results if edge is not None]

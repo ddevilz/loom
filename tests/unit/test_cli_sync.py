@@ -21,6 +21,7 @@ class _FakeIndexResult:
     error_count: int = 0
     duration_ms: float = 10.0
     errors: list = None  # type: ignore[assignment]
+    warnings: list = ()  # type: ignore[assignment]
 
 
 def test_cli_sync_happy_path(monkeypatch):

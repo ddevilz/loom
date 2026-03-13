@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from inspect import isawaitable
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Protocol
@@ -16,18 +15,19 @@ from loom.core.content_hash import content_hash_bytes
 from loom.embed.embedder import embed_nodes
 from loom.ingest.code.registry import get_registry
 from loom.ingest.code.walker import walk_repo
-from loom.ingest.errors import append_index_error
 from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
-from loom.ingest.result import IndexError, IndexResult
+from loom.ingest.result import IndexError, IndexResult, append_index_error
 from loom.ingest.utils import (
+    delete_nodes_by_ids,
     get_doc_nodes_for_linking,
+    get_node_ids_by_path,
     invalidate_edges_for_file,
     merge_nodes_by_id,
 )
 from loom.linker.linker import SemanticLinker
 
 
-def _merge_file_result(batch: _IndexBatch, file_result: _FileProcessResult) -> None:
+def _merge_file_result(batch: _IndexBatch, file_result: _IndexBatch) -> None:
     batch.files_skipped += file_result.files_skipped
     batch.files_updated += file_result.files_updated
     batch.files_added += file_result.files_added
@@ -67,14 +67,7 @@ class _IndexBatch:
     errors: list[IndexError] = field(default_factory=list)
 
 
-@dataclass
-class _FileProcessResult:
-    files_skipped: int = 0
-    files_updated: int = 0
-    files_added: int = 0
-    nodes_to_upsert: list[Node] = field(default_factory=list)
-    edges_to_upsert: list[Edge] = field(default_factory=list)
-    errors: list[IndexError] = field(default_factory=list)
+_FileProcessResult = _IndexBatch
 
 
 CallTracer = Callable[[str, list[Node]], list[Edge]]
@@ -148,7 +141,7 @@ def _collect_repo_files(root: str) -> list[str]:
     all_files: list[str] = []
     for files in files_by_lang.values():
         all_files.extend(files)
-    return sorted(set(all_files))
+    return sorted(all_files)
 
 
 def _get_call_tracer(path: str) -> tuple[CallTracer | None, str | None]:
@@ -169,6 +162,27 @@ def _build_global_symbol_map(nodes: list[Node]) -> dict[str, list[Node]]:
     return symbol_map
 
 
+def _group_nodes_by_path(nodes: list[Node]) -> dict[str, list[Node]]:
+    grouped: dict[str, list[Node]] = {}
+    for node in nodes:
+        if node.path:
+            grouped.setdefault(node.path, []).append(node)
+    return grouped
+
+
+def _is_python_path(path: str) -> bool:
+    return Path(path).suffix.lower() in {".py", ".pyw"}
+
+
+def _python_call_source_ids(nodes: list[Node]) -> set[str]:
+    return {
+        node.id
+        for node in nodes
+        if node.kind in {NodeKind.FUNCTION, NodeKind.METHOD}
+        and _is_python_path(node.path)
+    }
+
+
 def _append_docs_batch(docs_path: str, batch: _IndexBatch) -> None:
     try:
         from loom.ingest.docs.base import walk_docs
@@ -182,12 +196,7 @@ def _append_docs_batch(docs_path: str, batch: _IndexBatch) -> None:
 
 async def _append_jira_batch(jira: JiraConfig, batch: _IndexBatch) -> None:
     try:
-        jira_nodes_result = fetch_jira_nodes(jira)
-        jira_nodes = (
-            await jira_nodes_result
-            if isawaitable(jira_nodes_result)
-            else jira_nodes_result
-        )
+        jira_nodes = await fetch_jira_nodes(jira)
         batch.nodes_to_upsert.extend(jira_nodes)
     except Exception as e:
         append_index_error(batch.errors, path=jira.project_key, phase="jira", error=e)
@@ -226,10 +235,24 @@ async def _process_file(
     else:
         batch.files_updated += 1
         try:
+            old_ids = set(await get_node_ids_by_path(graph, path=fp))
+        except Exception as e:
+            append_index_error(batch.errors, path=fp, phase="persist", error=e)
+            return batch
+        try:
             await invalidate_edges_for_file(graph, path=fp)
         except Exception as e:
             append_index_error(batch.errors, path=fp, phase="invalidate", error=e)
             return batch
+    new_node_ids = {_file_node_id(fp), *(node.id for node in nodes)}
+    if not is_new_file:
+        stale_ids = sorted(old_ids - new_node_ids)
+        if stale_ids:
+            try:
+                await delete_nodes_by_ids(graph, stale_ids)
+            except Exception as e:
+                append_index_error(batch.errors, path=fp, phase="persist", error=e)
+                return batch
 
     # Add file node with new hash and parsed code nodes
     batch.nodes_to_upsert.append(_make_file_node(fp, content_hash=file_hash))
@@ -256,14 +279,19 @@ async def _delete_missing_files(
     errors: list[IndexError],
 ) -> None:
     for file_id in sorted(deleted_file_ids):
+        path = _path_from_file_node_id(file_id)
         try:
-            path = _path_from_file_node_id(file_id)
             if path is not None:
                 await graph.query(_DELETE_NODES_BY_PATH, {"path": path})
             else:
                 await graph.query(_DELETE_NODE_BY_ID, {"id": file_id})
         except Exception as e:
-            append_index_error(errors, path=str(path), phase="persist", error=e)
+            append_index_error(
+                errors,
+                path=path if path is not None else file_id,
+                phase="persist",
+                error=e,
+            )
 
 
 async def _delete_existing_repo_nodes(
@@ -303,8 +331,83 @@ async def _query_graph_counts(
         rows = await graph.query(_COUNT_EDGES)
         edge_count = int(rows[0]["c"]) if rows else 0
     except Exception as e:
-        append_index_error(errors, path=root, phase="summarize", error=e)
+        append_index_error(errors, path=root, phase="persist", error=e)
     return node_count, edge_count
+
+
+async def _resolve_global_call_edges(
+    root: str,
+    batch: _IndexBatch,
+) -> list[Edge]:
+    from loom.analysis.code.calls import (
+        _build_symbol_map,
+        trace_calls_for_file_with_global_symbols,
+    )
+    from loom.ingest.code.languages.constants import EXT_PY, EXT_PYW
+
+    global_symbol_map = _build_symbol_map(batch.nodes_to_upsert)
+    if not global_symbol_map:
+        return []
+
+    global_call_edges: list[Edge] = []
+    for fp, file_nodes in _group_nodes_by_path(batch.nodes_to_upsert).items():
+        ext = Path(fp).suffix.lower()
+        if ext not in (EXT_PY, EXT_PYW):
+            continue
+        try:
+            edges = await asyncio.to_thread(
+                trace_calls_for_file_with_global_symbols,
+                fp,
+                file_nodes,
+                global_symbol_map=global_symbol_map,
+            )
+            global_call_edges.extend(edges)
+        except Exception as e:
+            append_index_error(
+                batch.errors, path=fp or root, phase="calls_global", error=e
+            )
+    return global_call_edges
+
+
+async def _link_code_nodes(
+    graph: LoomGraph | _Graph,
+    batch: _IndexBatch,
+    *,
+    root: str,
+    docs_path: str | None,
+    jira: JiraConfig | None,
+) -> None:
+    code_nodes = _collect_code_nodes_for_linking(batch)
+    if not code_nodes:
+        return
+
+    try:
+        stored_doc_nodes = await get_doc_nodes_for_linking(graph)
+    except Exception as e:
+        link_path = (
+            str(docs_path)
+            if docs_path is not None
+            else (jira.project_key if jira is not None else root)
+        )
+        append_index_error(batch.errors, path=link_path, phase="link", error=e)
+        stored_doc_nodes = []
+
+    doc_nodes = merge_nodes_by_id(
+        _collect_doc_nodes_for_linking(batch),
+        stored_doc_nodes,
+    )
+    if not doc_nodes:
+        return
+
+    try:
+        await SemanticLinker().link(code_nodes, doc_nodes, graph)
+    except Exception as e:
+        link_path = (
+            str(docs_path)
+            if docs_path is not None
+            else (jira.project_key if jira is not None else root)
+        )
+        append_index_error(batch.errors, path=link_path, phase="link", error=e)
 
 
 async def index_repo(
@@ -395,40 +498,20 @@ async def index_repo(
     # Re-run call tracing with a global (cross-file) symbol map to resolve
     # cross-file calls that the per-file pass left as unresolved:name.
     try:
-        from loom.analysis.code.calls import (
-            _build_symbol_map,
-            trace_calls_for_file_with_global_symbols,
-        )
-        from loom.ingest.code.languages.constants import EXT_PY, EXT_PYW
-
-        global_symbol_map = _build_symbol_map(batch.nodes_to_upsert)
-        if global_symbol_map:
-            global_call_edges: list[Edge] = []
-            file_to_nodes: dict[str, list[Node]] = {}
-            for n in batch.nodes_to_upsert:
-                if n.path:
-                    file_to_nodes.setdefault(n.path, []).append(n)
-            for fp, file_nodes in file_to_nodes.items():
-                ext = Path(fp).suffix.lower()
-                if ext not in (EXT_PY, EXT_PYW):
-                    continue
-                try:
-                    edges = await asyncio.to_thread(
-                        trace_calls_for_file_with_global_symbols,
-                        fp,
-                        file_nodes,
-                        global_symbol_map=global_symbol_map,
-                    )
-                    global_call_edges.extend(edges)
-                except Exception:
-                    pass
-            # Replace file-local CALLS edges with globally-resolved ones.
-            batch.edges_to_upsert = [
-                e for e in batch.edges_to_upsert if e.kind != EdgeType.CALLS
-            ]
-            batch.edges_to_upsert.extend(global_call_edges)
+        global_call_edges = await _resolve_global_call_edges(root, batch)
     except Exception as e:
         append_index_error(batch.errors, path=root, phase="calls_global", error=e)
+    else:
+        if global_call_edges:
+            python_call_source_ids = _python_call_source_ids(batch.nodes_to_upsert)
+            batch.edges_to_upsert = [
+                e
+                for e in batch.edges_to_upsert
+                if not (
+                    e.kind == EdgeType.CALLS and e.from_id in python_call_source_ids
+                )
+            ]
+            batch.edges_to_upsert.extend(global_call_edges)
 
     # Extract static summaries for all nodes (no LLM calls)
     try:
@@ -468,22 +551,13 @@ async def index_repo(
 
     await _persist_batch(graph, root, batch)
 
-    code_nodes = _collect_code_nodes_for_linking(batch)
-    if code_nodes:
-        doc_nodes = merge_nodes_by_id(
-            _collect_doc_nodes_for_linking(batch),
-            await get_doc_nodes_for_linking(graph),
-        )
-        if doc_nodes:
-            try:
-                await SemanticLinker().link(code_nodes, doc_nodes, graph)
-            except Exception as e:
-                link_path = (
-                    str(docs_path)
-                    if docs_path is not None
-                    else (jira.project_key if jira is not None else root)
-                )
-                append_index_error(batch.errors, path=link_path, phase="link", error=e)
+    await _link_code_nodes(
+        graph,
+        batch,
+        root=root,
+        docs_path=docs_path,
+        jira=jira,
+    )
 
     node_count, edge_count = await _query_graph_counts(graph, root, batch.errors)
 
