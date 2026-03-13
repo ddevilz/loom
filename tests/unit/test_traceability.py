@@ -22,6 +22,15 @@ class _FakeGraph:
 
     async def query(self, cypher: str, params=None):
         self.calls.append((cypher, params))
+        if params and "sprint_name" in params:
+            sprint_name = params["sprint_name"]
+            return [
+                row
+                for row in self.rows
+                if isinstance(row, dict)
+                and row.get("metadata")
+                in ({"sprint": sprint_name}, f'{{"sprint": "{sprint_name}"}}')
+            ]
         return self.rows
 
 

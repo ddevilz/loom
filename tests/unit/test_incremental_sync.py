@@ -27,7 +27,7 @@ class FakeGraph:
     async def query(
         self, cypher: str, params: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        q = cypher.strip()
+        q = " ".join(cypher.split())
 
         if q == "MATCH (n {path: $path}) RETURN properties(n) AS props":
             assert params is not None
@@ -49,7 +49,7 @@ class FakeGraph:
 
         if (
             q
-            == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nRETURN count(r) AS c"
+            == "MATCH (n {id: $id})-[r]->() WHERE r.origin = 'human' RETURN count(r) AS c"
         ):
             assert params is not None
             return [
@@ -58,7 +58,7 @@ class FakeGraph:
 
         if (
             q
-            == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nRETURN count(r) AS c"
+            == "MATCH ()-[r]->(n {id: $id}) WHERE r.origin = 'human' RETURN count(r) AS c"
         ):
             assert params is not None
             return [
@@ -67,13 +67,13 @@ class FakeGraph:
 
         if (
             q
-            == "MATCH (n {id: $id})-[r]->()\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason"
+            == "MATCH (n {id: $id})-[r]->() WHERE r.origin = 'human' SET r.stale = true, r.stale_reason = $reason"
         ):
             return []
 
         if (
             q
-            == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = $reason"
+            == "MATCH ()-[r]->(n {id: $id}) WHERE r.origin = 'human' SET r.stale = true, r.stale_reason = $reason"
         ):
             return []
 
@@ -98,26 +98,26 @@ class FakeGraph:
 
         if (
             q
-            == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin IS NULL OR r.origin <> 'human'\nDELETE r"
+            == "MATCH ()-[r]->(a {path: $path}) WHERE r.origin IS NULL OR r.origin <> 'human' DELETE r"
         ):
             return []
 
         if (
             q
-            == "MATCH ()-[r]->(a {path: $path})\nWHERE r.origin = 'human'\nSET r.stale = true,\n    r.stale_reason = 'source_changed'"
+            == "MATCH ()-[r]->(a {path: $path}) WHERE r.origin = 'human' SET r.stale = true, r.stale_reason = 'source_changed'"
         ):
             return []
 
         if (
             q
-            == "MATCH (a {path: $path})-[r]->(b)\nWHERE r.origin = 'human'\nRETURN a.id AS from_id, b.id AS to_id, type(r) AS rel_type, properties(r) AS props"
+            == "MATCH (a {path: $path})-[r]->(b) WHERE r.origin = 'human' RETURN a.id AS from_id, b.id AS to_id, type(r) AS rel_type, properties(r) AS props"
         ):
             assert params is not None
             return self.outgoing_human_edges_by_path.get(params["path"], [])
 
         if (
             q
-            == "MATCH (a)-[r]->(b {path: $path})\nWHERE r.origin = 'human'\nRETURN a.id AS from_id, b.id AS to_id, type(r) AS rel_type, properties(r) AS props"
+            == "MATCH (a)-[r]->(b {path: $path}) WHERE r.origin = 'human' RETURN a.id AS from_id, b.id AS to_id, type(r) AS rel_type, properties(r) AS props"
         ):
             assert params is not None
             return self.incoming_human_edges_by_path.get(params["path"], [])
@@ -139,6 +139,15 @@ class FakeGraph:
             return [
                 {"id": doc_id} for doc_id in self.implements_by_node_id.get(node_id, [])
             ]
+
+        if (
+            q
+            == "MATCH (n {id: $id})-[r]-() WHERE r.origin = 'human' RETURN count(r) AS c"
+        ):
+            assert params is not None
+            out_c = self.outgoing_human_edge_count_by_node_id.get(params["id"], 0)
+            in_c = self.incoming_human_edge_count_by_node_id.get(params["id"], 0)
+            return [{"c": out_c + in_c}]
 
         if q == "MATCH (n) RETURN count(n) AS c":
             return [{"c": len(self.nodes)}]

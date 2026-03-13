@@ -36,15 +36,7 @@ async def _flag_changed_loom_edges(graph: LoomGraph | _Graph, *, path: str) -> N
     loom_impl_rel = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
     await graph.query(
         f"""
-MATCH (n {{path: $path}})-[r:{loom_impl_rel}]->()
-SET r.stale = true,
-    r.stale_reason = 'source_changed'
-""",
-        {"path": path},
-    )
-    await graph.query(
-        f"""
-MATCH ()-[r:{loom_impl_rel}]->(n {{path: $path}})
+MATCH (n {{path: $path}})-[r:{loom_impl_rel}]-()
 SET r.stale = true,
     r.stale_reason = 'source_changed'
 """,
@@ -85,14 +77,14 @@ async def watch_repo(
             await _flag_changed_loom_edges(graph, path=path)
             await invalidate_edges_for_file(graph, path=path)
             ids = await get_node_ids_by_path(graph, path=path)
-            preserved: list[str] = []
+            preserved: set[str] = set()
             for node_id in ids:
                 if await node_has_human_edges(graph, node_id=node_id):
-                    preserved.append(node_id)
+                    preserved.add(node_id)
                     await mark_human_edges_stale_for_node(
                         graph, node_id=node_id, reason="file_deleted"
                     )
-            deletable = [node_id for node_id in ids if node_id not in set(preserved)]
+            deletable = [node_id for node_id in ids if node_id not in preserved]
             await delete_nodes_by_ids(graph, deletable)
 
         if changed_paths - deleted_paths:

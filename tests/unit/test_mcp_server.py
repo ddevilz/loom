@@ -12,8 +12,11 @@ from loom.mcp.server import (
 
 
 def test_build_server_returns_instance_when_fastmcp_available() -> None:
+    class _StubGraph:
+        pass
+
     try:
-        server = build_server("loom")
+        server = build_server("loom", graph=_StubGraph())
     except RuntimeError:
         return
     assert server is not None
@@ -143,10 +146,6 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
 
             return _register
 
-    monkeypatch.setattr("loom.mcp.server.FastMCP", _FakeFastMCP)
-    build_server("loom")
-    tool = registered_tools["check_drift"]
-
     class _FakeGraph:
         def __init__(self) -> None:
             self.queries: list[tuple[str, dict[str, Any] | None]] = []
@@ -167,7 +166,9 @@ def test_check_drift_queries_loom_violates_relationship_type(monkeypatch) -> Non
             return []
 
     fake_graph = _FakeGraph()
-    monkeypatch.setattr("loom.mcp.server.LoomGraph", lambda graph_name: fake_graph)
+    monkeypatch.setattr("loom.mcp.server.FastMCP", _FakeFastMCP)
+    build_server("loom", graph=fake_graph)
+    tool = registered_tools["check_drift"]
 
     import asyncio
 

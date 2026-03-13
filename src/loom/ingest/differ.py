@@ -28,13 +28,23 @@ def diff_nodes(old: list[Node], new: list[Node]) -> NodeDiff:
             deleted.append(o)
             continue
         if (
-            o.content_hash is None
-            or n.content_hash is None
-            or o.content_hash != n.content_hash
+            isinstance(o.content_hash, str)
+            and isinstance(n.content_hash, str)
+            and o.content_hash == n.content_hash
         ):
-            changed.append((o, n))
-        else:
             unchanged.append(n)
+            continue
+        if (
+            o.content_hash is None
+            and n.content_hash is None
+            and o.kind == n.kind
+            and o.path == n.path
+            and o.start_line == n.start_line
+            and o.end_line == n.end_line
+        ):
+            unchanged.append(n)
+            continue
+        changed.append((o, n))
 
     for node_id, n in new_by_id.items():
         if node_id not in old_by_id:

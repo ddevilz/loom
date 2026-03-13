@@ -10,6 +10,18 @@ from tree_sitter_python import language as python_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
+from loom.ingest.code.languages._ts_utils import (
+    get_name as _get_name,
+)
+from loom.ingest.code.languages._ts_utils import (
+    lines as _lines,
+)
+from loom.ingest.code.languages._ts_utils import (
+    node_text as _node_text,
+)
+from loom.ingest.code.languages._ts_utils import (
+    split_params as _split_params,
+)
 from loom.ingest.code.languages.constants import (
     DEC_ACTION,
     DEC_API_VIEW,
@@ -98,24 +110,6 @@ def _is_test_path(path: str) -> bool:
     return "tests" in parts or "test" in parts
 
 
-def _node_text(src: bytes, n: TSNode) -> str:
-    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
-
-
-def _get_name(src: bytes, n: TSNode) -> str | None:
-    name_node = n.child_by_field_name("name")
-    if name_node is None:
-        return None
-    return _node_text(src, name_node)
-
-
-def _lines(n: TSNode) -> tuple[int, int]:
-    # tree-sitter rows are 0-indexed; convert to 1-indexed inclusive
-    start_line = n.start_point[0] + 1
-    end_line = n.end_point[0] + 1
-    return start_line, end_line
-
-
 def _is_async_function(src: bytes, n: TSNode) -> bool:
     """Check if a function is async."""
     # Check for 'async' keyword before 'def'
@@ -123,13 +117,6 @@ def _is_async_function(src: bytes, n: TSNode) -> bool:
         if child.type == "async":
             return True
     return False
-
-
-def _split_params(text: str) -> list[str]:
-    raw = text.strip()
-    if raw.startswith("(") and raw.endswith(")"):
-        raw = raw[1:-1]
-    return [part.strip() for part in raw.split(",") if part.strip()]
 
 
 def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict[str, Any]:
@@ -267,10 +254,8 @@ def _extract_from_def(
         start_line, end_line = _lines(n)
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
         parent_id = ctx.parent_id(path)
-        if kind == NodeKind.METHOD:
+        if kind == NodeKind.METHOD or ctx.func_stack:
             symbol = ctx.qualname(name)
-        elif ctx.func_stack:
-            symbol = ".".join(ctx.func_stack + (name,))
         else:
             symbol = name
         meta: dict[str, Any] = {}

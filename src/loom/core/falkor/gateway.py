@@ -2,13 +2,28 @@ from __future__ import annotations
 
 import threading
 from typing import Any
+from urllib.parse import urlparse
 
 from falkordb import FalkorDB
 
-from loom.config import LOOM_DB_HOST, LOOM_DB_PORT
+from loom.config import LOOM_DB_HOST, LOOM_DB_PORT, LOOM_DB_URL
 
 _DB_SINGLETON: FalkorDB | None = None
 _DB_SINGLETON_LOCK = threading.Lock()
+
+
+def _falkordb_connect_kwargs() -> dict[str, Any]:
+    parsed = urlparse(LOOM_DB_URL)
+    if parsed.hostname is None or parsed.scheme not in ("redis", "rediss", ""):
+        return {"host": LOOM_DB_HOST, "port": LOOM_DB_PORT}
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    return {
+        "host": parsed.hostname,
+        "port": LOOM_DB_PORT if port is None else port,
+    }
 
 
 def get_falkordb_singleton() -> FalkorDB:
@@ -27,7 +42,7 @@ def get_falkordb_singleton() -> FalkorDB:
     with _DB_SINGLETON_LOCK:
         # Double-check after acquiring lock
         if _DB_SINGLETON is None:
-            _DB_SINGLETON = FalkorDB(host=LOOM_DB_HOST, port=LOOM_DB_PORT)
+            _DB_SINGLETON = FalkorDB(**_falkordb_connect_kwargs())
         return _DB_SINGLETON
 
 
@@ -43,12 +58,14 @@ class FalkorGateway:
     def reconnect(self) -> None:
         """Reconnect to FalkorDB by resetting singleton and reconnecting.
 
-        Thread-safe: acquires lock before resetting singleton.
+        Thread-safe: acquires lock before resetting singleton and keeps it during reconnect.
         """
         global _DB_SINGLETON
         with _DB_SINGLETON_LOCK:
             _DB_SINGLETON = None
-        self._connect()
+            self._db = FalkorDB(**_falkordb_connect_kwargs())
+            _DB_SINGLETON = self._db
+            self._graph = self._db.select_graph(self.graph_name)
 
     def run(
         self,

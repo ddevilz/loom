@@ -43,6 +43,7 @@ class CallTracer(Protocol):
 
 @dataclass(frozen=True)
 class LanguageHandler:
+    language: str
     parser: LanguageParser
     call_tracer: CallTracer | None = None
     call_tracer_error_message: str | None = None
@@ -117,12 +118,14 @@ class LanguageRegistry:
     def register(
         self,
         extension: str,
+        language: str,
         parser: LanguageParser,
         *,
         call_tracer: CallTracer | None = None,
         call_tracer_error_message: str | None = None,
     ) -> None:
         self._handlers[extension.lower()] = LanguageHandler(
+            language=language,
             parser=parser,
             call_tracer=call_tracer,
             call_tracer_error_message=call_tracer_error_message,
@@ -133,12 +136,19 @@ class LanguageRegistry:
 
     def get_extension_for_path(self, path: str) -> str:
         p = Path(path)
-        if p.name.startswith(".env"):
+        if p.name == ".env" or p.name.startswith(".env."):
             return EXT_ENV
         return p.suffix.lower()
 
     def get_handler_for_path(self, path: str) -> LanguageHandler | None:
         return self.get_handler(self.get_extension_for_path(path))
+
+    def get_language(self, extension: str) -> str | None:
+        handler = self.get_handler(extension)
+        return handler.language if handler is not None else None
+
+    def get_language_for_path(self, path: str) -> str | None:
+        return self.get_language(self.get_extension_for_path(path))
 
     def get_parser(self, extension: str) -> LanguageParser | None:
         handler = self.get_handler(extension)
@@ -213,61 +223,64 @@ def _register_defaults(reg: LanguageRegistry) -> None:
     # Code languages
     reg.register(
         EXT_PY,
+        "python",
         parse_python,
         call_tracer=trace_calls_for_file,
         call_tracer_error_message="python call tracing failed",
     )
     reg.register(
         EXT_PYW,
+        "python",
         parse_python,
         call_tracer=trace_calls_for_file,
         call_tracer_error_message="python call tracing failed",
     )
     reg.register(
         EXT_TS,
+        "typescript",
         parse_typescript,
         call_tracer=trace_calls_for_ts_file,
         call_tracer_error_message="typescript call tracing failed",
     )
     reg.register(
         EXT_TSX,
+        "tsx",
         parse_typescript,
         call_tracer=trace_calls_for_ts_file,
         call_tracer_error_message="typescript call tracing failed",
     )
     reg.register(
         EXT_JS,
+        "javascript",
         parse_javascript,
-        call_tracer=trace_calls_for_ts_file,
-        call_tracer_error_message="javascript call tracing failed",
     )
     reg.register(
         EXT_JSX,
+        "javascript",
         parse_javascript,
-        call_tracer=trace_calls_for_ts_file,
-        call_tracer_error_message="javascript call tracing failed",
     )
-    reg.register(EXT_GO, parse_go)
+    reg.register(EXT_GO, "go", parse_go)
     reg.register(
         EXT_JAVA,
+        "java",
         parse_java,
         call_tracer=trace_calls_for_java_file,
         call_tracer_error_message="java call tracing failed",
     )
-    reg.register(EXT_RS, parse_rust)
-    reg.register(EXT_RB, parse_ruby)
+    reg.register(EXT_RS, "rust", parse_rust)
+    reg.register(EXT_RB, "ruby", parse_ruby)
 
     # Markup & config files (parsed as FILE nodes with metadata)
-    reg.register(EXT_HTML, parse_html)
-    reg.register(EXT_HTM, parse_html)
-    reg.register(EXT_XML, parse_xml)
-    reg.register(EXT_CXML, parse_xml)
-    reg.register(EXT_JSON, parse_json)
-    reg.register(EXT_CSS, parse_css)
-    reg.register(EXT_YAML, parse_yaml)
-    reg.register(EXT_YML, parse_yaml)
+    reg.register(EXT_HTML, "html", parse_html)
+    reg.register(EXT_HTM, "html", parse_html)
+    reg.register(EXT_XML, "xml", parse_xml)
+    reg.register(EXT_CXML, "xml", parse_xml)
+    reg.register(EXT_JSON, "json", parse_json)
+    reg.register(EXT_CSS, "css", parse_css)
+    reg.register(EXT_YAML, "yaml", parse_yaml)
+    reg.register(EXT_YML, "yaml", parse_yaml)
 
-    reg.register(EXT_PROPERTIES, parse_properties)
-    reg.register(EXT_TOML, parse_toml)
-    reg.register(EXT_INI, parse_ini)
-    reg.register(EXT_ENV, parse_env)
+    reg.register(EXT_PROPERTIES, "properties", parse_properties)
+    reg.register(EXT_TOML, "toml", parse_toml)
+    reg.register(EXT_INI, "ini", parse_ini)
+    reg.register(EXT_ENV, "env", parse_env)

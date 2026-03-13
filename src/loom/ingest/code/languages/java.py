@@ -9,6 +9,18 @@ from tree_sitter_java import language as java_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
+from loom.ingest.code.languages._ts_utils import (
+    get_name as _get_name,
+)
+from loom.ingest.code.languages._ts_utils import (
+    lines as _lines,
+)
+from loom.ingest.code.languages._ts_utils import (
+    node_text as _node_text,
+)
+from loom.ingest.code.languages._ts_utils import (
+    split_params as _split_params,
+)
 from loom.ingest.code.languages.constants import (
     LANG_JAVA,
     TS_JAVA_ANNOTATION,
@@ -44,17 +56,6 @@ class _Context:
             parts.append(".".join(self.class_stack))
         parts.append(name)
         return ".".join(parts)
-
-
-def _node_text(src: bytes, n: TSNode) -> str:
-    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
-
-
-def _get_name(src: bytes, n: TSNode) -> str | None:
-    name_node = n.child_by_field_name("name")
-    if name_node is None:
-        return None
-    return _node_text(src, name_node)
 
 
 def _extract_annotations(src: bytes, n: TSNode) -> list[str]:
@@ -129,13 +130,6 @@ def _extract_type_parameters(src: bytes, n: TSNode) -> str | None:
     return None
 
 
-def _split_params(text: str) -> list[str]:
-    raw = text.strip()
-    if raw.startswith("(") and raw.endswith(")"):
-        raw = raw[1:-1]
-    return [part.strip() for part in raw.split(",") if part.strip()]
-
-
 def _method_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
     params_node = n.child_by_field_name("parameters")
     return_node = n.child_by_field_name("type")
@@ -159,24 +153,15 @@ def _method_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
 def _count_lambdas_and_refs(src: bytes, n: TSNode) -> dict[str, int]:
     """Count lambda expressions and method references in a node tree."""
     counts = {"lambda_count": 0, "method_ref_count": 0}
-
-    def _count_recursive(node: TSNode):
+    stack = [n]
+    while stack:
+        node = stack.pop()
         if node.type == TS_JAVA_LAMBDA_EXPRESSION:
             counts["lambda_count"] += 1
         elif node.type == TS_JAVA_METHOD_REFERENCE:
             counts["method_ref_count"] += 1
-
-        for child in node.children:
-            _count_recursive(child)
-
-    _count_recursive(n)
+        stack.extend(reversed(node.children))
     return counts
-
-
-def _lines(n: TSNode) -> tuple[int, int]:
-    start_line = n.start_point[0] + 1
-    end_line = n.end_point[0] + 1
-    return start_line, end_line
 
 
 def _extract_from_def(

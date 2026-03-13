@@ -193,6 +193,8 @@ def trace_calls_for_file_with_global_symbols(
     all_edges: list[Edge] = []
     for node in nodes:
         if node.kind.value in {"function", "method"}:
+            if node.start_line is None:
+                continue
             func_body = _find_function_body(
                 src, tree.root_node, node.name, node.start_line
             )

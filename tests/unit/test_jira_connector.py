@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from loom.core import NodeKind
@@ -53,3 +55,47 @@ def test_build_jql_uses_incremental_sync_clause() -> None:
     jql = _build_jql(cfg)
     assert "project = PROJ" in jql
     assert "updated >=" in jql
+
+
+def test_fetch_search_results_paginates(monkeypatch) -> None:
+    from loom.ingest.integrations.jira import _fetch_search_results
+
+    cfg = JiraConfig(
+        base_url="https://jira.example.com",
+        email="a@b.com",
+        api_token="tok",
+        project_key="PROJ",
+    )
+
+    responses = [
+        {
+            "issues": [{"key": "PROJ-1", "fields": {"status": {"name": "Done"}}}],
+            "total": 2,
+        },
+        {
+            "issues": [{"key": "PROJ-2", "fields": {"status": {"name": "Done"}}}],
+            "total": 2,
+        },
+    ]
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def read(self):
+            return json.dumps(self._payload).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _urlopen(req, timeout=30):
+        return _Resp(responses.pop(0))
+
+    monkeypatch.setattr("loom.ingest.integrations.jira.urlopen", _urlopen)
+
+    issues = _fetch_search_results(cfg)
+
+    assert [issue["key"] for issue in issues] == ["PROJ-1", "PROJ-2"]

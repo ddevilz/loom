@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -335,6 +336,21 @@ def parse_yaml(path: str, *, exclude_tests: bool = False) -> list[Node]:
     return [node]
 
 
+def _parse_kv_file(content: str, *, skip_bang_comments: bool = False) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in content.split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if skip_bang_comments and line.startswith("!"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
 def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from Java .properties files: keys, Spring profiles, database config."""
     p = Path(path)
@@ -343,14 +359,7 @@ def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     meta: dict[str, Any] = {}
 
-    # Parse properties (key=value format, ignore comments)
-    properties = {}
-    for line in content.split("\n"):
-        line = line.strip()
-        if line and not line.startswith("#") and not line.startswith("!"):
-            if "=" in line:
-                key, _, value = line.partition("=")
-                properties[key.strip()] = value.strip()
+    properties = _parse_kv_file(content, skip_bang_comments=True)
 
     if properties:
         meta[META_PROPERTY_COUNT] = len(properties)
@@ -374,7 +383,9 @@ def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
         # Detect sensitive keys
         sensitive_patterns = ["password", "secret", "key", "token", "credential"]
         sensitive = [
-            k for k in properties if any(p in k.lower() for p in sensitive_patterns)
+            k
+            for k in properties
+            if any(pattern in k.lower() for pattern in sensitive_patterns)
         ]
         if sensitive:
             meta[META_SENSITIVE_KEYS] = sensitive[:10]
@@ -400,14 +411,7 @@ def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     meta: dict[str, Any] = {}
 
-    # Parse environment variables (KEY=value format, ignore comments)
-    variables = {}
-    for line in content.split("\n"):
-        line = line.strip()
-        if line and not line.startswith("#"):
-            if "=" in line:
-                key, _, value = line.partition("=")
-                variables[key.strip()] = value.strip()
+    variables = _parse_kv_file(content)
 
     if variables:
         meta[META_VARIABLE_COUNT] = len(variables)
@@ -424,7 +428,9 @@ def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
             "private",
         ]
         sensitive = [
-            k for k in variables if any(p in k.lower() for p in sensitive_patterns)
+            k
+            for k in variables
+            if any(pattern in k.lower() for pattern in sensitive_patterns)
         ]
         if sensitive:
             meta[META_SENSITIVE_KEYS] = sensitive[:10]
@@ -453,48 +459,92 @@ def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from TOML files: dependencies, project info."""
     p = Path(path)
     src = p.read_bytes()
-    content = src.decode("utf-8", errors="replace")
 
     meta: dict[str, Any] = {}
+    dependencies: list[str] = []
+    dev_dependencies: list[str] = []
 
-    # Simple TOML parsing (extract sections and key-value pairs)
-    # This is a basic implementation - for production, use tomli library
-    current_section = None
-    dependencies = []
-    dev_dependencies = []
+    try:
+        data = tomllib.loads(src.decode("utf-8", errors="replace"))
+    except Exception as e:
+        meta[META_PARSE_ERROR] = str(e)
+        node = Node(
+            id=f"{NodeKind.FILE.value}:{str(p.resolve().as_posix())}",
+            kind=NodeKind.FILE,
+            source=NodeSource.CODE,
+            name=p.name,
+            path=str(p.resolve().as_posix()),
+            content_hash=content_hash_bytes(src),
+            metadata=meta,
+        )
+        return [node]
 
-    for line in content.split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
+    project = data.get("project")
+    if isinstance(project, dict):
+        name = project.get("name")
+        version = project.get("version")
+        if isinstance(name, str) and name:
+            meta[META_PROJECT_NAME] = name
+        if isinstance(version, str) and version:
+            meta[META_PROJECT_VERSION] = version
+        project_dependencies = project.get("dependencies")
+        if isinstance(project_dependencies, list):
+            dependencies.extend(
+                dep.split()[0]
+                for dep in project_dependencies
+                if isinstance(dep, str) and dep.strip()
+            )
 
-        # Section headers
-        if line.startswith("[") and line.endswith("]"):
-            current_section = line[1:-1]
-        # Key-value pairs
-        elif "=" in line:
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip().strip("\"'")
+    tool = data.get("tool")
+    if isinstance(tool, dict):
+        poetry = tool.get("poetry")
+        if isinstance(poetry, dict):
+            name = poetry.get("name")
+            version = poetry.get("version")
+            if isinstance(name, str) and name and META_PROJECT_NAME not in meta:
+                meta[META_PROJECT_NAME] = name
+            if (
+                isinstance(version, str)
+                and version
+                and META_PROJECT_VERSION not in meta
+            ):
+                meta[META_PROJECT_VERSION] = version
 
-            # Extract project metadata
-            if current_section == "project" or current_section == "tool.poetry":
-                if key == "name":
-                    meta[META_PROJECT_NAME] = value
-                elif key == "version":
-                    meta[META_PROJECT_VERSION] = value
+            poetry_dependencies = poetry.get("dependencies")
+            if isinstance(poetry_dependencies, dict):
+                dependencies.extend(
+                    key
+                    for key in poetry_dependencies
+                    if isinstance(key, str) and key != "python"
+                )
 
-            # Extract dependencies
-            if "dependencies" in (current_section or ""):
-                if "dev" in current_section:
-                    dev_dependencies.append(key)
-                else:
-                    dependencies.append(key)
+            poetry_group = poetry.get("group")
+            if isinstance(poetry_group, dict):
+                for group in poetry_group.values():
+                    if not isinstance(group, dict):
+                        continue
+                    group_dependencies = group.get("dependencies")
+                    if isinstance(group_dependencies, dict):
+                        dev_dependencies.extend(
+                            key for key in group_dependencies if isinstance(key, str)
+                        )
+
+        pdm = tool.get("pdm")
+        if isinstance(pdm, dict):
+            dev_deps = pdm.get("dev-dependencies")
+            if isinstance(dev_deps, dict):
+                for dep_group in dev_deps.values():
+                    if isinstance(dep_group, list):
+                        dev_dependencies.extend(
+                            dep.split()[0]
+                            for dep in dep_group
+                            if isinstance(dep, str) and dep.strip()
+                        )
 
     if dependencies:
-        meta[META_DEPENDENCIES] = dependencies[:50]
+        meta[META_DEPENDENCIES] = list(dict.fromkeys(dependencies))[:50]
     if dev_dependencies:
-        meta[META_DEV_DEPENDENCIES] = dev_dependencies[:50]
+        meta[META_DEV_DEPENDENCIES] = list(dict.fromkeys(dev_dependencies))[:50]
 
     # Detect file type
     if "pyproject.toml" in p.name:

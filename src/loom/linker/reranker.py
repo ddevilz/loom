@@ -12,6 +12,8 @@ except Exception:  # pragma: no cover
 
 
 class PairReranker(Protocol):
+    def rerank_batch(self, pairs: list[tuple[Node, Node]]) -> list[float]: ...
+
     def rerank(self, code_node: Node, doc_node: Node) -> float: ...
 
 
@@ -25,10 +27,17 @@ class CrossEncoderReranker:
         self._model = CrossEncoder(self.model_name)
 
     def rerank(self, code_node: Node, doc_node: Node) -> float:
-        code_text = code_node.summary or code_node.name
-        doc_text = doc_node.summary or doc_node.name
-        score = self._model.predict([(code_text, doc_text)])[0]
-        return float(score)
+        return self.rerank_batch([(code_node, doc_node)])[0]
+
+    def rerank_batch(self, pairs: list[tuple[Node, Node]]) -> list[float]:
+        if not pairs:
+            return []
+        texts = [
+            (code_node.summary or code_node.name, doc_node.summary or doc_node.name)
+            for code_node, doc_node in pairs
+        ]
+        scores = self._model.predict(texts)
+        return [float(score) for score in scores]
 
 
 def rerank_edges(
@@ -42,13 +51,25 @@ def rerank_edges(
     code_by_id = {node.id: node for node in code_nodes}
     doc_by_id = {node.id: node for node in doc_nodes}
 
-    reranked: list[Edge] = []
+    scored_candidates: list[tuple[Edge, Node, Node]] = []
     for edge in edges:
         code = code_by_id.get(edge.from_id)
         doc = doc_by_id.get(edge.to_id)
         if code is None or doc is None:
             continue
-        score = reranker.rerank(code, doc)
+        scored_candidates.append((edge, code, doc))
+
+    if not scored_candidates:
+        return []
+
+    pairs = [(code, doc) for _, code, doc in scored_candidates]
+    if hasattr(reranker, "rerank_batch"):
+        scores = reranker.rerank_batch(pairs)
+    else:
+        scores = [reranker.rerank(code, doc) for code, doc in pairs]
+
+    reranked: list[Edge] = []
+    for (edge, _, _), score in zip(scored_candidates, scores, strict=True):
         if score < threshold:
             continue
         reranked.append(

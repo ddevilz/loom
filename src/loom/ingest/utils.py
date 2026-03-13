@@ -80,25 +80,15 @@ async def get_node_ids_by_path(graph: EdgeInvalidationGraph, *, path: str) -> li
 
 
 async def node_has_human_edges(graph: EdgeInvalidationGraph, *, node_id: str) -> bool:
-    outgoing_rows = await graph.query(
+    rows = await graph.query(
         """
-MATCH (n {id: $id})-[r]->()
+MATCH (n {id: $id})-[r]-()
 WHERE r.origin = 'human'
 RETURN count(r) AS c
 """,
         {"id": node_id},
     )
-    incoming_rows = await graph.query(
-        """
-MATCH ()-[r]->(n {id: $id})
-WHERE r.origin = 'human'
-RETURN count(r) AS c
-""",
-        {"id": node_id},
-    )
-    return (bool(outgoing_rows) and int(outgoing_rows[0].get("c", 0)) > 0) or (
-        bool(incoming_rows) and int(incoming_rows[0].get("c", 0)) > 0
-    )
+    return bool(rows) and int(rows[0].get("c", 0)) > 0
 
 
 async def mark_human_edges_stale_for_node(

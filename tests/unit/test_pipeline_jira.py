@@ -48,11 +48,11 @@ class _FakeSemanticLinker:
 @pytest.mark.asyncio
 async def test_index_repo_with_jira_adds_jira_nodes(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr("loom.ingest.pipeline._collect_repo_files", lambda root: [])
-    monkeypatch.setattr(
-        "loom.ingest.pipeline.fetch_jira_nodes",
-        lambda cfg: [
+
+    async def _fake_fetch_jira_nodes(cfg):
+        return [
             Node(
-                id="doc:jira:PROJ-1",
+                id="doc:jira://PROJ/PROJ-1:root",
                 kind=NodeKind.DOCUMENT,
                 source=NodeSource.DOC,
                 name="PROJ-1",
@@ -60,7 +60,11 @@ async def test_index_repo_with_jira_adds_jira_nodes(monkeypatch, tmp_path) -> No
                 summary="req",
                 metadata={},
             )
-        ],
+        ]
+
+    monkeypatch.setattr(
+        "loom.ingest.pipeline.fetch_jira_nodes",
+        _fake_fetch_jira_nodes,
     )
     linker = _FakeSemanticLinker()
     monkeypatch.setattr("loom.ingest.pipeline.SemanticLinker", lambda: linker)

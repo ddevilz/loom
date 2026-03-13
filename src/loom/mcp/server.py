@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
+from loom.core import EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_metadata_value, row_to_node
 from loom.query.traceability import (
@@ -12,6 +12,7 @@ from loom.search.searcher import search
 
 _CALLS_REL = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
 _LOOM_IMPL_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
+_VIOLATES_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)
 
 try:
     from fastmcp import FastMCP
@@ -27,16 +28,6 @@ def _row_to_code_node(row: dict[str, object]) -> Node | None:
         require_str_id=True,
         require_valid_kind=True,
         summary_must_be_str=True,
-    )
-
-
-def _row_to_edge(row: dict[str, object]) -> Edge | None:
-    from_id = row.get("from_id")
-    to_id = row.get("to_id")
-    if not isinstance(from_id, str) or not isinstance(to_id, str):
-        return None
-    return Edge(
-        from_id=from_id, to_id=to_id, kind=EdgeType.LOOM_IMPLEMENTS, metadata={}
     )
 
 
@@ -83,16 +74,23 @@ def _row_to_ast_drift(row: dict[str, object]) -> dict[str, object] | None:
     return {"node_id": node_id, "reasons": normalized_reasons}
 
 
-def build_server(graph_name: str = "loom"):
+def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
     if FastMCP is None:
         raise RuntimeError("fastmcp is not available")
 
     mcp = FastMCP("loom")
+    if graph is None:
+        graph = LoomGraph(graph_name=graph_name)
+
+    def _clamp_limit(limit: int) -> int:
+        return max(1, min(limit, 100))
+
+    def _clamp_depth(depth: int) -> int:
+        return max(1, min(depth, 10))
 
     @mcp.tool()
     async def search_code(query: str, limit: int = 10) -> list[dict[str, object]]:
-        graph = LoomGraph(graph_name=graph_name)
-        results = await search(query, graph, limit=limit)
+        results = await search(query, graph, limit=_clamp_limit(limit))
         return [
             {
                 "id": r.node.id,
@@ -105,7 +103,6 @@ def build_server(graph_name: str = "loom"):
 
     @mcp.tool()
     async def get_callers(node_id: str) -> list[dict[str, object]]:
-        graph = LoomGraph(graph_name=graph_name)
         rows = await graph.query(
             f"MATCH (a)-[r:{_CALLS_REL}]->(b {{id: $id}}) RETURN a.id AS id, a.name AS name, a.path AS path, r.confidence AS confidence",
             {"id": node_id},
@@ -114,16 +111,13 @@ def build_server(graph_name: str = "loom"):
 
     @mcp.tool()
     async def get_spec(node_id: str) -> list[dict[str, object]]:
-        graph = LoomGraph(graph_name=graph_name)
         nodes = await tickets_for_function(node_id, graph)
         return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
 
     @mcp.tool()
     async def check_drift(node_id: str) -> dict[str, object]:
-        graph = LoomGraph(graph_name=graph_name)
-        _violates_rel = EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)
         drift_rows = await graph.query(
-            f"MATCH (f {{id: $id}})-[r:{_violates_rel}]->() "
+            f"MATCH (f {{id: $id}})-[r:{_VIOLATES_REL}]->() "
             "RETURN f.id AS node_id, r.link_method AS link_method, "
             "r.link_reason AS link_reason, r.metadata AS metadata",
             {"id": node_id},
@@ -134,14 +128,8 @@ def build_server(graph_name: str = "loom"):
             if row.get("link_method") == "ast_diff"
             and (report := _row_to_ast_drift(row)) is not None
         ]
-        semantic_violations = [
-            report
-            for row in drift_rows
-            if row.get("link_method") != "ast_diff"
-            and (report := _row_to_ast_drift(row)) is not None
-        ]
 
-        return {"ast_drift": ast_drift, "semantic_violations": semantic_violations}
+        return {"ast_drift": ast_drift}
 
     @mcp.tool()
     async def get_blast_radius(node_id: str, depth: int = 3) -> list[dict[str, object]]:
@@ -151,8 +139,7 @@ def build_server(graph_name: str = "loom"):
         result is the true blast radius: every node that depends on this one.
         Results are ranked by Personalized PageRank on the CALLS subgraph.
         """
-        graph = LoomGraph(graph_name=graph_name)
-        nodes = await graph.blast_radius(node_id, depth=depth)
+        nodes = await graph.blast_radius(node_id, depth=_clamp_depth(depth))
         return [
             {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value}
             for n in nodes
@@ -160,13 +147,11 @@ def build_server(graph_name: str = "loom"):
 
     @mcp.tool()
     async def get_impact(ticket_id: str) -> list[dict[str, object]]:
-        graph = LoomGraph(graph_name=graph_name)
         nodes = await impact_of_ticket(ticket_id, graph)
         return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
 
     @mcp.tool()
     async def get_ticket(ticket_id: str) -> list[dict[str, object]]:
-        graph = LoomGraph(graph_name=graph_name)
         rows = await graph.query(
             "MATCH (t) WHERE (t.name = $ticket_id OR t.id = $ticket_id) AND t.path STARTS WITH 'jira://' "
             "RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
@@ -176,7 +161,6 @@ def build_server(graph_name: str = "loom"):
 
     @mcp.tool()
     async def unimplemented() -> list[dict[str, object]]:
-        graph = LoomGraph(graph_name=graph_name)
         nodes = await unimplemented_tickets(graph)
         return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
 

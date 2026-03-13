@@ -84,13 +84,14 @@ def _normalize_issue(issue: dict[str, Any], config: JiraConfig) -> Node:
     status = fields.get("status") or {}
     reporter = fields.get("reporter") or {}
 
+    node_path = f"jira://{config.project_key}/{key}"
     return Node(
-        id=f"doc:jira:{key}",
+        id=f"doc:{node_path}:root",
         kind=NodeKind.DOCUMENT,
         source=NodeSource.DOC,
         name=key,
         summary=combined,
-        path=f"jira://{config.project_key}/{key}",
+        path=node_path,
         metadata={
             "ticket_type": issuetype.get("name"),
             "status": status.get("name"),
@@ -112,26 +113,38 @@ def _normalize_issue(issue: dict[str, Any], config: JiraConfig) -> Node:
 
 def _fetch_search_results(config: JiraConfig) -> list[dict[str, Any]]:
     jql = _build_jql(config)
-    url = (
-        f"{config.base_url.rstrip('/')}/rest/api/3/search"
-        f"?jql={quote(jql)}&maxResults=100&fields=summary,description,issuetype,status,labels,created,reporter,epic,customfield_epic,customfield_sprint,sprint,sprint_name"
-    )
-    req = Request(
-        url,
-        headers={
-            "Authorization": _auth_header(config),
-            "Accept": "application/json",
-        },
-        method="GET",
-    )
-    # URL validation performed in JiraConfig.__post_init__
-    # User is responsible for configuring trusted Jira instances
-    with urlopen(req, timeout=30) as resp:  # nosec B310
-        data = json.loads(resp.read().decode("utf-8"))
-    issues = data.get("issues") or []
+    start_at = 0
+    max_results = 100
+    all_issues: list[dict[str, Any]] = []
+
+    while True:
+        url = (
+            f"{config.base_url.rstrip('/')}/rest/api/3/search"
+            f"?jql={quote(jql)}&startAt={start_at}&maxResults={max_results}"
+            "&fields=summary,description,issuetype,status,labels,created,reporter,epic,customfield_epic,customfield_sprint,sprint,sprint_name"
+        )
+        req = Request(
+            url,
+            headers={
+                "Authorization": _auth_header(config),
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+        with urlopen(req, timeout=30) as resp:  # nosec B310
+            data = json.loads(resp.read().decode("utf-8"))
+
+        issues = data.get("issues") or []
+        all_issues.extend(issues)
+
+        total = int(data.get("total", len(all_issues)) or 0)
+        start_at += len(issues)
+        if not issues or start_at >= total:
+            break
+
     return [
         issue
-        for issue in issues
+        for issue in all_issues
         if (issue.get("fields") or {}).get("status", {}).get("name") != "Won't Fix"
     ]
 

@@ -47,6 +47,7 @@ def make_section_node(
     depth: int,
     index: int,
     summary: str | None,
+    content_hash: str | None = None,
     kind: NodeKind = NodeKind.SECTION,
 ) -> Node:
     ref = f"{depth}_{index}_{_slug(heading)}"
@@ -56,6 +57,7 @@ def make_section_node(
         source=NodeSource.DOC,
         name=heading,
         path=doc_path,
+        content_hash=content_hash,
         depth=depth,
         parent_id=None,
         summary=summary,

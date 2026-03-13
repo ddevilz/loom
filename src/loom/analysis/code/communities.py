@@ -3,13 +3,28 @@ from __future__ import annotations
 import logging
 from collections import Counter
 
-import igraph as ig
-import leidenalg
-
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 
 logger = logging.getLogger(__name__)
+_COMMUNITY_STOPWORDS = frozenset(
+    {
+        "get",
+        "set",
+        "run",
+        "do",
+        "make",
+        "handle",
+        "process",
+        "create",
+        "update",
+        "delete",
+        "check",
+        "fetch",
+        "load",
+        "save",
+    }
+)
 
 
 def _generate_community_name(member_names: list[str]) -> str:
@@ -25,6 +40,12 @@ def _generate_community_name(member_names: list[str]) -> str:
     for name in member_names:
         words.extend(name.split("_"))
 
+    filtered_words = [
+        word for word in words if len(word) > 1 and word not in _COMMUNITY_STOPWORDS
+    ]
+    if filtered_words:
+        words = filtered_words
+
     if not words:
         return member_names[0][:20]
 
@@ -32,6 +53,17 @@ def _generate_community_name(member_names: list[str]) -> str:
     most_common = word_counts.most_common(1)[0][0]
 
     return most_common
+
+
+def _get_community_modules() -> tuple[object, object]:
+    try:
+        import igraph as ig
+        import leidenalg
+    except Exception as e:  # pragma: no cover
+        raise RuntimeError(
+            "Community detection requires optional dependencies 'igraph' and 'leidenalg'"
+        ) from e
+    return ig, leidenalg
 
 
 async def detect_communities(graph: LoomGraph) -> dict[str, str]:
@@ -49,6 +81,7 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
         - Updates function nodes with community_id property
     """
     logger.info("Starting community detection with Leiden algorithm")
+    ig, leidenalg = _get_community_modules()
 
     # Query all function/method nodes and CALLS/IMPORTS edges
     query = """

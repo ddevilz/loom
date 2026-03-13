@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from loom.core import Edge, Node, NodeKind
+from loom.core.content_hash import content_hash_bytes
 
 from .base import (
     make_child_of,
@@ -48,17 +49,18 @@ def parse_markdown(path: str) -> tuple[list[Node], list[Edge]]:
         headings.append((hashes, title, i))
 
     stack: list[tuple[int, str]] = [(0, doc.id)]
-    for idx, (depth, title, start_line) in enumerate(headings, start=1):
+    for i, (depth, title, start_line) in enumerate(headings):
         # capture body until next heading
-        end_line = headings[idx][2] if idx < len(headings) else len(lines)
+        end_line = headings[i + 1][2] if i + 1 < len(headings) else len(lines)
         body = "\n".join(lines[start_line + 1 : end_line]).strip() or None
 
         n = make_section_node(
             doc_path=str(p),
             heading=title,
             depth=depth,
-            index=idx,
+            index=i + 1,
             summary=body,
+            content_hash=content_hash_bytes(f"{title}\n{body or ''}".encode()),
             kind=_kind_for_depth(depth),
         )
         nodes.append(n)

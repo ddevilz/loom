@@ -40,11 +40,9 @@ class SemanticLinker:
         doc_nodes: list[Node],
         graph: _Graph,
     ) -> list[Edge]:
-        summarized_code = code_nodes
-
-        tier1 = link_by_name(summarized_code, doc_nodes, threshold=self.name_threshold)
+        tier1 = link_by_name(code_nodes, doc_nodes, threshold=self.name_threshold)
         tier2 = await link_by_embedding(
-            summarized_code,
+            code_nodes,
             doc_nodes,
             threshold=self.embedding_threshold,
             graph=graph,
@@ -52,7 +50,7 @@ class SemanticLinker:
         if self.reranker is not None and tier2:
             tier2 = rerank_edges(
                 tier2,
-                code_nodes=summarized_code,
+                code_nodes=code_nodes,
                 doc_nodes=doc_nodes,
                 reranker=self.reranker,
                 threshold=self.rerank_threshold,
@@ -62,7 +60,7 @@ class SemanticLinker:
         if self.llm_fallback:
             if self.match_llm is not None:
                 tier3 = await link_by_llm(
-                    summarized_code,
+                    code_nodes,
                     doc_nodes,
                     llm=self.match_llm,
                     threshold=self.llm_threshold,
