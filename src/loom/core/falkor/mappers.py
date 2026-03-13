@@ -8,6 +8,22 @@ from ..edge import Edge
 from ..node import Node, NodeKind, NodeSource
 
 
+def _parse_metadata(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _deserialize_props(props: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(props)
+    normalized["metadata"] = _parse_metadata(normalized.get("metadata"))
+    return normalized
+
+
 def serialize_node_props(node: Node) -> dict[str, Any]:
     props = {k: v for k, v in node.model_dump().items() if v is not None}
     # FalkorDB only allows primitive property values or arrays of primitives.
@@ -19,23 +35,11 @@ def serialize_node_props(node: Node) -> dict[str, Any]:
 
 
 def deserialize_node_props(props: dict[str, Any]) -> dict[str, Any]:
-    meta = props.get("metadata")
-    if isinstance(meta, str):
-        try:
-            props["metadata"] = json.loads(meta)
-        except Exception:
-            props["metadata"] = {}
-    return props
+    return _deserialize_props(props)
 
 
 def deserialize_edge_props(props: dict[str, Any]) -> dict[str, Any]:
-    meta = props.get("metadata")
-    if isinstance(meta, str):
-        try:
-            props["metadata"] = json.loads(meta)
-        except Exception:
-            props["metadata"] = {}
-    return props
+    return _deserialize_props(props)
 
 
 def serialize_edge_props(edge: Edge) -> dict[str, Any]:
@@ -49,12 +53,7 @@ def serialize_edge_props(edge: Edge) -> dict[str, Any]:
 
 
 def deserialize_metadata_value(metadata: Any) -> dict[str, Any]:
-    if isinstance(metadata, str):
-        try:
-            metadata = json.loads(metadata)
-        except Exception:
-            metadata = {}
-    return metadata if isinstance(metadata, dict) else {}
+    return _parse_metadata(metadata)
 
 
 def coerce_row_node_kind(

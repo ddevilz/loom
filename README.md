@@ -41,10 +41,10 @@ Loom gives you a persistent graph model of your system so those relationships ca
   - builds `CALLS` relationships for supported languages
 
 - **Document ingestion**
-  - ingests Markdown, PDF, and other document structures into document/section graphs
+  - ingests Markdown and PDF files into document/section graphs
 
 - **Jira and traceability workflows**
-  - links code to tickets and docs
+  - links code to Jira tickets and docs
   - supports queries like unimplemented tickets, impact, and coverage
 
 - **Semantic linking**
@@ -230,7 +230,7 @@ Once connected, MCP clients can use Loom tools such as:
 ```text
 src/loom/
 ├── core/                 # Node/edge models, graph facade, FalkorDB access
-├── ingest/               # repo parsing, docs ingestion, Jira ingestion, incremental sync
+├── ingest/               # repo parsing, local docs ingestion, Jira ingestion, incremental sync
 ├── analysis/             # calls, communities, coupling, static summary extraction
 ├── embed/                # embeddings and similarity helpers
 ├── linker/               # semantic linking between code and docs
@@ -279,7 +279,7 @@ Loom already provides:
 - **Semantic search**
 - **Traceability queries**
 - **MCP serving**
-- **Document and Jira ingestion hooks**
+- **Local document and Jira ingestion hooks**
 - **On-demand enrichment with `loom enrich`**
 
 The project is actively evolving in areas like ranking, semantic linking quality, and operational workflows around the graph.
