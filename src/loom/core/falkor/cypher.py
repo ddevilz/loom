@@ -13,6 +13,22 @@ BULK_CREATE_OR_UPDATE_NODES = (
     "UNWIND $nodes AS n MERGE (node:Node {id: n.id}) SET node += n.props"
 )
 
+_LABELS = tuple(kind.name.title() for kind in NodeKind)
+_REMOVE_STALE_LABEL_CLAUSES = {
+    label: " ".join(
+        f"REMOVE n:`{stale_label}`" for stale_label in _LABELS if stale_label != label
+    )
+    for label in _LABELS
+}
+_REMOVE_STALE_NODE_LABEL_CLAUSES = {
+    label: " ".join(
+        f"REMOVE node:`{stale_label}`"
+        for stale_label in _LABELS
+        if stale_label != label
+    )
+    for label in _LABELS
+}
+
 NEIGHBORS_STEP = (
     "UNWIND $ids AS id "
     "MATCH (n:Node {id: id})-[r]->(m:Node) "
@@ -44,12 +60,7 @@ def create_or_update_edge(rel_type: str) -> str:
 
 
 def create_or_update_node_with_label(label: str) -> str:
-    stale_labels = [
-        kind.name.title() for kind in NodeKind if kind.name.title() != label
-    ]
-    remove_clause = " ".join(
-        f"REMOVE n:`{stale_label}`" for stale_label in stale_labels
-    )
+    remove_clause = _REMOVE_STALE_LABEL_CLAUSES[label]
     return (
         "MERGE (n:Node {id: $id}) "
         "SET n += $props "
@@ -61,12 +72,7 @@ def create_or_update_node_with_label(label: str) -> str:
 
 
 def bulk_create_or_update_nodes_with_label(label: str) -> str:
-    stale_labels = [
-        kind.name.title() for kind in NodeKind if kind.name.title() != label
-    ]
-    remove_clause = " ".join(
-        f"REMOVE node:`{stale_label}`" for stale_label in stale_labels
-    )
+    remove_clause = _REMOVE_STALE_NODE_LABEL_CLAUSES[label]
     return (
         "UNWIND $nodes AS n "
         "MERGE (node:Node {id: n.id}) "

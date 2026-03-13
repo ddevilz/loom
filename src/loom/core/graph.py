@@ -9,7 +9,7 @@ from .edge import Edge, EdgeType
 from .falkor.gateway import FalkorGateway
 from .falkor.repositories import EdgeRepository, NodeRepository, TraversalRepository
 from .falkor.schema import invalidate_schema_init, schema_init
-from .node import Node
+from .node import Node, NodeKind
 
 
 class _Gateway(Protocol):
@@ -43,12 +43,14 @@ class LoomGraph:
         self._nodes = NodeRepository(self._gw)
         self._edges = EdgeRepository(self._gw)
         self._traversal = TraversalRepository(self._gw)
-        self._schema_lock = asyncio.Lock()
+        self._schema_lock: asyncio.Lock | None = None
         self._schema_ready = False
 
     async def _ensure_schema(self) -> None:
         if self._schema_ready:
             return
+        if self._schema_lock is None:
+            self._schema_lock = asyncio.Lock()
         async with self._schema_lock:
             if self._schema_ready:
                 return
@@ -116,12 +118,31 @@ class LoomGraph:
         node_id: str,
         depth: int = 1,
         edge_types: list[EdgeType] | None = None,
+        kind: NodeKind | None = None,
     ) -> list[Node]:
         await self._ensure_schema()
+        resolved_node_id = node_id
+        if ":" not in node_id:
+            if kind is None:
+                cypher = "MATCH (n:Node {name: $name}) RETURN n.id AS id LIMIT 2"
+            else:
+                label = kind.name.title()
+                cypher = (
+                    f"MATCH (n:`{label}` {{name: $name}}) RETURN n.id AS id LIMIT 2"
+                )
+            rows = await asyncio.to_thread(
+                self._gw.query_rows,
+                cypher,
+                {"name": node_id},
+            )
+            ids = [row.get("id") for row in rows if isinstance(row.get("id"), str)]
+            if len(ids) != 1:
+                return []
+            resolved_node_id = ids[0]
         types = list(EdgeType) if edge_types is None else edge_types
         return await asyncio.to_thread(
             self._traversal.neighbors,
-            node_id=node_id,
+            node_id=resolved_node_id,
             depth=depth,
             edge_types=types,
         )
