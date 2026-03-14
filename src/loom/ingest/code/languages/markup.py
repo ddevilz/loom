@@ -56,6 +56,7 @@ from loom.ingest.code.languages.constants import (
     META_ITEM_COUNT,
     META_MEDIA_QUERY_COUNT,
     META_NAMESPACES,
+    META_PARSE_ERROR,
     META_PROJECT_NAME,
     META_PROJECT_VERSION,
     META_PROPERTY_COUNT,
@@ -160,7 +161,13 @@ def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     meta: dict[str, Any] = {}
 
-    tree = ET.fromstring(content)
+    try:
+        tree = ET.fromstring(content)
+    except ET.ParseError:
+        meta[META_PARSE_ERROR] = True
+        # Create a minimal tree for basic metadata
+        tree = ET.Element("root")
+
     meta[META_ROOT_TAG] = tree.tag
 
     # Extract namespaces from parsed tree
