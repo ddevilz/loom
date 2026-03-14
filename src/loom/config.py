@@ -24,6 +24,7 @@ LOOM_LLM_API_KEY = os.getenv("LOOM_LLM_API_KEY", "")
 LOOM_LLM_BASE_URL = os.getenv("LOOM_LLM_BASE_URL", "")
 
 # Embedding configuration
+LOOM_EMBED_ENABLED = os.getenv("LOOM_EMBED_ENABLED", "1") != "0"
 LOOM_EMBED_MODEL = os.getenv("LOOM_EMBED_MODEL", "nomic-ai/nomic-embed-text-v1.5")
 LOOM_EMBED_DIM = int(os.getenv("LOOM_EMBED_DIM", "768"))
 LOOM_EMBED_BATCH_SIZE = int(os.getenv("LOOM_EMBED_BATCH_SIZE", "32"))

@@ -12,6 +12,7 @@ from loom.config import (
     LOOM_EMBED_BATCH_SIZE,
     LOOM_EMBED_CACHE_DIR,
     LOOM_EMBED_DIM,
+    LOOM_EMBED_ENABLED,
     LOOM_EMBED_MODEL,
 )
 from loom.core import Node
@@ -83,6 +84,9 @@ async def embed_nodes(
     *,
     embedder: Embedder | None = None,
 ) -> list[Node]:
+    if not LOOM_EMBED_ENABLED:
+        return nodes
+
     to_embed: list[int] = []
     texts: list[str] = []
 
