@@ -54,13 +54,13 @@ class _FakeGraph:
 
 @pytest.mark.asyncio
 async def test_watch_repo_reindexes_on_file_change(tmp_path: Path) -> None:
-    seen: list[tuple[str, int]] = []
+    seen: list[tuple[str, list[str], int]] = []
 
     async def fake_events(_path: str):
         yield {(Change.modified, str(tmp_path / "a.py"))}
 
-    async def fake_indexer(repo_path: str, graph) -> object:
-        seen.append((repo_path, len(graph.queries)))
+    async def fake_indexer(repo_path: str, changed_paths: list[str], graph) -> object:
+        seen.append((repo_path, changed_paths, len(graph.queries)))
         return object()
 
     graph = _FakeGraph()
@@ -72,7 +72,7 @@ async def test_watch_repo_reindexes_on_file_change(tmp_path: Path) -> None:
         stop_after_events=1,
     )
 
-    assert seen == [(str(tmp_path), 1)]
+    assert seen == [(str(tmp_path), [(tmp_path / "a.py").resolve().as_posix()], 1)]
     loom_queries = [q[0] for q in graph.queries if "LOOM_IMPLEMENTS" in q[0]]
     assert len(loom_queries) == 1
     assert any(
@@ -96,7 +96,8 @@ async def test_watch_repo_flags_modified_file_edges_before_reindex(
                 call_order.append("flag")
             return await super().query(cypher, params)
 
-    async def fake_indexer(repo_path: str, graph) -> object:
+    async def fake_indexer(repo_path: str, changed_paths: list[str], graph) -> object:
+        assert changed_paths == [(tmp_path / "a.py").resolve().as_posix()]
         call_order.append("index")
         return object()
 

@@ -45,9 +45,23 @@ class FakeGraph:
                 if str(props.get("id", "")).startswith("doc:")
             ]
 
-        if cypher.strip().startswith("MATCH (a {path: $path})-[r]->()"):
+        if (
+            cypher.strip().startswith("MATCH (a {path: $path})-[r]->()")
+            or cypher.strip().startswith("MATCH ()-[r]->(a {path: $path})")
+            or cypher.strip().startswith("MATCH (a {path: $path})-[r]->()")
+            or cypher.strip().startswith("MATCH ()-[r]->(a {path: $path})")
+        ):
             # Edge invalidation queries are accepted but ignored by this fake.
             return []
+
+        if cypher.strip() == "MATCH (n {path: $path}) RETURN n.id AS id":
+            assert params is not None
+            path = params["path"]
+            return [
+                {"id": node_id}
+                for node_id, props in self.nodes.items()
+                if props.get("path") == path
+            ]
 
         if cypher.strip() == "MATCH (n {id: $id}) DETACH DELETE n":
             assert params is not None

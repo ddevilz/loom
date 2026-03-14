@@ -49,19 +49,17 @@ async def get_doc_nodes_for_linking(graph: EdgeInvalidationGraph) -> list[Node]:
     rows = await graph.query(
         "MATCH (n) WHERE n.id STARTS WITH 'doc:' RETURN properties(n) AS props"
     )
-    out: list[Node] = []
-    for row in rows:
-        props = row.get("props")
-        if not isinstance(props, dict):
-            continue
-        props = deserialize_node_props(props)
-        try:
-            node = Node.model_validate(props)
-        except Exception:
-            continue
-        if node.source == NodeSource.DOC:
-            out.append(node)
-    return out
+    nodes = [_deserialize_doc_node(row) for row in rows]
+    return [n for n in nodes if n is not None]
+
+
+def _deserialize_doc_node(row: dict[str, Any]) -> Node | None:
+    props = row.get("props")
+    if not isinstance(props, dict):
+        return None
+    props = deserialize_node_props(props)
+    node = Node.model_validate(props)
+    return node if node.source == NodeSource.DOC else None
 
 
 def merge_nodes_by_id(*node_lists: list[Node]) -> list[Node]:

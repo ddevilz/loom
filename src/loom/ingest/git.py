@@ -35,34 +35,16 @@ def _run_git(repo_path: str, args: list[str]) -> str:
         subprocess.TimeoutExpired: If command exceeds timeout
         subprocess.CalledProcessError: If git command fails
     """
-    try:
-        p = subprocess.run(
-            ["git", *args],
-            cwd=repo_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True,
-            timeout=_GIT_TIMEOUT,
-        )
-        return p.stdout
-    except subprocess.TimeoutExpired:
-        logger.error(
-            "Git command timed out after %ss: git %s in %s",
-            _GIT_TIMEOUT,
-            " ".join(args),
-            repo_path,
-        )
-        raise
-    except subprocess.CalledProcessError as e:
-        logger.error(
-            "Git command failed: git %s in %s. Exit code: %s, stderr: %s",
-            " ".join(args),
-            repo_path,
-            e.returncode,
-            e.stderr,
-        )
-        raise
+    p = subprocess.run(
+        ["git", *args],
+        cwd=repo_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+        timeout=_GIT_TIMEOUT,
+    )
+    return p.stdout
 
 
 def _is_supported(path: str) -> bool:

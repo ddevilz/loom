@@ -9,10 +9,7 @@ from .base import make_child_of, make_document_node
 
 def parse_pdf(path: str) -> tuple[list[Node], list[Edge]]:
     # Minimal implementation: requires pypdf at runtime.
-    try:
-        from pypdf import PdfReader  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise ImportError("PDF parsing requires 'pypdf'") from e
+    from pypdf import PdfReader  # type: ignore
 
     p = Path(path)
     reader = PdfReader(str(p))

@@ -84,10 +84,7 @@ class NodeRepository:
         if not isinstance(props, dict):
             return None
         props = deserialize_node_props(props)
-        try:
-            return Node.model_validate(props)
-        except Exception:
-            return None
+        return Node.model_validate(props)
 
     def delete(self, node_id: str) -> None:
         self._gw.run(cypher.DELETE_NODE_BY_ID, params={"id": node_id})
@@ -173,18 +170,23 @@ class TraversalRepository:
     def __init__(self, gw: FalkorGateway) -> None:
         self._gw = gw
 
-    def neighbors(
-        self, node_id: str, depth: int, edge_types: list[EdgeType]
+    def _traverse_ranked(
+        self,
+        *,
+        seed_id: str,
+        depth: int,
+        query: str,
+        params: dict[str, object],
+        source_key: str,
+        target_key: str,
     ) -> list[Node]:
         if depth < 1:
             return []
 
-        type_names = EdgeTypeAdapter.to_storage_list(edge_types)
-
-        frontier: set[str] = {node_id}
-        visited: set[str] = {node_id}
+        frontier: set[str] = {seed_id}
+        visited: set[str] = {seed_id}
         results: dict[str, Node] = {}
-        graph_nodes: set[str] = {node_id}
+        graph_nodes: set[str] = {seed_id}
         graph_edges: list[tuple[str, str]] = []
 
         for _ in range(depth):
@@ -192,26 +194,22 @@ class TraversalRepository:
                 break
 
             rows = self._gw.query_rows(
-                cypher.NEIGHBORS_STEP_WITH_SOURCE,
-                params={"ids": list(frontier), "types": type_names},
+                query,
+                params={**params, "ids": list(frontier)},
             )
 
             next_frontier: set[str] = set()
             for row in rows:
-                from_id = row.get("from_id")
-                to_id = row.get("to_id")
+                source_id = row.get(source_key)
+                target_id = row.get(target_key)
                 props = row.get("props")
                 if not isinstance(props, dict):
                     continue
-                props = deserialize_node_props(props)
-                try:
-                    node = Node.model_validate(props)
-                except Exception:
-                    continue
-                if isinstance(from_id, str) and isinstance(to_id, str):
-                    graph_nodes.add(from_id)
-                    graph_nodes.add(to_id)
-                    graph_edges.append((from_id, to_id))
+                node = Node.model_validate(deserialize_node_props(props))
+                if isinstance(source_id, str) and isinstance(target_id, str):
+                    graph_nodes.add(source_id)
+                    graph_nodes.add(target_id)
+                    graph_edges.append((source_id, target_id))
                 if node.id not in visited:
                     visited.add(node.id)
                     next_frontier.add(node.id)
@@ -222,15 +220,26 @@ class TraversalRepository:
         if not results:
             return []
 
-        ordered_ids = _rank_by_personalized_pagerank(node_id, graph_nodes, graph_edges)
+        ordered_ids = _rank_by_personalized_pagerank(seed_id, graph_nodes, graph_edges)
         ordered_id_set = set(ordered_ids)
-        ranked_nodes = [
-            results[node_id] for node_id in ordered_ids if node_id in results
-        ]
+        ranked = [results[node_id] for node_id in ordered_ids if node_id in results]
         remaining = [
             node for node_id, node in results.items() if node_id not in ordered_id_set
         ]
-        return ranked_nodes + remaining
+        return ranked + remaining
+
+    def neighbors(
+        self, node_id: str, depth: int, edge_types: list[EdgeType]
+    ) -> list[Node]:
+        type_names = EdgeTypeAdapter.to_storage_list(edge_types)
+        return self._traverse_ranked(
+            seed_id=node_id,
+            depth=depth,
+            query=cypher.NEIGHBORS_STEP_WITH_SOURCE,
+            params={"types": type_names},
+            source_key="from_id",
+            target_key="to_id",
+        )
 
     def blast_radius(self, node_id: str, depth: int) -> list[Node]:
         """BFS over incoming CALLS edges to find all nodes affected if node_id changes.
@@ -240,52 +249,11 @@ class TraversalRepository:
         this node's contract changes.  PPR runs only on the CALLS subgraph so
         CONTAINS edges don't pollute the ranking.
         """
-        if depth < 1:
-            return []
-
-        frontier: set[str] = {node_id}
-        visited: set[str] = {node_id}
-        results: dict[str, Node] = {}
-        graph_nodes: set[str] = {node_id}
-        graph_edges: list[tuple[str, str]] = []
-
-        for _ in range(depth):
-            if not frontier:
-                break
-
-            rows = self._gw.query_rows(
-                cypher.BLAST_RADIUS_STEP,
-                params={"ids": list(frontier)},
-            )
-
-            next_frontier: set[str] = set()
-            for row in rows:
-                caller_id = row.get("from_id")
-                callee_id = row.get("to_id")
-                props = row.get("props")
-                if not isinstance(props, dict):
-                    continue
-                props = deserialize_node_props(props)
-                try:
-                    node = Node.model_validate(props)
-                except Exception:
-                    continue
-                if isinstance(caller_id, str) and isinstance(callee_id, str):
-                    graph_nodes.add(caller_id)
-                    graph_nodes.add(callee_id)
-                    graph_edges.append((caller_id, callee_id))
-                if node.id not in visited:
-                    visited.add(node.id)
-                    next_frontier.add(node.id)
-                results[node.id] = node
-
-            frontier = next_frontier
-
-        if not results:
-            return []
-
-        ordered_ids = _rank_by_personalized_pagerank(node_id, graph_nodes, graph_edges)
-        ordered_id_set = set(ordered_ids)
-        ranked = [results[nid] for nid in ordered_ids if nid in results]
-        remaining = [n for nid, n in results.items() if nid not in ordered_id_set]
-        return ranked + remaining
+        return self._traverse_ranked(
+            seed_id=node_id,
+            depth=depth,
+            query=cypher.BLAST_RADIUS_STEP,
+            params={},
+            source_key="from_id",
+            target_key="to_id",
+        )

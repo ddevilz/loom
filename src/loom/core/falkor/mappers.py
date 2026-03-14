@@ -10,10 +10,7 @@ from ..node import Node, NodeKind, NodeSource
 
 def _parse_metadata(raw: Any) -> dict[str, Any]:
     if isinstance(raw, str):
-        try:
-            parsed = json.loads(raw)
-        except Exception:
-            return {}
+        parsed = json.loads(raw)
         return parsed if isinstance(parsed, dict) else {}
     return raw if isinstance(raw, dict) else {}
 
@@ -65,10 +62,7 @@ def coerce_row_node_kind(
 ) -> NodeKind | None:
     kind_value = raw_kind.value if hasattr(raw_kind, "value") else raw_kind
     if isinstance(kind_value, str):
-        try:
-            candidate = NodeKind(kind_value)
-        except Exception:
-            return None if require_valid_kind else fallback
+        candidate = NodeKind(kind_value)
         if allowed_kinds is None or candidate in allowed_kinds:
             return candidate
     return None if require_valid_kind else fallback
