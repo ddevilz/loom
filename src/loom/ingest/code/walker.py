@@ -63,44 +63,40 @@ def walk_repo(
     while stack:
         cur = stack.pop()
 
-        try:
-            with os.scandir(cur) as it:
-                for entry in it:
-                    name = entry.name
-                    entry_path = Path(entry.path)
+        with os.scandir(cur) as it:
+            for entry in it:
+                name = entry.name
+                entry_path = Path(entry.path)
 
-                    if entry.is_dir(follow_symlinks=False):
-                        if entry.is_symlink():
-                            continue
-
-                        if _should_skip_dir(name, skip_dirs=skip_dirs):
-                            continue
-
-                        rel = _to_posix_rel(root, entry_path)
-                        if spec.match_file(rel + "/"):
-                            continue
-
-                        stack.append(entry_path)
+                if entry.is_dir(follow_symlinks=False):
+                    if entry.is_symlink():
                         continue
 
-                    if not entry.is_file(follow_symlinks=False):
+                    if _should_skip_dir(name, skip_dirs=skip_dirs):
                         continue
 
                     rel = _to_posix_rel(root, entry_path)
-                    if spec.match_file(rel):
+                    if spec.match_file(rel + "/"):
                         continue
 
-                    if registry.should_skip_path(str(entry_path)):
-                        continue
+                    stack.append(entry_path)
+                    continue
 
-                    lang = registry.get_language_for_path(str(entry_path))
-                    if lang is None:
-                        continue
+                if not entry.is_file(follow_symlinks=False):
+                    continue
 
-                    results.setdefault(lang, []).append(_to_posix_abs(entry_path))
+                rel = _to_posix_rel(root, entry_path)
+                if spec.match_file(rel):
+                    continue
 
-        except (PermissionError, FileNotFoundError):
-            continue
+                if registry.should_skip_path(str(entry_path)):
+                    continue
+
+                lang = registry.get_language_for_path(str(entry_path))
+                if lang is None:
+                    continue
+
+                results.setdefault(lang, []).append(_to_posix_abs(entry_path))
 
     for files in results.values():
         files.sort()

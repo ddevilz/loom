@@ -509,6 +509,7 @@ async def test_sync_commits_relinks_changed_code_nodes_against_existing_doc_node
     repo = tmp_path / "repo"
     repo.mkdir()
     p = repo / "a.py"
+    new_path = repo / "b.py"
     p.write_text("def f():\n    return 1\n", encoding="utf-8")
     abs_path = p.resolve().as_posix()
 
@@ -557,7 +558,9 @@ async def test_sync_commits_relinks_changed_code_nodes_against_existing_doc_node
     assert res.error_count == 0
     assert not any(edge.get("kind") == EdgeType.LOOM_IMPLEMENTS for edge in g.edges)
     assert old_node.id not in g.nodes
-    assert any(props.get("path") == new_path.resolve().as_posix() for props in g.nodes.values())
+    assert any(
+        props.get("path") == new_path.resolve().as_posix() for props in g.nodes.values()
+    )
 
 
 @pytest.mark.asyncio
@@ -925,4 +928,6 @@ async def test_sync_commits_relinks_renamed_code_nodes_against_existing_doc_node
 
     # Ensure old code nodes are removed and nodes for the renamed file exist.
     assert old_node.id not in g.nodes
-    assert any(props.get("path") == new_path.resolve().as_posix() for props in g.nodes.values())
+    assert any(
+        props.get("path") == new_path.resolve().as_posix() for props in g.nodes.values()
+    )

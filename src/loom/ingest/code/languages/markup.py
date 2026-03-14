@@ -56,7 +56,6 @@ from loom.ingest.code.languages.constants import (
     META_ITEM_COUNT,
     META_MEDIA_QUERY_COUNT,
     META_NAMESPACES,
-    META_PARSE_ERROR,
     META_PROJECT_NAME,
     META_PROJECT_VERSION,
     META_PROPERTY_COUNT,
@@ -161,35 +160,31 @@ def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     meta: dict[str, Any] = {}
 
-    try:
-        tree = ET.fromstring(content)
-        meta[META_ROOT_TAG] = tree.tag
+    tree = ET.fromstring(content)
+    meta[META_ROOT_TAG] = tree.tag
 
-        # Extract namespaces from parsed tree
-        namespaces = {}
-        for elem in tree.iter():
-            if elem.tag.startswith("{"):
-                ns_end = elem.tag.find("}")
-                if ns_end > 0:
-                    ns_uri = elem.tag[1:ns_end]
-                    if ns_uri not in namespaces.values():
-                        namespaces[f"ns{len(namespaces)}"] = ns_uri
-        if namespaces:
-            meta[META_NAMESPACES] = namespaces
+    # Extract namespaces from parsed tree
+    namespaces = {}
+    for elem in tree.iter():
+        if elem.tag.startswith("{"):
+            ns_end = elem.tag.find("}")
+            if ns_end > 0:
+                ns_uri = elem.tag[1:ns_end]
+                if ns_uri not in namespaces.values():
+                    namespaces[f"ns{len(namespaces)}"] = ns_uri
+    if namespaces:
+        meta[META_NAMESPACES] = namespaces
 
-        # Count child elements
-        meta[META_ELEMENT_COUNT] = len(list(tree.iter()))
+    # Count child elements
+    meta[META_ELEMENT_COUNT] = len(list(tree.iter()))
 
-        # Extract common config patterns
-        if tree.tag in {"configuration", "config", "settings"}:
-            meta[META_CONFIG_TYPE] = FILETYPE_APPLICATION_CONFIG
-        elif "pom" in tree.tag.lower():
-            meta[META_CONFIG_TYPE] = FILETYPE_MAVEN_POM
-        elif tree.tag == "project":
-            meta[META_CONFIG_TYPE] = FILETYPE_PROJECT_FILE
-
-    except ET.ParseError:
-        meta[META_PARSE_ERROR] = True
+    # Extract common config patterns
+    if tree.tag in {"configuration", "config", "settings"}:
+        meta[META_CONFIG_TYPE] = FILETYPE_APPLICATION_CONFIG
+    elif "pom" in tree.tag.lower():
+        meta[META_CONFIG_TYPE] = FILETYPE_MAVEN_POM
+    elif tree.tag == "project":
+        meta[META_CONFIG_TYPE] = FILETYPE_PROJECT_FILE
 
     node = Node(
         id=f"{NodeKind.FILE.value}:{path}",
@@ -212,35 +207,31 @@ def parse_json(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     meta: dict[str, Any] = {}
 
-    try:
-        data = json.loads(content)
+    data = json.loads(content)
 
-        if isinstance(data, dict):
-            meta[META_TOP_LEVEL_KEYS] = list(data.keys())[:20]
+    if isinstance(data, dict):
+        meta[META_TOP_LEVEL_KEYS] = list(data.keys())[:20]
 
-            # Detect common JSON file types
-            if JSON_KEY_NAME in data and JSON_KEY_VERSION in data:
-                if JSON_KEY_DEPENDENCIES in data:
-                    meta[META_FILE_TYPE] = FILETYPE_PACKAGE_JSON
-                elif JSON_KEY_SCRIPTS in data:
-                    meta[META_FILE_TYPE] = FILETYPE_NPM_PACKAGE
+        # Detect common JSON file types
+        if JSON_KEY_NAME in data and JSON_KEY_VERSION in data:
+            if JSON_KEY_DEPENDENCIES in data:
+                meta[META_FILE_TYPE] = FILETYPE_PACKAGE_JSON
+            elif JSON_KEY_SCRIPTS in data:
+                meta[META_FILE_TYPE] = FILETYPE_NPM_PACKAGE
 
-            if JSON_KEY_SCHEMA in data:
-                meta[META_FILE_TYPE] = FILETYPE_JSON_SCHEMA
-                meta[META_SCHEMA_URL] = data[JSON_KEY_SCHEMA]
+        if JSON_KEY_SCHEMA in data:
+            meta[META_FILE_TYPE] = FILETYPE_JSON_SCHEMA
+            meta[META_SCHEMA_URL] = data[JSON_KEY_SCHEMA]
 
-            if JSON_KEY_OPENAPI in data or JSON_KEY_SWAGGER in data:
-                meta[META_FILE_TYPE] = FILETYPE_OPENAPI_SPEC
+        if JSON_KEY_OPENAPI in data or JSON_KEY_SWAGGER in data:
+            meta[META_FILE_TYPE] = FILETYPE_OPENAPI_SPEC
 
-            if JSON_KEY_COMPILER_OPTIONS in data:
-                meta[META_FILE_TYPE] = FILETYPE_TSCONFIG
+        if JSON_KEY_COMPILER_OPTIONS in data:
+            meta[META_FILE_TYPE] = FILETYPE_TSCONFIG
 
-        elif isinstance(data, list):
-            meta[META_IS_ARRAY] = True
-            meta[META_ITEM_COUNT] = len(data)
-
-    except json.JSONDecodeError:
-        meta[META_PARSE_ERROR] = True
+    elif isinstance(data, list):
+        meta[META_IS_ARRAY] = True
+        meta[META_ITEM_COUNT] = len(data)
 
     node = Node(
         id=f"{NodeKind.FILE.value}:{path}",
@@ -464,20 +455,7 @@ def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
     dependencies: list[str] = []
     dev_dependencies: list[str] = []
 
-    try:
-        data = tomllib.loads(src.decode("utf-8", errors="replace"))
-    except Exception as e:
-        meta[META_PARSE_ERROR] = str(e)
-        node = Node(
-            id=f"{NodeKind.FILE.value}:{str(p.resolve().as_posix())}",
-            kind=NodeKind.FILE,
-            source=NodeSource.CODE,
-            name=p.name,
-            path=str(p.resolve().as_posix()),
-            content_hash=content_hash_bytes(src),
-            metadata=meta,
-        )
-        return [node]
+    data = tomllib.loads(src.decode("utf-8", errors="replace"))
 
     project = data.get("project")
     if isinstance(project, dict):
