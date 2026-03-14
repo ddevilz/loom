@@ -554,7 +554,7 @@ async def sync_commits(
                 append_index_error(errors, path=abs_path, phase="persist", error=e)
                 continue
 
-            # Note: batch_nodes already persisted above, don't add to nodes_to_upsert
+            # Note: batch_nodes already persisted above
             edges_to_upsert.extend(batch_edges)
 
             old_by_id = {n.id: n for n in old_nodes}
