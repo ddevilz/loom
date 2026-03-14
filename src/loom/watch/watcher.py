@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterable, Awaitable, Callable
 from pathlib import Path
-from typing import Any, Protocol
 
 from watchfiles import Change, awatch
 
-from loom.core import EdgeType, LoomGraph
+from loom.core import EdgeType
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
-from loom.ingest.pipeline import index_repo
+from loom.core.protocols import BulkGraph, QueryGraph
+from loom.ingest.incremental import sync_paths
 from loom.ingest.utils import (
     delete_nodes_by_ids,
     get_node_ids_by_path,
@@ -17,22 +18,20 @@ from loom.ingest.utils import (
     node_has_human_edges,
 )
 
-
-class _Graph(Protocol):
-    async def query(
-        self, cypher: str, params: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]: ...
+logger = logging.getLogger(__name__)
 
 
 WatcherFactory = Callable[[str], AsyncIterable[set[tuple[Change, str]]]]
-Indexer = Callable[[str, LoomGraph | _Graph], Awaitable[object]]
+Indexer = Callable[[str, list[str], BulkGraph], Awaitable[object]]
 
 
-async def _default_indexer(repo_path: str, graph: LoomGraph | _Graph) -> object:
-    return await index_repo(repo_path, graph)
+async def _default_indexer(
+    repo_path: str, changed_paths: list[str], graph: BulkGraph
+) -> object:
+    return await sync_paths(repo_path, changed_paths, graph)
 
 
-async def _flag_changed_loom_edges(graph: LoomGraph | _Graph, *, path: str) -> None:
+async def _flag_changed_loom_edges(graph: QueryGraph, *, path: str) -> None:
     loom_impl_rel = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
     await graph.query(
         f"""
@@ -52,7 +51,7 @@ def _watch_stream(
 
 async def watch_repo(
     repo_path: str,
-    graph: LoomGraph | _Graph,
+    graph: BulkGraph,
     *,
     debounce_ms: int = 500,
     watcher_factory: WatcherFactory | None = None,
@@ -66,32 +65,41 @@ async def watch_repo(
 
     processed = 0
     async for changes in watcher(repo_path):
-        changed_paths = {Path(path).resolve().as_posix() for _, path in changes}
-        deleted_paths = {
-            Path(path).resolve().as_posix()
-            for change, path in changes
-            if change == Change.deleted
-        }
+        should_stop = False
+        try:
+            changed_paths = {Path(path).resolve().as_posix() for _, path in changes}
+            deleted_paths = {
+                Path(path).resolve().as_posix()
+                for change, path in changes
+                if change == Change.deleted
+            }
 
-        for path in sorted(deleted_paths):
-            await _flag_changed_loom_edges(graph, path=path)
-            await invalidate_edges_for_file(graph, path=path)
-            ids = await get_node_ids_by_path(graph, path=path)
-            preserved: set[str] = set()
-            for node_id in ids:
-                if await node_has_human_edges(graph, node_id=node_id):
-                    preserved.add(node_id)
-                    await mark_human_edges_stale_for_node(
-                        graph, node_id=node_id, reason="file_deleted"
-                    )
-            deletable = [node_id for node_id in ids if node_id not in preserved]
-            await delete_nodes_by_ids(graph, deletable)
-
-        if changed_paths - deleted_paths:
-            for path in sorted(changed_paths - deleted_paths):
+            for path in sorted(deleted_paths):
                 await _flag_changed_loom_edges(graph, path=path)
-            await indexer(repo_path, graph)
+                await invalidate_edges_for_file(graph, path=path)
+                ids = await get_node_ids_by_path(graph, path=path)
+                preserved: set[str] = set()
+                for node_id in ids:
+                    if await node_has_human_edges(graph, node_id=node_id):
+                        preserved.add(node_id)
+                        await mark_human_edges_stale_for_node(
+                            graph, node_id=node_id, reason="file_deleted"
+                        )
+                deletable = [node_id for node_id in ids if node_id not in preserved]
+                await delete_nodes_by_ids(graph, deletable)
 
-        processed += len(changes)
-        if stop_after_events is not None and processed >= stop_after_events:
+            if changed_paths - deleted_paths:
+                changed_non_deleted_paths = sorted(changed_paths - deleted_paths)
+                for path in changed_non_deleted_paths:
+                    await _flag_changed_loom_edges(graph, path=path)
+                await indexer(repo_path, changed_non_deleted_paths, graph)
+        except Exception:
+            logger.exception(
+                "watch_repo failed for repo=%s change_count=%d", repo_path, len(changes)
+            )
+        finally:
+            processed += len(changes)
+            if stop_after_events is not None and processed >= stop_after_events:
+                should_stop = True
+        if should_stop:
             return

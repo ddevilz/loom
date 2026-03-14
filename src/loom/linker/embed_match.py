@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Protocol
-
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
+from loom.core.protocols import QueryGraph
 from loom.embed.embedder import cosine_similarity, embed_nodes
 
 _VECTOR_K_LIMIT = 50
@@ -17,16 +16,10 @@ _VECTOR_CANDIDATES_QUERY = (
 )
 
 
-class _Graph(Protocol):
-    async def query(
-        self, cypher: str, params: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]: ...
-
-
 async def _candidate_doc_ids_from_vector_index(
     code_node: Node,
     doc_by_id: dict[str, Node],
-    graph: _Graph,
+    graph: QueryGraph,
 ) -> list[str] | None:
     if code_node.embedding is None:
         return []
@@ -52,7 +45,7 @@ async def link_by_embedding(
     doc_nodes: list[Node],
     *,
     threshold: float = 0.75,
-    graph: _Graph | None = None,
+    graph: QueryGraph | None = None,
 ) -> list[Edge]:
     # Ensure embeddings exist where possible.
     code_nodes = await embed_nodes(code_nodes)

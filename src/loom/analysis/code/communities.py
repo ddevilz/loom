@@ -93,7 +93,7 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
 
     if len(node_rows) < 3:
         logger.warning(
-            f"Only {len(node_rows)} nodes found, skipping community detection"
+            "Only %d nodes found, skipping community detection", len(node_rows)
         )
         return {}
 
@@ -153,7 +153,9 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
 
     # Run Leiden algorithm
     logger.info(
-        f"Running Leiden on graph with {g_undirected.vcount()} nodes and {g_undirected.ecount()} edges"
+        "Running Leiden on graph with %d nodes and %d edges",
+        g_undirected.vcount(),
+        g_undirected.ecount(),
     )
     partition = leidenalg.find_partition(
         g_undirected,
@@ -162,11 +164,11 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
     )
 
     modularity = partition.modularity
-    logger.info(f"Community detection complete. Modularity: {modularity:.4f}")
+    logger.info("Community detection complete. Modularity: %.4f", modularity)
 
     if modularity < 0.3:
         logger.warning(
-            f"Low modularity ({modularity:.4f}) - clustering may not be meaningful"
+            "Low modularity (%.4f) - clustering may not be meaningful", modularity
         )
         return {}
 
@@ -185,8 +187,9 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
     }
 
     logger.info(
-        f"Found {len(communities)} communities, "
-        f"{len(valid_communities)} have >= 3 members"
+        "Found %d communities, %d have >= 3 members",
+        len(communities),
+        len(valid_communities),
     )
 
     # Create community nodes and edges

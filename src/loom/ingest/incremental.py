@@ -1,25 +1,27 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Protocol
+from typing import Any
 
 from loom.analysis.code.extractor import extract_summaries
 from loom.analysis.code.parser import parse_code
-from loom.core import Edge, EdgeOrigin, EdgeType, LoomGraph, Node, NodeKind, NodeSource
+from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_edge_props, deserialize_node_props
+from loom.core.protocols import BulkGraph
 from loom.drift.detector import detect_ast_drift
 from loom.embed.embedder import embed_nodes
 from loom.ingest.code.registry import get_registry
 from loom.ingest.differ import diff_nodes
 from loom.ingest.errors import append_index_error
 from loom.ingest.git import get_changed_files
+from loom.ingest.helpers import build_contains_edges, make_file_node
 from loom.ingest.result import IndexError, IndexResult
 from loom.ingest.utils import (
     delete_nodes_by_ids,
-    delete_nodes_by_path,
     get_doc_nodes_for_linking,
     invalidate_edges_for_file,
     mark_human_edges_stale_for_node,
@@ -34,19 +36,6 @@ def _normalized_changed_path(repo_path: str, relative_path: str) -> str:
     return (Path(repo_path) / relative_path).resolve().as_posix()
 
 
-def _make_file_node(path: str, *, content_hash: str) -> Node:
-    p = Path(path)
-    return Node(
-        id=f"{NodeKind.FILE.value}:{path}",
-        kind=NodeKind.FILE,
-        source=NodeSource.CODE,
-        name=p.name,
-        path=path,
-        content_hash=content_hash,
-        metadata={},
-    )
-
-
 def _trace_calls_for_path(path: str, nodes: list[Node]) -> list[Edge]:
     handler = get_registry().get_handler_for_path(path)
     if handler is None or handler.call_tracer is None:
@@ -54,30 +43,16 @@ def _trace_calls_for_path(path: str, nodes: list[Node]) -> list[Edge]:
     return handler.call_tracer(path, nodes)
 
 
-def _build_contains_edges(nodes: list[Node]) -> list[Edge]:
-    return [
-        Edge(
-            from_id=node.parent_id,
-            to_id=node.id,
-            kind=EdgeType.CONTAINS,
-            origin=EdgeOrigin.COMPUTED,
-            confidence=1.0,
-        )
-        for node in nodes
-        if isinstance(node.parent_id, str) and node.parent_id
-    ]
-
-
 def _build_file_batch(path: str, nodes: list[Node]) -> tuple[list[Node], list[Edge]]:
     file_hash = content_hash_bytes(Path(path).read_bytes())
-    file_node = _make_file_node(path, content_hash=file_hash)
+    file_node = make_file_node(path, content_hash=file_hash)
     call_edges = _trace_calls_for_path(path, nodes)
-    contains_edges = _build_contains_edges(nodes)
+    contains_edges = build_contains_edges(nodes)
     return [file_node, *nodes], [*contains_edges, *call_edges]
 
 
 async def _get_outgoing_human_edges(
-    graph: _Graph, *, path: str
+    graph: BulkGraph, *, path: str
 ) -> list[dict[str, Any]]:
     return await graph.query(
         """
@@ -90,7 +65,7 @@ async def _get_outgoing_human_edges(
 
 
 async def _get_incoming_human_edges(
-    graph: _Graph, *, path: str
+    graph: BulkGraph, *, path: str
 ) -> list[dict[str, Any]]:
     return await graph.query(
         """
@@ -103,7 +78,7 @@ async def _get_incoming_human_edges(
 
 
 async def _create_edge(
-    graph: _Graph,
+    graph: BulkGraph,
     *,
     from_id: str,
     to_id: str,
@@ -117,17 +92,7 @@ async def _create_edge(
     )
 
 
-class _Graph(Protocol):
-    async def query(
-        self, cypher: str, params: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]: ...
-
-    async def bulk_create_nodes(self, nodes: list[Node]) -> None: ...
-
-    async def bulk_create_edges(self, edges: list[Edge]) -> None: ...
-
-
-async def _get_nodes_by_path(graph: _Graph, *, path: str) -> list[Node]:
+async def _get_nodes_by_path(graph: BulkGraph, *, path: str) -> list[Node]:
     rows = await graph.query(
         "MATCH (n {path: $path}) RETURN properties(n) AS props",
         {"path": path},
@@ -144,7 +109,7 @@ async def _get_nodes_by_path(graph: _Graph, *, path: str) -> list[Node]:
     return out
 
 
-async def _get_loom_implements_targets(graph: _Graph, *, node_id: str) -> list[str]:
+async def _get_loom_implements_targets(graph: BulkGraph, *, node_id: str) -> list[str]:
     rows = await graph.query(
         f"MATCH (n {{id: $id}})-[:{_LOOM_IMPL_REL}]->(d) RETURN d.id AS id",
         {"id": node_id},
@@ -154,7 +119,7 @@ async def _get_loom_implements_targets(graph: _Graph, *, node_id: str) -> list[s
 
 async def _finalize_incremental_updates(
     repo_path: str,
-    graph: LoomGraph | _Graph,
+    graph: BulkGraph,
     *,
     t0: float,
     errors: list[IndexError],
@@ -233,7 +198,7 @@ async def _finalize_incremental_updates(
 async def sync_paths(
     repo_path: str,
     changed_paths: list[str],
-    graph: LoomGraph | _Graph,
+    graph: BulkGraph,
 ) -> IndexResult:
     t0 = perf_counter()
     errors: list[IndexError] = []
@@ -258,7 +223,7 @@ async def sync_paths(
             files_added += 1
 
         try:
-            new_nodes = parse_code(abs_path)
+            new_nodes = await asyncio.to_thread(parse_code, abs_path)
             batch_nodes, batch_edges = _build_file_batch(abs_path, new_nodes)
         except Exception as e:
             append_index_error(
@@ -345,7 +310,7 @@ async def sync_commits(
     repo_path: str,
     old_sha: str,
     new_sha: str,
-    graph: LoomGraph | _Graph,
+    graph: BulkGraph,
 ) -> IndexResult:
     """Incrementally sync graph between two git SHAs.
 
@@ -392,7 +357,7 @@ async def sync_commits(
         if ch.status == "A":
             files_added += 1
             try:
-                new_nodes = parse_code(abs_path)
+                new_nodes = await asyncio.to_thread(parse_code, abs_path)
                 batch_nodes, batch_edges = _build_file_batch(abs_path, new_nodes)
                 nodes_to_upsert.extend(batch_nodes)
                 edges_to_upsert.extend(batch_edges)
@@ -413,7 +378,7 @@ async def sync_commits(
                 old_nodes = []
 
             try:
-                new_nodes = parse_code(abs_path)
+                new_nodes = await asyncio.to_thread(parse_code, abs_path)
                 batch_nodes, batch_edges = _build_file_batch(abs_path, new_nodes)
             except Exception as e:
                 append_index_error(
@@ -534,9 +499,13 @@ async def sync_commits(
                     )
                 except Exception as e:
                     append_index_error(errors, path=old_abs, phase="persist", error=e)
+                try:
+                    await invalidate_edges_for_file(graph, path=old_abs)
+                except Exception as e:
+                    append_index_error(errors, path=old_abs, phase="persist", error=e)
 
             try:
-                new_nodes = parse_code(abs_path)
+                new_nodes = await asyncio.to_thread(parse_code, abs_path)
                 batch_nodes, batch_edges = _build_file_batch(abs_path, new_nodes)
             except Exception as e:
                 append_index_error(
@@ -562,6 +531,11 @@ async def sync_commits(
                 n.content_hash: n.id
                 for n in batch_nodes
                 if isinstance(n.content_hash, str) and n.content_hash
+            }
+            matched_old_ids = {
+                n.id
+                for n in old_nodes
+                if isinstance(n.content_hash, str) and n.content_hash in new_by_hash
             }
 
             # Migrate HUMAN edges when endpoint nodes match by content_hash.
@@ -606,10 +580,20 @@ async def sync_commits(
                             errors, path=abs_path, phase="persist", error=e
                         )
 
-            # Remove old nodes after migration.
+            # Remove only old nodes that are safe to delete after migration.
             try:
-                if old_abs is not None:
-                    await delete_nodes_by_path(graph, path=old_abs)
+                deletable_old_ids: list[str] = []
+                for old_node in old_nodes:
+                    if old_node.id in matched_old_ids:
+                        deletable_old_ids.append(old_node.id)
+                        continue
+                    if await node_has_human_edges(graph, node_id=old_node.id):
+                        await mark_human_edges_stale_for_node(
+                            graph, node_id=old_node.id, reason="source_renamed"
+                        )
+                        continue
+                    deletable_old_ids.append(old_node.id)
+                await delete_nodes_by_ids(graph, deletable_old_ids)
             except Exception as e:
                 append_index_error(
                     errors,

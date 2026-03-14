@@ -13,6 +13,7 @@ from loom.core import Edge, EdgeType, NodeKind
 
 logger = logging.getLogger(__name__)
 _GIT_SINCE_FORMAT = "%Y-%m-%d %H:%M:%S"
+_MAX_FILES_PER_COMMIT = 50
 
 
 def _to_file_node_id(repo_root: Path, file_path: str) -> str:
@@ -75,19 +76,20 @@ async def analyze_coupling(
             )
         )
     except git.GitCommandError as e:
-        logger.warning(f"Failed to read commits: {e}")
+        logger.warning("Failed to read commits: %s", e)
         return []
 
     if not commits:
-        logger.info(f"No commits found in last {months} months")
+        logger.info("No commits found in last %d months", months)
         return []
 
-    logger.info(f"Analyzing {len(commits)} commits from last {months} months")
+    logger.info("Analyzing %d commits from last %d months", len(commits), months)
 
     # Process commits in thread pool to avoid blocking
     def _process_commits():
         results = []
         appearances = defaultdict(int)
+        skipped_large_commits = 0
         for commit in commits:
             # Get changed files for this commit
             changed_files: set[str] = set()
@@ -118,19 +120,32 @@ async def analyze_coupling(
                             changed_files.add(item.path)  # type: ignore[union-attr]
                 except Exception as e:
                     logger.debug(
-                        f"Failed to traverse initial commit {commit.hexsha[:8]}: {e}"
+                        "Failed to traverse initial commit %s: %s",
+                        commit.hexsha[:8],
+                        e,
                     )
                     continue
+
+            if len(changed_files) > _MAX_FILES_PER_COMMIT:
+                skipped_large_commits += 1
+                logger.debug(
+                    "Skipping commit %s with %d changed files",
+                    commit.hexsha[:8],
+                    len(changed_files),
+                )
+                continue
 
             if changed_files:
                 results.append(changed_files)
                 for file_path in changed_files:
                     appearances[file_path] += 1
-        return results, appearances
+        return results, appearances, skipped_large_commits
 
-    file_changes_per_commit, file_appearance_count = await asyncio.to_thread(
-        _process_commits
-    )
+    (
+        file_changes_per_commit,
+        file_appearance_count,
+        skipped_large_commits,
+    ) = await asyncio.to_thread(_process_commits)
 
     if not file_changes_per_commit:
         logger.info("No file changes found in commit history")
@@ -180,8 +195,11 @@ async def analyze_coupling(
             )
 
     logger.info(
-        f"Found {len(edges)} coupled file pairs "
-        f"(threshold={threshold}, {len(file_changes_per_commit)} commits analyzed)"
+        "Found %d coupled file pairs (threshold=%s, %d commits analyzed, %d large commits skipped)",
+        len(edges),
+        threshold,
+        len(file_changes_per_commit),
+        skipped_large_commits,
     )
 
     return edges

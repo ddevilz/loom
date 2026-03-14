@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 import threading
 from typing import Any
 from urllib.parse import urlparse
@@ -10,6 +11,13 @@ from loom.config import LOOM_DB_HOST, LOOM_DB_PORT, LOOM_DB_URL
 
 _DB_SINGLETON: FalkorDB | None = None
 _DB_SINGLETON_LOCK = threading.Lock()
+
+try:
+    from redis.exceptions import ConnectionError as RedisConnectionError
+    from redis.exceptions import TimeoutError as RedisTimeoutError
+except Exception:
+    RedisConnectionError = ()
+    RedisTimeoutError = ()
 
 
 def _falkordb_connect_kwargs() -> dict[str, Any]:
@@ -46,6 +54,43 @@ def get_falkordb_singleton() -> FalkorDB:
         return _DB_SINGLETON
 
 
+_CONNECTION_ERROR_TYPES = tuple(
+    error_type
+    for error_type in (
+        ConnectionResetError,
+        ConnectionAbortedError,
+        BrokenPipeError,
+        TimeoutError,
+        socket.timeout,
+        OSError,
+        RedisConnectionError,
+        RedisTimeoutError,
+    )
+    if isinstance(error_type, type)
+)
+
+_CONNECTION_ERROR_MARKERS = (
+    "connection refused",
+    "connection reset",
+    "connection closed",
+    "server closed the connection",
+    "socket closed",
+    "timed out",
+    "timeout",
+    "temporarily unavailable",
+    "connection error",
+    "network is unreachable",
+    "broken pipe",
+)
+
+
+def _is_connection_error(error: Exception) -> bool:
+    if isinstance(error, _CONNECTION_ERROR_TYPES):
+        return True
+    message = str(error).lower()
+    return any(marker in message for marker in _CONNECTION_ERROR_MARKERS)
+
+
 class FalkorGateway:
     def __init__(self, graph_name: str) -> None:
         self.graph_name = graph_name
@@ -76,7 +121,9 @@ class FalkorGateway:
     ):
         try:
             return self._graph.query(cypher, params=params, timeout=timeout)
-        except Exception:
+        except Exception as e:
+            if not _is_connection_error(e):
+                raise
             self.reconnect()
             return self._graph.query(cypher, params=params, timeout=timeout)
 

@@ -3,13 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 from loom.core import EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
+from loom.core.protocols import NeighborGraph
 from loom.embed.embedder import Embedder, FastEmbedder, cosine_similarity
 
 logger = logging.getLogger(__name__)
+_DEFAULT_SEARCH_EMBEDDER = FastEmbedder()
 
 
 _QUERY_CANDIDATES = (
@@ -28,20 +30,6 @@ _QUERY_CANDIDATES_FALLBACK = (
     "n.path AS path, n.metadata AS metadata, n.embedding AS embedding "
     "LIMIT $limit"
 )
-
-
-class _Graph(Protocol):
-    async def query(
-        self, cypher: str, params: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]: ...
-
-    async def neighbors(
-        self,
-        node_id: str,
-        depth: int = 1,
-        edge_types: list[EdgeType] | None = None,
-        kind: NodeKind | None = None,
-    ) -> list[Node]: ...
 
 
 @dataclass(frozen=True)
@@ -76,7 +64,7 @@ def _row_to_node(row: dict[str, Any]) -> Node:
 
 async def search(
     query_text: str,
-    graph: _Graph,
+    graph: NeighborGraph,
     *,
     limit: int = 10,
     expand_depth: int = 1,
@@ -86,7 +74,7 @@ async def search(
     expand_depth = max(0, min(expand_depth, 10))
 
     if embedder is None:
-        embedder = FastEmbedder()
+        embedder = _DEFAULT_SEARCH_EMBEDDER
 
     query_vector = (await asyncio.to_thread(embedder.embed, [query_text]))[0]
     try:

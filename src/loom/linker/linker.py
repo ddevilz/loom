@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from loom.core import Edge, EdgeOrigin, Node
+from loom.core.protocols import BulkGraph
 from loom.linker.embed_match import link_by_embedding
 from loom.linker.llm_match import link_by_llm
 from loom.linker.name_match import link_by_name
@@ -17,10 +18,6 @@ class SummaryLLMClient(Protocol):
     async def summarize(
         self, *, prompt: str, max_tokens: int = 200, model: str | None = None
     ) -> str: ...
-
-
-class _Graph(Protocol):
-    async def bulk_create_edges(self, edges: list[Edge]) -> None: ...
 
 
 @dataclass
@@ -38,7 +35,7 @@ class SemanticLinker:
         self,
         code_nodes: list[Node],
         doc_nodes: list[Node],
-        graph: _Graph,
+        graph: BulkGraph,
     ) -> list[Edge]:
         tier1 = link_by_name(code_nodes, doc_nodes, threshold=self.name_threshold)
         tier2 = await link_by_embedding(
