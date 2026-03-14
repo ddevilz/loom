@@ -30,6 +30,7 @@ LOOM_EMBED_BATCH_SIZE = int(os.getenv("LOOM_EMBED_BATCH_SIZE", "32"))
 LOOM_EMBED_CACHE_DIR = os.getenv(
     "LOOM_EMBED_CACHE_DIR", str(Path.home() / ".loom" / "fastembed_cache")
 )
+LOOM_COMMUNITY_MIN_MODULARITY = float(os.getenv("LOOM_COMMUNITY_MIN_MODULARITY", "0.3"))
 
 # Jira configuration
 LOOM_JIRA_URL = os.getenv("LOOM_JIRA_URL", "")

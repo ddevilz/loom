@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
+from time import perf_counter
 
 from igraph import Graph
 
@@ -14,6 +16,8 @@ from .mappers import (
     serialize_edge_props,
     serialize_node_props,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _rank_by_personalized_pagerank(
@@ -47,7 +51,7 @@ def _rank_by_personalized_pagerank(
 
 
 class NodeRepository:
-    _CHUNK_SIZE = 500
+    _CHUNK_SIZE = 1000
 
     def __init__(self, gw: FalkorGateway) -> None:
         self._gw = gw
@@ -101,9 +105,19 @@ class NodeRepository:
                 props, embedding = self._split_embedding(serialize_node_props(n))
                 payload.append({"id": n.id, "props": props, "embedding": embedding})
             query = cypher.bulk_create_or_update_nodes_with_label(label)
+            chunk_count = (len(payload) + self._CHUNK_SIZE - 1) // self._CHUNK_SIZE
+            t0 = perf_counter()
             for i in range(0, len(payload), self._CHUNK_SIZE):
                 chunk = payload[i : i + self._CHUNK_SIZE]
                 self._gw.run(query, params={"nodes": chunk})
+            logger.info(
+                "falkor bulk_upsert_nodes label=%s count=%d chunk_size=%d chunks=%d duration_ms=%.2f",
+                label,
+                len(payload),
+                self._CHUNK_SIZE,
+                chunk_count,
+                (perf_counter() - t0) * 1000.0,
+            )
 
 
 class EdgeRepository:
@@ -119,7 +133,7 @@ class EdgeRepository:
             params={"from_id": edge.from_id, "to_id": edge.to_id, "props": props},
         )
 
-    _CHUNK_SIZE = 500
+    _CHUNK_SIZE = 1000
 
     def bulk_upsert(self, edges: list[Edge]) -> None:
         if not edges:
@@ -140,9 +154,19 @@ class EdgeRepository:
                 }
                 for e in group
             ]
+            chunk_count = (len(payload) + self._CHUNK_SIZE - 1) // self._CHUNK_SIZE
+            t0 = perf_counter()
             for i in range(0, len(payload), self._CHUNK_SIZE):
                 chunk = payload[i : i + self._CHUNK_SIZE]
                 self._gw.run(query, params={"edges": chunk})
+            logger.info(
+                "falkor bulk_upsert_edges rel_type=%s count=%d chunk_size=%d chunks=%d duration_ms=%.2f",
+                rel_type,
+                len(payload),
+                self._CHUNK_SIZE,
+                chunk_count,
+                (perf_counter() - t0) * 1000.0,
+            )
 
 
 class TraversalRepository:

@@ -16,8 +16,11 @@ _VIOLATES_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)
 
 try:
     from fastmcp import FastMCP
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     FastMCP = None  # type: ignore
+
+_MAX_QUERY_LENGTH = 1000
+_MAX_IDENTIFIER_LENGTH = 512
 
 
 def _row_to_code_node(row: dict[str, object]) -> Node | None:
@@ -74,6 +77,36 @@ def _row_to_ast_drift(row: dict[str, object]) -> dict[str, object] | None:
     return {"node_id": node_id, "reasons": normalized_reasons}
 
 
+def _require_non_empty_text(value: str, *, field_name: str, max_length: int) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{field_name} must be non-empty")
+    if len(normalized) > max_length:
+        raise ValueError(f"{field_name} must be <= {max_length} characters")
+    return normalized
+
+
+def _format_caller_row(row: dict[str, object]) -> dict[str, object] | None:
+    node_id = row.get("id")
+    name = row.get("name")
+    path = row.get("path")
+    if (
+        not isinstance(node_id, str)
+        or not isinstance(name, str)
+        or not isinstance(path, str)
+    ):
+        return None
+    confidence = row.get("confidence")
+    return {
+        "id": node_id,
+        "name": name,
+        "path": path,
+        "confidence": float(confidence)
+        if isinstance(confidence, (int, float))
+        else 0.0,
+    }
+
+
 def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
     if FastMCP is None:
         raise RuntimeError("fastmcp is not available")
@@ -90,6 +123,9 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
 
     @mcp.tool()
     async def search_code(query: str, limit: int = 10) -> list[dict[str, object]]:
+        query = _require_non_empty_text(
+            query, field_name="query", max_length=_MAX_QUERY_LENGTH
+        )
         results = await search(query, graph, limit=_clamp_limit(limit))
         return [
             {
@@ -103,19 +139,32 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
 
     @mcp.tool()
     async def get_callers(node_id: str) -> list[dict[str, object]]:
+        node_id = _require_non_empty_text(
+            node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
+        )
         rows = await graph.query(
             f"MATCH (a)-[r:{_CALLS_REL}]->(b {{id: $id}}) RETURN a.id AS id, a.name AS name, a.path AS path, r.confidence AS confidence",
             {"id": node_id},
         )
-        return rows
+        return [
+            formatted
+            for row in rows
+            if (formatted := _format_caller_row(row)) is not None
+        ]
 
     @mcp.tool()
     async def get_spec(node_id: str) -> list[dict[str, object]]:
+        node_id = _require_non_empty_text(
+            node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
+        )
         nodes = await tickets_for_function(node_id, graph)
         return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
 
     @mcp.tool()
     async def check_drift(node_id: str) -> dict[str, object]:
+        node_id = _require_non_empty_text(
+            node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
+        )
         drift_rows = await graph.query(
             f"MATCH (f {{id: $id}})-[r:{_VIOLATES_REL}]->() "
             "RETURN f.id AS node_id, r.link_method AS link_method, "
@@ -139,6 +188,9 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
         result is the true blast radius: every node that depends on this one.
         Results are ranked by Personalized PageRank on the CALLS subgraph.
         """
+        node_id = _require_non_empty_text(
+            node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
+        )
         nodes = await graph.blast_radius(node_id, depth=_clamp_depth(depth))
         return [
             {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value}
@@ -147,11 +199,17 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
 
     @mcp.tool()
     async def get_impact(ticket_id: str) -> list[dict[str, object]]:
+        ticket_id = _require_non_empty_text(
+            ticket_id, field_name="ticket_id", max_length=_MAX_IDENTIFIER_LENGTH
+        )
         nodes = await impact_of_ticket(ticket_id, graph)
         return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
 
     @mcp.tool()
     async def get_ticket(ticket_id: str) -> list[dict[str, object]]:
+        ticket_id = _require_non_empty_text(
+            ticket_id, field_name="ticket_id", max_length=_MAX_IDENTIFIER_LENGTH
+        )
         rows = await graph.query(
             "MATCH (t) WHERE (t.name = $ticket_id OR t.id = $ticket_id) AND t.path STARTS WITH 'jira://' "
             "RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
