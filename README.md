@@ -176,6 +176,12 @@ Inspect untraced functions:
 uv run loom trace untraced --graph-name myrepo
 ```
 
+Inspect blast radius for a symbol:
+
+```bash
+uv run loom blast_radius --node validate_user --graph-name myrepo --depth 3
+```
+
 Start the MCP server:
 
 ```bash
@@ -191,11 +197,27 @@ uv run loom serve --graph-name myrepo
 | `loom query <text>` | Search indexed nodes semantically using embeddings and graph expansion. | `uv run loom query "how does login work" --graph-name myrepo --limit 10` |
 | `loom trace <mode> [target]` | Run traceability workflows like unimplemented, untraced, impact, tickets, and coverage. | `uv run loom trace impact PROJ-123 --graph-name myrepo` |
 | `loom calls` | Inspect `CALLS` relationships for a target node or dump a slice of the call graph. | `uv run loom calls --target App --direction both --graph-name myrepo` |
+| `loom blast_radius` | Show transitive callers of a node as a dependency tree and flag linked docs at risk. | `uv run loom blast_radius --node validate_user --graph-name myrepo --depth 3` |
 | `loom entrypoints` | Show likely entrypoints, call roots, and relationship counts. | `uv run loom entrypoints --graph-name myrepo --limit 30` |
 | `loom watch` | Watch the filesystem and incrementally update the graph. | `uv run loom watch . --graph-name myrepo --debounce 500` |
 | `loom sync` | Sync changes between two git SHAs into the graph. | `uv run loom sync --old-sha abc --new-sha def --graph-name myrepo --repo-path .` |
 | `loom serve` | Start the MCP server over stdio. | `uv run loom serve --graph-name myrepo` |
 | `loom --dev` | Verify the package imports correctly. | `uv run loom --dev` |
+
+Example `blast_radius` output:
+
+```text
+Blast radius: 6 nodes across 3 hops
+
+link (semantic_linker.py)
+├─ SemanticLinker (semantic_linker.py)    ← CALLS
+│  └─ ingest_repository (pipeline.py)    ← CALLS
+│     └─ Registry (registry.py)    ← CALLS
+│        └─ LoomServer (server.py)    ← CALLS
+└─ ARCHITECTURE.md    ← IMPLEMENTS (doc at risk)
+
+⚠  ARCHITECTURE.md#semantic-linker requires update if link() signature changes.
+```
 
 ## MCP integration
 
@@ -221,9 +243,18 @@ Once connected, MCP clients can use Loom tools such as:
 - **`get_callers`**
 - **`get_spec`**
 - **`check_drift`** (AST drift only)
+- **`get_blast_radius`**
 - **`get_impact`**
 - **`get_ticket`**
 - **`unimplemented`**
+
+`get_blast_radius` returns a structured payload with:
+
+- **`root`**
+- **`summary`** with `total_nodes` and `hops`
+- **`callers`** with `depth`, `parent_id`, and `edge_label`
+- **`docs_at_risk`** with doc references and update conditions
+- **`warnings`** ready for display
 
 ## Architecture overview
 

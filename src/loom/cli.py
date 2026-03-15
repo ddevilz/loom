@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from loom.config import LOOM_DB_HOST, LOOM_DB_PORT
+from loom.query.blast_radius import build_blast_radius_payload
 
 app = typer.Typer(add_completion=False)
 
@@ -79,6 +80,33 @@ def _print_context_rows(
         columns=[("kind", None), ("name", None), ("path", None), ("relation", None)],
         rows=rows,
     )
+
+
+def _format_node_summary(name: str, path: str) -> str:
+    return f"{name} ({Path(path).name})"
+
+
+def _render_blast_branch(
+    console: Console,
+    *,
+    node_id: str,
+    children_by_parent: dict[str, list[dict[str, object]]],
+    prefix: str = "",
+) -> None:
+    children = children_by_parent.get(node_id, [])
+    for index, child in enumerate(children):
+        is_last = index == len(children) - 1
+        branch = "└─ " if is_last else "├─ "
+        console.print(
+            f"{prefix}{branch}{child['label']}    ← {child['edge_label']}{child['suffix']}"
+        )
+        next_prefix = prefix + ("   " if is_last else "│  ")
+        _render_blast_branch(
+            console,
+            node_id=str(child["id"]),
+            children_by_parent=children_by_parent,
+            prefix=next_prefix,
+        )
 
 
 def _find_git_root(candidate: Path) -> Path | None:
@@ -571,6 +599,126 @@ LIMIT $limit
                 {"id": node_id, "limit": limit},
             )
             _print_call_rows(console, heading="=== callers ===", rows=rows)
+
+    asyncio.run(_run())
+
+
+@app.command(name="blast_radius")
+def blast_radius(
+    node: str = typer.Option(..., "--node", help="Node id or plain name to inspect."),
+    depth: int = typer.Option(3, "--depth", min=1, max=8),
+    graph_name: str = typer.Option("loom", "--graph-name"),
+    kind: str | None = typer.Option(
+        None, "--kind", help="Optional NodeKind when node is a plain name."
+    ),
+) -> None:
+    from loom.core import LoomGraph
+    from loom.core.node import NodeKind
+
+    console = Console()
+
+    async def _resolve_node_id(graph: LoomGraph, target: str) -> str:
+        if ":" in target:
+            return target
+
+        label_clause = ":Node"
+        if kind is not None:
+            try:
+                resolved_kind = NodeKind(kind)
+            except Exception:
+                console.print(f"Invalid --kind: {kind}")
+                raise typer.Exit(code=1)
+            label_clause = f":`{resolved_kind.name.title()}`"
+
+        rows = await graph.query(
+            f"MATCH (n{label_clause} {{name: $name}}) "
+            "RETURN n.id AS id, n.kind AS kind, n.path AS path "
+            "LIMIT 10",
+            {"name": target},
+        )
+        if len(rows) == 0:
+            console.print(
+                f"[red]Target not found:[/red] no node named [bold]{target!r}[/bold]"
+            )
+            if kind is None:
+                console.print(
+                    "Tip: use [bold]--kind[/bold] (e.g. function, class, method) to narrow the search."
+                )
+            raise typer.Exit(code=1)
+        if len(rows) > 1:
+            console.print(
+                f"[yellow]Ambiguous target[/yellow]: {len(rows)} nodes named [bold]{target!r}[/bold]. "
+                "Pass the full node id or use [bold]--kind[/bold] to disambiguate:"
+            )
+            for row in rows:
+                console.print(
+                    f"  {row.get('id')}  ({row.get('kind')} · {row.get('path')})"
+                )
+            raise typer.Exit(code=1)
+        resolved_id = rows[0].get("id")
+        if not isinstance(resolved_id, str):
+            raise typer.Exit(code=1)
+        return resolved_id
+
+    async def _run() -> None:
+        graph = LoomGraph(graph_name=graph_name)
+        node_id = await _resolve_node_id(graph, node)
+        payload = await build_blast_radius_payload(graph, node_id=node_id, depth=depth)
+        root = payload.get("root")
+        if not isinstance(root, dict):
+            console.print(f"[red]Node not found:[/red] {node_id}")
+            raise typer.Exit(code=1)
+
+        summary = payload.get("summary", {})
+        total_nodes = int(summary.get("total_nodes", 0))
+        hops = int(summary.get("hops", 0))
+        console.print(f"Blast radius: {total_nodes} nodes across {hops} hops")
+        console.print()
+        console.print(_format_node_summary(str(root["name"]), str(root["path"])))
+
+        children_by_parent: dict[str, list[dict[str, object]]] = {}
+        callers = payload.get("callers", [])
+        for blast_node in sorted(
+            [row for row in callers if isinstance(row, dict)],
+            key=lambda item: (
+                int(item.get("depth", 0)),
+                str(item.get("path", "")).lower(),
+                str(item.get("name", "")).lower(),
+            ),
+        ):
+            parent_id = str(blast_node.get("parent_id") or node_id)
+            children_by_parent.setdefault(parent_id, []).append(
+                {
+                    "id": str(blast_node.get("id") or ""),
+                    "label": _format_node_summary(
+                        str(blast_node.get("name") or ""),
+                        str(blast_node.get("path") or ""),
+                    ),
+                    "edge_label": str(blast_node.get("edge_label") or "CALLS"),
+                    "suffix": "",
+                }
+            )
+
+        docs_at_risk = payload.get("docs_at_risk", [])
+        for row in [row for row in docs_at_risk if isinstance(row, dict)]:
+            children_by_parent.setdefault(node_id, []).append(
+                {
+                    "id": str(row.get("id") or ""),
+                    "label": Path(str(row.get("path") or "")).name,
+                    "edge_label": str(row.get("edge_label") or "IMPLEMENTS"),
+                    "suffix": str(row.get("suffix") or ""),
+                }
+            )
+
+        _render_blast_branch(
+            console, node_id=node_id, children_by_parent=children_by_parent
+        )
+
+        warnings = payload.get("warnings", [])
+        if warnings:
+            console.print()
+            for warning in warnings:
+                console.print(f"⚠  {warning}")
 
     asyncio.run(_run())
 

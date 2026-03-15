@@ -61,10 +61,13 @@ def coerce_row_node_kind(
     require_valid_kind: bool = False,
 ) -> NodeKind | None:
     kind_value = raw_kind.value if hasattr(raw_kind, "value") else raw_kind
-    if isinstance(kind_value, str):
-        candidate = NodeKind(kind_value)
-        if allowed_kinds is None or candidate in allowed_kinds:
-            return candidate
+    candidate = (
+        NodeKind._value2member_map_.get(kind_value)
+        if isinstance(kind_value, str)
+        else None
+    )
+    if candidate is not None and (allowed_kinds is None or candidate in allowed_kinds):
+        return candidate
     return None if require_valid_kind else fallback
 
 

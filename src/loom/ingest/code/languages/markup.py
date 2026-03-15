@@ -214,7 +214,11 @@ def parse_json(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     meta: dict[str, Any] = {}
 
-    data = json.loads(content)
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        meta[META_PARSE_ERROR] = True
+        data = None
 
     if isinstance(data, dict):
         meta[META_TOP_LEVEL_KEYS] = list(data.keys())[:20]
