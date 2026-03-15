@@ -3,10 +3,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+from tqdm import tqdm
 
 from loom.core import Node, NodeKind, NodeSource
 
@@ -19,6 +22,9 @@ class JiraConfig:
     project_key: str
     jql: str | None = None
     last_synced_at: str | None = None
+
+    def build_jql(self) -> str:
+        return _build_jql(self)
 
     def __post_init__(self) -> None:
         """Validate configuration to prevent security issues."""
@@ -113,34 +119,68 @@ def _normalize_issue(issue: dict[str, Any], config: JiraConfig) -> Node:
 
 def _fetch_search_results(config: JiraConfig) -> list[dict[str, Any]]:
     jql = _build_jql(config)
-    start_at = 0
-    max_results = 100
+    if not jql.strip():
+        raise ValueError("JQL query cannot be empty (Jira API requirement)")
+
     all_issues: list[dict[str, Any]] = []
+    next_page_token: str | None = None
+    max_results = 100
+    fields = [
+        "summary",
+        "description",
+        "issuetype",
+        "status",
+        "labels",
+        "created",
+        "reporter",
+        "epic",
+        "customfield_epic",
+        "customfield_sprint",
+        "sprint",
+        "sprint_name",
+    ]
 
-    while True:
-        url = (
-            f"{config.base_url.rstrip('/')}/rest/api/3/search"
-            f"?jql={quote(jql)}&startAt={start_at}&maxResults={max_results}"
-            "&fields=summary,description,issuetype,status,labels,created,reporter,epic,customfield_epic,customfield_sprint,sprint,sprint_name"
-        )
-        req = Request(
-            url,
-            headers={
-                "Authorization": _auth_header(config),
-                "Accept": "application/json",
-            },
-            method="GET",
-        )
-        with urlopen(req, timeout=30) as resp:  # nosec B310
-            data = json.loads(resp.read().decode("utf-8"))
+    show_progress = os.environ.get("LOOM_PROGRESS", "1") != "0" and os.isatty(1)
+    with tqdm(
+        desc="jira tickets", unit="ticket", disable=not show_progress
+    ) as progress:
+        while True:
+            url = f"{config.base_url.rstrip('/')}/rest/api/3/search/jql"
+            payload: dict[str, Any] = {
+                "jql": jql,
+                "maxResults": max_results,
+                "fields": fields,
+            }
+            if next_page_token:
+                payload["nextPageToken"] = next_page_token
 
-        issues = data.get("issues") or []
-        all_issues.extend(issues)
+            body = json.dumps(payload).encode("utf-8")
+            req = Request(
+                url,
+                headers={
+                    "Authorization": _auth_header(config),
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                data=body,
+                method="POST",
+            )
+            with urlopen(req, timeout=30) as resp:  # nosec B310
+                data = json.loads(resp.read().decode("utf-8"))
 
-        total = int(data.get("total", len(all_issues)) or 0)
-        start_at += len(issues)
-        if not issues or start_at >= total:
-            break
+            total = data.get("total")
+            if isinstance(total, int) and total >= 0:
+                progress.total = total
+
+            issues = data.get("issues") or []
+            all_issues.extend(issues)
+            progress.update(len(issues))
+
+            progress.refresh()
+
+            next_page_token = data.get("nextPageToken")
+            if not issues or not next_page_token:
+                break
 
     return [
         issue

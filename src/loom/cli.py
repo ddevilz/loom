@@ -149,6 +149,7 @@ def analyze(
     path: str = typer.Argument(..., help="Path to a repo or file"),
     docs: str | None = typer.Option(None, "--docs"),
     jira_project: str | None = typer.Option(None, "--jira-project"),
+    jira_jql: str | None = typer.Option(None, "--jira-jql"),
     jira_url: str | None = typer.Option(None, "--jira-url"),
     jira_email: str | None = typer.Option(None, "--jira-email"),
     jira_token: str | None = typer.Option(None, "--jira-token"),
@@ -173,7 +174,9 @@ def analyze(
                 email=jira_email,
                 api_token=jira_token,
                 project_key=jira_project,
+                jql=jira_jql,
             )
+            console.print(f"Jira JQL: {jira.build_jql()}")
         res = await index_repo(
             target,
             graph,
@@ -212,6 +215,13 @@ def analyze(
                 )
             )
 
+        if jira is not None:
+            jira_rows = await graph.query(
+                "MATCH (n) WHERE n.path STARTS WITH 'jira://' RETURN count(n) AS c"
+            )
+            jira_count = int((jira_rows or [{}])[0].get("c", 0) or 0)
+            console.print(_kv_table([("jira_tickets", str(jira_count))]))
+
         if res.error_count:
             console.print(
                 _render_table(
@@ -227,6 +237,71 @@ def analyze(
                     ],
                 )
             )
+
+    asyncio.run(_run())
+
+
+@app.command()
+def tickets(
+    *,
+    graph_name: str = typer.Option("loom", "--graph-name"),
+    connected: bool = typer.Option(False, "--connected"),
+    ticket: str | None = typer.Option(None, "--ticket"),
+    limit: int = typer.Option(50, "--limit"),
+) -> None:
+    from loom.core import LoomGraph
+
+    console = Console()
+
+    async def _run() -> None:
+        graph = LoomGraph(graph_name=graph_name)
+
+        if not connected:
+            console.print("Use --connected to show ticket connections.")
+            return
+
+        if ticket is None:
+            rows = await graph.query(
+                "MATCH (c:Node)-[:LOOM_IMPLEMENTS]->(t:Node) "
+                "WHERE t.path STARTS WITH 'jira://' "
+                "RETURN t.name AS ticket, t.path AS path, count(c) AS connected "
+                "ORDER BY connected DESC, ticket ASC "
+                "LIMIT $limit",
+                {"limit": limit},
+            )
+            console.print(
+                _render_table(
+                    title="Connected Jira tickets",
+                    columns=[("ticket", None), ("path", None), ("connected", "right")],
+                    rows=rows,
+                )
+            )
+            return
+
+        ticket_path = f"jira://{ticket.split('-')[0]}/{ticket}"
+        rows = await graph.query(
+            "MATCH (c:Node)-[e:LOOM_IMPLEMENTS]->(t:Node) "
+            "WHERE t.path = $ticket_path "
+            "RETURN t.name AS ticket, c.kind AS kind, c.name AS name, c.path AS path, "
+            "e.origin AS origin, e.confidence AS confidence "
+            "ORDER BY confidence DESC "
+            "LIMIT $limit",
+            {"ticket_path": ticket_path, "limit": limit},
+        )
+        console.print(
+            _render_table(
+                title=f"Connections for {ticket}",
+                columns=[
+                    ("ticket", None),
+                    ("kind", None),
+                    ("name", None),
+                    ("path", None),
+                    ("origin", None),
+                    ("confidence", "right"),
+                ],
+                rows=rows,
+            )
+        )
 
     asyncio.run(_run())
 
