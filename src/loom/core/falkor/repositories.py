@@ -7,12 +7,14 @@ from time import perf_counter
 from igraph import Graph
 
 from ..edge import Edge, EdgeType
-from ..node import Node
+from ..node import Node, NodeKind, NodeSource
 from . import cypher
 from .edge_type_adapter import EdgeTypeAdapter
 from .gateway import FalkorGateway
 from .mappers import (
+    deserialize_metadata_value,
     deserialize_node_props,
+    row_to_node,
     serialize_edge_props,
     serialize_node_props,
 )
@@ -84,7 +86,37 @@ class NodeRepository:
         if not isinstance(props, dict):
             return None
         props = deserialize_node_props(props)
-        return Node.model_validate(props)
+        source_raw = props.get("source")
+        source = (
+            NodeSource._value2member_map_.get(source_raw)
+            if isinstance(source_raw, str)
+            else None
+        )
+        if source is None:
+            source = (
+                NodeSource.DOC
+                if str(props.get("id", "")).startswith("doc:")
+                else NodeSource.CODE
+            )
+        fallback_kind = (
+            NodeKind.SECTION if source == NodeSource.DOC else NodeKind.FUNCTION
+        )
+        return row_to_node(
+            {
+                "id": props.get("id"),
+                "kind": props.get("kind"),
+                "name": props.get("name"),
+                "summary": props.get("summary"),
+                "path": props.get("path"),
+                "metadata": deserialize_metadata_value(props.get("metadata")),
+                "embedding": props.get("embedding"),
+            },
+            source=source,
+            fallback_kind=fallback_kind,
+            allow_embedding=True,
+            require_str_id=True,
+            require_valid_kind=True,
+        )
 
     def delete(self, node_id: str) -> None:
         self._gw.run(cypher.DELETE_NODE_BY_ID, params={"id": node_id})
@@ -188,8 +220,10 @@ class TraversalRepository:
         results: dict[str, Node] = {}
         graph_nodes: set[str] = {seed_id}
         graph_edges: list[tuple[str, str]] = []
+        depth_by_id: dict[str, int] = {seed_id: 0}
+        parent_by_id: dict[str, str] = {}
 
-        for _ in range(depth):
+        for current_depth in range(1, depth + 1):
             if not frontier:
                 break
 
@@ -213,6 +247,11 @@ class TraversalRepository:
                 if node.id not in visited:
                     visited.add(node.id)
                     next_frontier.add(node.id)
+                    depth_by_id[node.id] = current_depth
+                    if isinstance(target_id, str):
+                        parent_by_id[node.id] = target_id
+                node.depth = depth_by_id.get(node.id)
+                node.parent_id = parent_by_id.get(node.id)
                 results[node.id] = node
 
             frontier = next_frontier

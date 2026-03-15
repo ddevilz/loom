@@ -3,6 +3,7 @@ from __future__ import annotations
 from loom.core import EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_metadata_value, row_to_node
+from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.traceability import (
     impact_of_ticket,
     tickets_for_function,
@@ -11,7 +12,6 @@ from loom.query.traceability import (
 from loom.search.searcher import search
 
 _CALLS_REL = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
-_LOOM_IMPL_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
 _VIOLATES_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)
 
 try:
@@ -181,7 +181,7 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
         return {"ast_drift": ast_drift}
 
     @mcp.tool()
-    async def get_blast_radius(node_id: str, depth: int = 3) -> list[dict[str, object]]:
+    async def get_blast_radius(node_id: str, depth: int = 3) -> dict[str, object]:
         """Return nodes that would be affected if node_id changes.
 
         Walks incoming CALLS edges transitively (callers of callers) so the
@@ -191,11 +191,11 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
         node_id = _require_non_empty_text(
             node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
         )
-        nodes = await graph.blast_radius(node_id, depth=_clamp_depth(depth))
-        return [
-            {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value}
-            for n in nodes
-        ]
+        return await build_blast_radius_payload(
+            graph,
+            node_id=node_id,
+            depth=_clamp_depth(depth),
+        )
 
     @mcp.tool()
     async def get_impact(ticket_id: str) -> list[dict[str, object]]:

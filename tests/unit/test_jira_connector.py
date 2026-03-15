@@ -71,6 +71,7 @@ def test_fetch_search_results_paginates(monkeypatch) -> None:
         {
             "issues": [{"key": "PROJ-1", "fields": {"status": {"name": "Done"}}}],
             "total": 2,
+            "nextPageToken": "page-2",
         },
         {
             "issues": [{"key": "PROJ-2", "fields": {"status": {"name": "Done"}}}],
