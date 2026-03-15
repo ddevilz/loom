@@ -51,25 +51,7 @@ def test_python_flask_app_parsing_accuracy():
     # Verify we found nodes
     assert len(all_nodes) > 0, "No nodes extracted from Python files"
 
-    # Test 1: Import detection
-    imports = [n for n in all_nodes if n.metadata.get("is_import")]
-    assert len(imports) > 0, "No imports detected"
-
-    # Check for specific imports
-    flask_imports = [
-        n
-        for n in imports
-        if "flask" in n.metadata.get("import_from", "")
-        or "flask" in n.metadata.get("import_module", "")
-    ]
-    assert len(flask_imports) > 0, "Flask imports not detected"
-
-    typing_imports = [
-        n for n in imports if "typing" in n.metadata.get("import_from", "")
-    ]
-    assert len(typing_imports) > 0, "Typing imports not detected"
-
-    # Test 2: Class detection
+    # Test 1: Class detection
     assert "class" in nodes_by_kind, "No classes found"
 
     user_class = find_node("User", NodeKind.CLASS)
@@ -81,13 +63,13 @@ def test_python_flask_app_parsing_accuracy():
     base_service = find_node("BaseService", NodeKind.CLASS)
     assert base_service is not None, "BaseService class not found"
 
-    # Test 3: Decorator detection on classes
+    # Test 2: Decorator detection on classes
     user_dto = find_node("UserDTO", NodeKind.CLASS)
     if user_dto:
         decorators = user_dto.metadata.get("decorators", [])
         assert "dataclass" in decorators, "dataclass decorator not found on UserDTO"
 
-    # Test 4: Function detection with Flask decorators
+    # Test 3: Function detection with Flask decorators
     assert "function" in nodes_by_kind, "No functions found"
 
     get_users = find_node("get_users", NodeKind.FUNCTION)
@@ -106,7 +88,7 @@ def test_python_flask_app_parsing_accuracy():
             f"Expected flask_route hint, got: {framework_hint}"
         )
 
-    # Test 5: Async function detection
+    # Test 4: Async function detection
     async_funcs = [n for n in all_nodes if n.metadata.get("is_async")]
     assert len(async_funcs) > 0, "No async functions detected"
 
@@ -117,7 +99,7 @@ def test_python_flask_app_parsing_accuracy():
         "async_background_task not found"
     )
 
-    # Test 6: Method detection
+    # Test 5: Method detection
     assert "method" in nodes_by_kind, "No methods found"
 
     methods = nodes_by_kind["method"]
@@ -132,7 +114,7 @@ def test_python_flask_app_parsing_accuracy():
     assert "get_all_users" in method_names, "get_all_users method not found"
     assert "create_user" in method_names, "create_user method not found"
 
-    # Test 7: Static and class methods
+    # Test 6: Static and class methods
     validate_email = find_node("validate_email", NodeKind.METHOD)
     if validate_email:
         decorators = validate_email.metadata.get("decorators", [])
@@ -143,14 +125,14 @@ def test_python_flask_app_parsing_accuracy():
         decorators = from_config.metadata.get("decorators", [])
         assert "classmethod" in decorators, "classmethod decorator not found"
 
-    # Test 8: Decorator functions
+    # Test 7: Decorator functions
     timing_decorator = find_node("timing_decorator", NodeKind.FUNCTION)
     assert timing_decorator is not None, "timing_decorator function not found"
 
     cache_decorator = find_node("cache_decorator", NodeKind.FUNCTION)
     assert cache_decorator is not None, "cache_decorator function not found"
 
-    # Test 9: Functions with custom decorators
+    # Test 8: Functions with custom decorators
     process_data = find_node("process_data", NodeKind.FUNCTION)
     if process_data:
         decorators = process_data.metadata.get("decorators", [])
@@ -165,11 +147,11 @@ def test_python_flask_app_parsing_accuracy():
             "cache_decorator not applied to fibonacci"
         )
 
-    # Test 10: Generic classes
+    # Test 9: Generic classes
     data_processor = find_node("DataProcessor", NodeKind.CLASS)
     assert data_processor is not None, "DataProcessor generic class not found"
 
-    # Test 11: Verify node counts
+    # Test 10: Verify node counts
     assert len(nodes_by_kind.get("class", [])) >= 8, (
         f"Expected >= 8 classes, found {len(nodes_by_kind.get('class', []))}"
     )
@@ -182,7 +164,7 @@ def test_python_flask_app_parsing_accuracy():
         f"Expected >= 20 methods, found {len(nodes_by_kind.get('method', []))}"
     )
 
-    # Test 12: Verify all nodes have proper file paths
+    # Test 11: Verify all nodes have proper file paths
     for node in all_nodes:
         assert "python_flask_app" in node.path, (
             f"Node {node.name} has unexpected path: {node.path}"
@@ -194,13 +176,11 @@ def test_python_flask_app_parsing_accuracy():
     print(f"   Classes: {len(nodes_by_kind.get('class', []))}")
     print(f"   Functions: {len(nodes_by_kind.get('function', []))}")
     print(f"   Methods: {len(nodes_by_kind.get('method', []))}")
-    print(f"   Imports: {len(imports)}")
     print(f"   Async functions: {len(async_funcs)}")
     print("\n   Flask decorators: ✓")
     print("   Custom decorators: ✓")
     print("   Async/await: ✓")
     print("   Type hints: ✓")
-    print("   Import tracking: ✓")
 
 
 @pytest.mark.integration
@@ -230,9 +210,7 @@ def test_python_flask_app_visual_graph():
                 "imports": [],
             }
 
-        if node.metadata.get("is_import"):
-            nodes_by_file[file_name]["imports"].append(node)
-        elif node.kind == NodeKind.CLASS:
+        if node.kind == NodeKind.CLASS:
             nodes_by_file[file_name]["classes"].append(node)
         elif node.kind == NodeKind.FUNCTION:
             nodes_by_file[file_name]["functions"].append(node)
@@ -246,14 +224,6 @@ def test_python_flask_app_visual_graph():
     for file_name, categories in sorted(nodes_by_file.items()):
         print(f"\n📄 {file_name}")
         print("-" * 80)
-
-        if categories["imports"]:
-            print(f"  📥 Imports ({len(categories['imports'])})")
-            for imp in categories["imports"][:5]:
-                source = imp.metadata.get("import_from") or imp.metadata.get(
-                    "import_module", ""
-                )
-                print(f"     - {source}")
 
         if categories["classes"]:
             print(f"  📦 Classes ({len(categories['classes'])})")

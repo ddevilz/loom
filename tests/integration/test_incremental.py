@@ -59,6 +59,16 @@ class FakeGraph:
 
         if (
             q
+            == "MATCH (n {id: $id})-[r]-()\nWHERE r.origin = 'human'\nRETURN count(r) AS c"
+        ):
+            assert params is not None
+            node_id = params["id"]
+            outgoing = self.outgoing_human_edge_count_by_node_id.get(node_id, 0)
+            incoming = self.incoming_human_edge_count_by_node_id.get(node_id, 0)
+            return [{"c": outgoing + incoming}]
+
+        if (
+            q
             == "MATCH ()-[r]->(n {id: $id})\nWHERE r.origin = 'human'\nRETURN count(r) AS c"
         ):
             assert params is not None
@@ -109,6 +119,9 @@ class FakeGraph:
             return [
                 {"id": doc_id} for doc_id in self.implements_by_node_id.get(node_id, [])
             ]
+
+        if q == "MATCH (n) WHERE n.id STARTS WITH 'doc:' RETURN properties(n) AS props":
+            return []
 
         if q == "MATCH (n) RETURN count(n) AS c":
             # Not authoritative; just say 0

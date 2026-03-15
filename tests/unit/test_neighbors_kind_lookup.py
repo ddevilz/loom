@@ -90,7 +90,9 @@ async def test_neighbors_returns_empty_for_ambiguous_plain_name() -> None:
     assert result == []
     assert called is False
     assert gw.last_cypher is not None
-    assert "LIMIT 2" in gw.last_cypher
+    assert "LIMIT $limit" in gw.last_cypher
+    assert gw.last_params is not None
+    assert gw.last_params["limit"] == 2
 
 
 @pytest.mark.asyncio

@@ -101,7 +101,7 @@ class NodeRepository:
         fallback_kind = (
             NodeKind.SECTION if source == NodeSource.DOC else NodeKind.FUNCTION
         )
-        return row_to_node(
+        node = row_to_node(
             {
                 "id": props.get("id"),
                 "kind": props.get("kind"),
@@ -116,6 +116,14 @@ class NodeRepository:
             allow_embedding=True,
             require_str_id=True,
             require_valid_kind=True,
+        )
+        if node is None:
+            return None
+        community_id = props.get("community_id")
+        return node.model_copy(
+            update={
+                "community_id": community_id if isinstance(community_id, str) else None
+            }
         )
 
     def delete(self, node_id: str) -> None:

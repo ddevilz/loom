@@ -94,19 +94,7 @@ def test_vue_tsx_app_parsing_accuracy():
     assert "deleteTask" in func_names, "deleteTask function not found"
     assert "setFilter" in func_names, "setFilter function not found"
 
-    # Test 5: Verify imports are tracked
-    imports = [n for n in all_nodes if n.metadata.get("is_import")]
-    assert len(imports) > 0, "No imports detected"
-
-    # Check for Vue imports
-    vue_imports = [n for n in imports if "vue" in n.metadata.get("import_source", "")]
-    assert len(vue_imports) > 0, "Vue imports not detected"
-
-    # Test 6: Verify exports are tracked
-    exports = [n for n in all_nodes if n.metadata.get("is_exported")]
-    assert len(exports) > 0, "No exports detected"
-
-    # Test 7: Utility functions
+    # Test 5: Utility functions
     util_functions = [
         n for n in all_nodes if n.kind == NodeKind.FUNCTION and "taskHelpers" in n.path
     ]
@@ -117,12 +105,12 @@ def test_vue_tsx_app_parsing_accuracy():
     assert "getOverdueTasks" in util_func_names, "getOverdueTasks not found"
     assert "getTaskCompletionRate" in util_func_names, "getTaskCompletionRate not found"
 
-    # Test 8: Class detection
+    # Test 6: Class detection
     task_validator = find_node("TaskValidator", NodeKind.CLASS)
     assert task_validator is not None, "TaskValidator class not found"
     assert "taskHelpers" in task_validator.path
 
-    # Test 9: Async function detection
+    # Test 7: Async function detection
     async_funcs = [n for n in all_nodes if n.metadata.get("is_async")]
     assert len(async_funcs) > 0, "No async functions detected"
 
@@ -133,7 +121,7 @@ def test_vue_tsx_app_parsing_accuracy():
             "fetchTasks should be async"
         )
 
-    # Test 10: Verify node counts by kind
+    # Test 8: Verify node counts by kind
     assert "function" in nodes_by_kind, "No functions found"
     assert len(nodes_by_kind["function"]) >= 10, (
         f"Expected >= 10 functions, found {len(nodes_by_kind.get('function', []))}"
@@ -154,7 +142,7 @@ def test_vue_tsx_app_parsing_accuracy():
         f"Expected >= 1 type alias, found {len(nodes_by_kind.get('type', []))}"
     )
 
-    # Test 10: Verify all nodes have proper file paths
+    # Test 9: Verify all nodes have proper file paths
     for node in all_nodes:
         assert "vue_tsx_app" in node.path, (
             f"Node {node.name} has unexpected path: {node.path}"

@@ -4,6 +4,7 @@ import asyncio
 from typing import Any, Protocol
 
 from loom.config import LOOM_EMBED_DIM
+from loom.query.node_lookup import resolve_node_id
 
 from .edge import Edge, EdgeType
 from .falkor.gateway import FalkorGateway
@@ -56,6 +57,9 @@ class LoomGraph:
                 return
             await asyncio.to_thread(schema_init, self._gw, embedding_dim=LOOM_EMBED_DIM)
             self._schema_ready = True
+
+    async def schema_init(self) -> None:
+        await self._ensure_schema()
 
     async def delete(self) -> None:
         await self._ensure_schema()
@@ -123,22 +127,15 @@ class LoomGraph:
         await self._ensure_schema()
         resolved_node_id = node_id
         if ":" not in node_id:
-            if kind is None:
-                cypher = "MATCH (n:Node {name: $name}) RETURN n.id AS id LIMIT 2"
-            else:
-                label = kind.name.title()
-                cypher = (
-                    f"MATCH (n:`{label}` {{name: $name}}) RETURN n.id AS id LIMIT 2"
-                )
-            rows = await asyncio.to_thread(
-                self._gw.query_rows,
-                cypher,
-                {"name": node_id},
+            resolved = await resolve_node_id(
+                self,
+                target=node_id,
+                kind=kind,
+                limit=2,
             )
-            ids = [row.get("id") for row in rows if isinstance(row.get("id"), str)]
-            if len(ids) != 1:
+            if resolved is None:
                 return []
-            resolved_node_id = ids[0]
+            resolved_node_id = resolved
         types = list(EdgeType) if edge_types is None else edge_types
         return await asyncio.to_thread(
             self._traversal.neighbors,

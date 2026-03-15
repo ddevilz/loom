@@ -10,6 +10,7 @@ from rich.table import Table
 
 from loom.config import LOOM_DB_HOST, LOOM_DB_PORT
 from loom.query.blast_radius import build_blast_radius_payload
+from loom.query.node_lookup import resolve_node_rows
 
 app = typer.Typer(add_completion=False)
 
@@ -484,22 +485,15 @@ def calls(
     contains_rel = EdgeTypeAdapter.to_storage(EdgeType.CONTAINS)
 
     async def _resolve_node_id(graph: LoomGraph, node: str) -> str | None:
-        if ":" in node:
-            return node
-
-        label_clause = ":Node"
+        resolved_kind: NodeKind | None = None
         if kind is not None:
             try:
-                k = NodeKind(kind)
+                resolved_kind = NodeKind(kind)
             except Exception:
                 console.print(f"Invalid --kind: {kind}")
                 raise typer.Exit(code=1)
-            label_clause = f":`{k.name.title()}`"
 
-        rows = await graph.query(
-            f"MATCH (n{label_clause} {{name: $name}}) RETURN n.id AS id, n.kind AS kind, n.path AS path LIMIT 10",
-            {"name": node},
-        )
+        rows = await resolve_node_rows(graph, target=node, kind=resolved_kind, limit=10)
         if len(rows) == 0:
             console.print(
                 f"[red]Target not found:[/red] no node named [bold]{node!r}[/bold]"
@@ -618,23 +612,16 @@ def blast_radius(
     console = Console()
 
     async def _resolve_node_id(graph: LoomGraph, target: str) -> str:
-        if ":" in target:
-            return target
-
-        label_clause = ":Node"
+        resolved_kind: NodeKind | None = None
         if kind is not None:
             try:
                 resolved_kind = NodeKind(kind)
             except Exception:
                 console.print(f"Invalid --kind: {kind}")
                 raise typer.Exit(code=1)
-            label_clause = f":`{resolved_kind.name.title()}`"
 
-        rows = await graph.query(
-            f"MATCH (n{label_clause} {{name: $name}}) "
-            "RETURN n.id AS id, n.kind AS kind, n.path AS path "
-            "LIMIT 10",
-            {"name": target},
+        rows = await resolve_node_rows(
+            graph, target=target, kind=resolved_kind, limit=10
         )
         if len(rows) == 0:
             console.print(
