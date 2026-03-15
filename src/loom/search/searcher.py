@@ -11,7 +11,7 @@ from loom.core.protocols import NeighborGraph
 from loom.embed.embedder import Embedder, FastEmbedder, cosine_similarity
 
 logger = logging.getLogger(__name__)
-_DEFAULT_SEARCH_EMBEDDER = FastEmbedder()
+_DEFAULT_SEARCH_EMBEDDER: Embedder | None = None
 
 
 _QUERY_CANDIDATES = (
@@ -74,6 +74,9 @@ async def search(
     expand_depth = max(0, min(expand_depth, 10))
 
     if embedder is None:
+        global _DEFAULT_SEARCH_EMBEDDER
+        if _DEFAULT_SEARCH_EMBEDDER is None:
+            _DEFAULT_SEARCH_EMBEDDER = FastEmbedder()
         embedder = _DEFAULT_SEARCH_EMBEDDER
 
     query_vector = (await asyncio.to_thread(embedder.embed, [query_text]))[0]
