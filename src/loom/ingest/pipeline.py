@@ -238,6 +238,7 @@ async def _delete_existing_repo_nodes(
 async def _persist_batch(graph: BulkGraph, root: str, batch: _IndexBatch) -> None:
     if batch.nodes_to_upsert:
         node_t0 = perf_counter()
+        print(f"Persisting {len(batch.nodes_to_upsert)} nodes to database...")
         await graph.bulk_create_nodes(batch.nodes_to_upsert)
         logger.info(
             "index_repo persist_nodes root=%s count=%d duration_ms=%.2f",
@@ -245,9 +246,11 @@ async def _persist_batch(graph: BulkGraph, root: str, batch: _IndexBatch) -> Non
             len(batch.nodes_to_upsert),
             (perf_counter() - node_t0) * 1000.0,
         )
+        print(f"Completed node persistence in {(perf_counter() - node_t0):.2f}s")
 
     if batch.edges_to_upsert:
         edge_t0 = perf_counter()
+        print(f"Persisting {len(batch.edges_to_upsert)} edges to database...")
         await graph.bulk_create_edges(batch.edges_to_upsert)
         logger.info(
             "index_repo persist_edges root=%s count=%d duration_ms=%.2f",
@@ -255,6 +258,7 @@ async def _persist_batch(graph: BulkGraph, root: str, batch: _IndexBatch) -> Non
             len(batch.edges_to_upsert),
             (perf_counter() - edge_t0) * 1000.0,
         )
+        print(f"Completed edge persistence in {(perf_counter() - edge_t0):.2f}s")
 
 
 async def _query_graph_counts(
@@ -306,6 +310,7 @@ async def _link_code_nodes(
 ) -> None:
     code_nodes = _collect_code_nodes_for_linking(batch)
     if not code_nodes:
+        print("No code nodes to link")
         return
 
     stored_doc_nodes = await get_doc_nodes_for_linking(graph)
@@ -315,9 +320,13 @@ async def _link_code_nodes(
         stored_doc_nodes,
     )
     if not doc_nodes:
+        print("No doc nodes to link")
         return
 
+    print(f"Linking {len(code_nodes)} code nodes with {len(doc_nodes)} doc nodes...")
+    link_t0 = perf_counter()
     await SemanticLinker().link(code_nodes, doc_nodes, graph)
+    print(f"Completed linking in {(perf_counter() - link_t0):.2f}s")
 
 
 async def _process_files(
@@ -329,10 +338,15 @@ async def _process_files(
     batch: _IndexBatch,
 ) -> None:
     semaphore = asyncio.Semaphore(_DEFAULT_INGEST_CONCURRENCY)
+    processed_count = 0
+    total_files = len(current_files)
 
     async def _process_one(fp: str) -> _FileProcessResult:
+        nonlocal processed_count
         file_id = _file_node_id(fp)
         stored_hash = stored_hash_by_file_id.get(file_id)
+        processed_count += 1
+        logger.info(f"Processing file {processed_count}/{total_files}: {fp}")
         async with semaphore:
             return await _process_file(
                 graph,
@@ -402,6 +416,7 @@ def _collect_files(*, root: str) -> list[str]:
         len(current_files),
         (perf_counter() - collect_files_t0) * 1000.0,
     )
+    print(f"Found {len(current_files)} files to process in {(perf_counter() - collect_files_t0) * 1000.0:.2f}ms")
     return current_files
 
 
@@ -464,6 +479,7 @@ async def _delete_missing_file_nodes(
 
 async def _summarize_nodes(*, root: str, batch: _IndexBatch) -> None:
     summarize_t0 = perf_counter()
+    print(f"Extracting summaries for {len(batch.nodes_to_upsert)} nodes...")
     batch.nodes_to_upsert = await extract_summaries(batch.nodes_to_upsert)
     logger.info(
         "index_repo extract_summaries root=%s nodes=%d duration_ms=%.2f",
@@ -471,13 +487,16 @@ async def _summarize_nodes(*, root: str, batch: _IndexBatch) -> None:
         len(batch.nodes_to_upsert),
         (perf_counter() - summarize_t0) * 1000.0,
     )
+    print(f"Completed summary extraction in {(perf_counter() - summarize_t0):.2f}s")
 
 
 async def _embed_nodes_if_needed(*, root: str, batch: _IndexBatch) -> None:
     nodes_with_summaries = [n for n in batch.nodes_to_upsert if n.summary]
     if not nodes_with_summaries:
+        print("No nodes with summaries to embed")
         return
     embed_t0 = perf_counter()
+    print(f"Embedding {len(nodes_with_summaries)} nodes with summaries...")
     embedded_nodes = await embed_nodes(nodes_with_summaries)
     embedded_by_id = {node.id: node for node in embedded_nodes}
     batch.nodes_to_upsert = [
@@ -489,6 +508,7 @@ async def _embed_nodes_if_needed(*, root: str, batch: _IndexBatch) -> None:
         len(nodes_with_summaries),
         (perf_counter() - embed_t0) * 1000.0,
     )
+    print(f"Completed embedding in {(perf_counter() - embed_t0):.2f}s")
 
 
 async def _count_graph(*, graph: BulkGraph, root: str) -> tuple[int, int]:
@@ -576,6 +596,9 @@ async def index_repo(
         len(batch.edges_to_upsert),
         (perf_counter() - process_files_t0) * 1000.0,
     )
+    print(f"Completed processing {len(current_files)} files in {(perf_counter() - process_files_t0):.2f}s")
+    print(f"Files added: {batch.files_added}, updated: {batch.files_updated}, skipped: {batch.files_skipped}")
+    print(f"Nodes: {len(batch.nodes_to_upsert)}, Edges: {len(batch.edges_to_upsert)}")
 
     files_deleted = await _delete_missing_file_nodes(
         graph=graph,
