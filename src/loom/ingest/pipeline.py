@@ -416,7 +416,9 @@ def _collect_files(*, root: str) -> list[str]:
         len(current_files),
         (perf_counter() - collect_files_t0) * 1000.0,
     )
-    print(f"Found {len(current_files)} files to process in {(perf_counter() - collect_files_t0) * 1000.0:.2f}ms")
+    print(
+        f"Found {len(current_files)} files to process in {(perf_counter() - collect_files_t0) * 1000.0:.2f}ms"
+    )
     return current_files
 
 
@@ -596,8 +598,12 @@ async def index_repo(
         len(batch.edges_to_upsert),
         (perf_counter() - process_files_t0) * 1000.0,
     )
-    print(f"Completed processing {len(current_files)} files in {(perf_counter() - process_files_t0):.2f}s")
-    print(f"Files added: {batch.files_added}, updated: {batch.files_updated}, skipped: {batch.files_skipped}")
+    print(
+        f"Completed processing {len(current_files)} files in {(perf_counter() - process_files_t0):.2f}s"
+    )
+    print(
+        f"Files added: {batch.files_added}, updated: {batch.files_updated}, skipped: {batch.files_skipped}"
+    )
     print(f"Nodes: {len(batch.nodes_to_upsert)}, Edges: {len(batch.edges_to_upsert)}")
 
     files_deleted = await _delete_missing_file_nodes(
