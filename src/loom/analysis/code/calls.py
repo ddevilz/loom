@@ -46,14 +46,17 @@ def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float
     return None, 0.5
 
 
-def _find_calls_in_node(src: bytes, n: TSNode, calls: list[tuple[str, float]]) -> None:
+def _find_calls_in_node(
+    src: bytes, n: TSNode, calls: list[tuple[str, float, bool]]
+) -> None:
     """Recursively find all call nodes and extract their names."""
     if n.type == TS_PY_CALL:
         func_node = n.child_by_field_name("function")
         if func_node:
             name, confidence = _extract_call_name(src, func_node)
+            is_method_call = func_node.type == TS_PY_ATTRIBUTE
             if name and not should_ignore_call(name):
-                calls.append((name, confidence))
+                calls.append((name, confidence, is_method_call))
 
     for child in n.children:
         _find_calls_in_node(src, child, calls)
@@ -103,41 +106,65 @@ def trace_calls(
     if src is None:
         src = Path(function_node.path).read_bytes()
 
-    calls: list[tuple[str, float]] = []
+    calls: list[tuple[str, float, bool]] = []
     _find_calls_in_node(src, subtree, calls)
 
     edges: list[Edge] = []
-    for callee_name, confidence in calls:
+    for callee_name, confidence, is_method_call in calls:
         candidates = all_symbols.get(callee_name, [])
-        callee_node: Node | None = None
+
+        if not candidates:
+            edges.append(
+                Edge(
+                    from_id=function_node.id,
+                    to_id=f"unresolved:{callee_name}",
+                    kind=EdgeType.CALLS,
+                    origin=EdgeOrigin.COMPUTED,
+                    confidence=confidence,
+                    metadata={"unresolved": True},
+                )
+            )
+            continue
+
         if len(candidates) == 1:
-            callee_node = candidates[0]
-        elif len(candidates) > 1:
-            # Heuristic: prefer same file, then prefer function over method
+            resolved = candidates
+        else:
+            # Multiple candidates: prefer same-file first, then disambiguate by
+            # kind.  For method calls (obj.foo()), prefer METHOD candidates;
+            # for direct calls (foo()), prefer FUNCTION candidates.
             same_file = [c for c in candidates if c.path == function_node.path]
             pool = same_file or candidates
-            funcs = [c for c in pool if c.kind == NodeKind.FUNCTION]
-            if len(funcs) == 1:
-                callee_node = funcs[0]
+
+            preferred = [
+                c
+                for c in pool
+                if c.kind == (NodeKind.METHOD if is_method_call else NodeKind.FUNCTION)
+            ]
+
+            if len(preferred) == 1:
+                resolved = preferred
             elif len(pool) == 1:
-                callee_node = pool[0]
+                resolved = pool
+            else:
+                # Still ambiguous: emit one edge per candidate so no callers
+                # are silently lost.  Each edge carries ambiguous=True so
+                # consumers can filter by confidence if needed.
+                resolved = pool
 
-        metadata: dict[str, Any] = {}
-        if callee_node is None:
-            metadata["unresolved"] = True
-            if len(candidates) > 1:
+        for callee_node in resolved:
+            metadata: dict[str, Any] = {}
+            if len(resolved) > 1:
                 metadata["ambiguous"] = True
-
-        edges.append(
-            Edge(
-                from_id=function_node.id,
-                to_id=callee_node.id if callee_node else f"unresolved:{callee_name}",
-                kind=EdgeType.CALLS,
-                origin=EdgeOrigin.COMPUTED,
-                confidence=confidence,
-                metadata=metadata,
+            edges.append(
+                Edge(
+                    from_id=function_node.id,
+                    to_id=callee_node.id,
+                    kind=EdgeType.CALLS,
+                    origin=EdgeOrigin.COMPUTED,
+                    confidence=confidence,
+                    metadata=metadata,
+                )
             )
-        )
 
     return edges
 
