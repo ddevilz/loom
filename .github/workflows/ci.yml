@@ -28,10 +28,6 @@ jobs:
         with:
           version: "latest"
 
-      - name: Normalize line endings
-        run: |
-          git config core.autocrlf false
-
       - name: Install dependencies
         run: |
           uv sync --dev
