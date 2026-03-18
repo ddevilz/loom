@@ -204,6 +204,8 @@ uv run loom serve --graph-name myrepo
 | `loom watch` | Watch the filesystem and incrementally update the graph. | `uv run loom watch . --graph-name myrepo --debounce 500` |
 | `loom sync` | Sync changes between two git SHAs into the graph. | `uv run loom sync --old-sha abc --new-sha def --graph-name myrepo --repo-path .` |
 | `loom serve` | Start the MCP server over stdio. | `uv run loom serve --graph-name myrepo` |
+| `loom setup` | Add loom's binary directory to your shell PATH. Run once after install. | `uv run loom setup` |
+| `loom --version` | Print the installed version. | `uv run loom --version` |
 | `loom --dev` | Verify the package imports correctly. | `uv run loom --dev` |
 
 Example `blast_radius` output:
