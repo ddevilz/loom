@@ -113,6 +113,16 @@ async def test_search_graph_dedupe_keeps_highest_scoring_expansion() -> None:
     assert graph_results[0].score == pytest.approx(0.9 * 0.85)
 
 
+def test_row_to_node_returns_none_for_missing_id(caplog) -> None:
+    """A row with no id must return None and log a warning, not return a stub node."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="loom.search.searcher"):
+        node = _row_to_node({"kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": {}})
+
+    assert node is None, "Expected None for row with missing id, got a stub node"
+
+
 def test_row_to_node_falls_back_for_invalid_doc_kind() -> None:
     node = _row_to_node(
         {

@@ -23,6 +23,7 @@ from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
 from loom.ingest.result import IndexError, IndexResult
 from loom.ingest.utils import (
     delete_nodes_by_ids,
+    delete_nodes_by_path,
     get_doc_nodes_for_linking,
     get_node_ids_by_path,
     invalidate_edges_for_file,
@@ -43,8 +44,6 @@ def _merge_file_result(batch: _IndexBatch, file_result: _IndexBatch) -> None:
 
 
 _GET_FILE_NODES = "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash"
-_DELETE_NODE_BY_ID = "MATCH (n {id: $id}) DETACH DELETE n"
-_DELETE_NODES_BY_PATH = "MATCH (n {path: $path}) DETACH DELETE n"
 _DELETE_NODES_BY_PATH_PREFIX = (
     "MATCH (n) WHERE n.path STARTS WITH $path_prefix DETACH DELETE n"
 )
@@ -69,11 +68,7 @@ _FileProcessResult = _IndexBatch
 CallTracer = Callable[[str, list[Node]], list[Edge]]
 
 
-def _file_node_id(path: str) -> str:
-    return file_node_id(path)
-
-
-def _path_from_file_node_id(file_id: str) -> str | None:
+def _path_fromfile_node_id(file_id: str) -> str | None:
     prefix = f"{NodeKind.FILE.value}:"
     return file_id[len(prefix) :] if file_id.startswith(prefix) else None
 
@@ -165,6 +160,42 @@ async def _append_jira_batch(jira: JiraConfig, batch: _IndexBatch) -> None:
     batch.nodes_to_upsert.extend(jira_nodes)
 
 
+async def _filter_new_jira_nodes(
+    graph: BulkGraph, jira_nodes: list[Node]
+) -> list[Node]:
+    """Return only Jira nodes not yet present in the graph."""
+    if not jira_nodes:
+        return jira_nodes
+    existing_rows = await graph.query(
+        "MATCH (n) WHERE n.id STARTS WITH 'doc:jira://' RETURN n.id AS id"
+    )
+    existing_ids = {row.get("id") for row in existing_rows if isinstance(row.get("id"), str)}
+    return [n for n in jira_nodes if n.id not in existing_ids]
+
+
+async def _append_optional_jira(
+    *, jira: JiraConfig | None, root: str, batch: _IndexBatch, graph: BulkGraph
+) -> None:
+    if jira is None:
+        return
+    jira_t0 = perf_counter()
+    jira_nodes = await fetch_jira_nodes(jira)
+    new_jira_nodes = await _filter_new_jira_nodes(graph, jira_nodes)
+    batch.nodes_to_upsert.extend(new_jira_nodes)
+    skipped = len(jira_nodes) - len(new_jira_nodes)
+    logger.info(
+        "index_repo append_jira root=%s project=%s new_nodes=%d skipped_existing=%d total_nodes=%d duration_ms=%.2f",
+        root,
+        jira.project_key,
+        len(new_jira_nodes),
+        skipped,
+        len(batch.nodes_to_upsert),
+        (perf_counter() - jira_t0) * 1000.0,
+    )
+    if skipped:
+        print(f"Jira: {len(new_jira_nodes)} new tickets, {skipped} already indexed (skipped)")
+
+
 async def _process_file(
     graph: BulkGraph,
     *,
@@ -191,7 +222,7 @@ async def _process_file(
         batch.files_updated += 1
         old_ids = set(await get_node_ids_by_path(graph, path=fp))
         await invalidate_edges_for_file(graph, path=fp)
-    new_node_ids = {_file_node_id(fp), *(node.id for node in nodes)}
+    new_node_ids = {file_node_id(fp), *(node.id for node in nodes)}
     if not is_new_file:
         stale_ids = sorted(old_ids - new_node_ids)
         if stale_ids:
@@ -219,11 +250,11 @@ async def _delete_missing_files(
     errors: list[IndexError],
 ) -> None:
     for file_id in sorted(deleted_file_ids):
-        path = _path_from_file_node_id(file_id)
+        path = _path_fromfile_node_id(file_id)
         if path is not None:
-            await graph.query(_DELETE_NODES_BY_PATH, {"path": path})
+            await delete_nodes_by_path(graph, path=path)
         else:
-            await graph.query(_DELETE_NODE_BY_ID, {"id": file_id})
+            await delete_nodes_by_ids(graph, [file_id])
 
 
 async def _delete_existing_repo_nodes(
@@ -343,7 +374,7 @@ async def _process_files(
 
     async def _process_one(fp: str) -> _FileProcessResult:
         nonlocal processed_count
-        file_id = _file_node_id(fp)
+        file_id = file_node_id(fp)
         stored_hash = stored_hash_by_file_id.get(file_id)
         processed_count += 1
         logger.info(f"Processing file {processed_count}/{total_files}: {fp}")
@@ -439,22 +470,6 @@ def _append_optional_docs(
     )
 
 
-async def _append_optional_jira(
-    *, jira: JiraConfig | None, root: str, batch: _IndexBatch
-) -> None:
-    if jira is None:
-        return
-    jira_t0 = perf_counter()
-    await _append_jira_batch(jira, batch)
-    logger.info(
-        "index_repo append_jira root=%s project=%s total_nodes=%d duration_ms=%.2f",
-        root,
-        jira.project_key,
-        len(batch.nodes_to_upsert),
-        (perf_counter() - jira_t0) * 1000.0,
-    )
-
-
 async def _delete_missing_file_nodes(
     *,
     graph: BulkGraph,
@@ -463,7 +478,7 @@ async def _delete_missing_file_nodes(
     stored_hash_by_file_id: dict[str, str],
     batch: _IndexBatch,
 ) -> int:
-    current_file_ids = {_file_node_id(fp) for fp in current_files}
+    current_file_ids = {file_node_id(fp) for fp in current_files}
     stored_file_ids = set(stored_hash_by_file_id.keys())
     deleted_file_ids = stored_file_ids - current_file_ids
     files_deleted = len(deleted_file_ids)
@@ -577,7 +592,7 @@ async def index_repo(
     current_files = _collect_files(root=root)
 
     _append_optional_docs(docs_path=docs_path, root=root, batch=batch)
-    await _append_optional_jira(jira=jira, root=root, batch=batch)
+    await _append_optional_jira(jira=jira, root=root, batch=batch, graph=graph)
 
     process_files_t0 = perf_counter()
     await _process_files(

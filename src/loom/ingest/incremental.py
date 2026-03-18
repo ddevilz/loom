@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -9,17 +10,16 @@ from loom.analysis.code.extractor import extract_summaries
 from loom.analysis.code.parser import parse_code
 from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
-from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
+from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL
 from loom.core.falkor.mappers import deserialize_edge_props, deserialize_node_props
 from loom.core.protocols import BulkGraph
 from loom.drift.detector import detect_ast_drift
 from loom.embed.embedder import embed_nodes
 from loom.ingest.code.registry import get_registry
 from loom.ingest.differ import diff_nodes
-from loom.ingest.errors import append_index_error
 from loom.ingest.git import get_changed_files
 from loom.ingest.helpers import build_contains_edges, make_file_node
-from loom.ingest.result import IndexError, IndexResult
+from loom.ingest.result import IndexError, IndexResult, append_index_error
 from loom.ingest.utils import (
     delete_nodes_by_ids,
     get_doc_nodes_for_linking,
@@ -29,7 +29,7 @@ from loom.ingest.utils import (
 )
 from loom.linker.linker import SemanticLinker
 
-_LOOM_IMPL_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
+logger = logging.getLogger(__name__)
 
 
 def _normalized_changed_path(repo_path: str, relative_path: str) -> str:
@@ -205,7 +205,7 @@ async def _count_graph(graph: BulkGraph) -> tuple[int, int]:
 
 async def _get_loom_implements_targets(graph: BulkGraph, *, node_id: str) -> list[str]:
     rows = await graph.query(
-        f"MATCH (n {{id: $id}})-[:{_LOOM_IMPL_REL}]->(d) RETURN d.id AS id",
+        f"MATCH (n {{id: $id}})-[:{LOOM_IMPLEMENTS_REL}]->(d) RETURN d.id AS id",
         {"id": node_id},
     )
     return [row.get("id") for row in rows if isinstance(row.get("id"), str)]
@@ -269,25 +269,17 @@ async def sync_paths(
             return (0, 0, 1)
 
         old_nodes = await _get_nodes_by_path(graph, path=abs_path)
-        new_nodes = await asyncio.to_thread(parse_code, abs_path)
-        batch_nodes, batch_edges = _build_file_batch(abs_path, new_nodes)
+        is_new_file = len(old_nodes) == 0
 
-        d = diff_nodes(old_nodes, new_nodes)
-
-        deletable: list[str] = []
-        for n in d.deleted:
-            if await node_has_human_edges(graph, node_id=n.id):
-                await mark_human_edges_stale_for_node(
-                    graph, node_id=n.id, reason="source_changed"
-                )
-                continue
-            deletable.append(n.id)
-        await delete_nodes_by_ids(graph, deletable)
-
-        nodes_to_upsert.extend(batch_nodes)
-        edges_to_upsert.extend(batch_edges)
-        await invalidate_edges_for_file(graph, path=abs_path)
-        return (0, 1, 0)
+        await _sync_modified_path(
+            abs_path=abs_path,
+            graph=graph,
+            errors=errors,
+            warnings=warnings,
+            nodes_to_upsert=nodes_to_upsert,
+            edges_to_upsert=edges_to_upsert,
+        )
+        return (1, 0, 0) if is_new_file else (0, 1, 0)
 
     for raw_path in changed_paths:
         abs_path = Path(raw_path).resolve().as_posix()
@@ -320,8 +312,9 @@ async def _sync_added_path(
     edges_to_upsert: list[Edge],
 ) -> tuple[int, int]:
     if not Path(abs_path).exists():
-        await _handle_deleted_path(graph, path=abs_path, errors=errors)
-        return (0, 1)
+        # File was added and immediately deleted before sync ran.
+        # It was never indexed so there is nothing to invalidate.
+        return (0, 0)
     new_nodes = await asyncio.to_thread(parse_code, abs_path)
     batch_nodes, batch_edges = _build_file_batch(abs_path, new_nodes)
     nodes_to_upsert.extend(batch_nodes)
@@ -494,6 +487,15 @@ async def _sync_renamed_path(
                 rel_type=rel_type,
                 props=props,
             )
+        else:
+            logger.warning(
+                "HUMAN edge (%s)-[%s]->(%s) could not be migrated after rename "
+                "of %r — no content-hash match found for either endpoint. Edge dropped.",
+                from_id,
+                rel_type,
+                to_id,
+                old_abs,
+            )
 
     deletable_old_ids: list[str] = []
     for old_node in old_nodes:
@@ -526,7 +528,8 @@ async def sync_commits(
     - Applies a node-level diff by id/content_hash.
     - Uses origin-based edge invalidation for modified paths.
 
-    Rename migration of HUMAN edges is best-effort and not fully implemented yet.
+    Rename migration of HUMAN edges is best-effort: edges whose endpoints cannot be
+    matched by content hash are dropped and a WARNING is emitted for each one.
     """
 
     t0 = perf_counter()

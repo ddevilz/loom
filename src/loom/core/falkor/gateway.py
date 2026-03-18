@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Any
 from urllib.parse import urlparse
@@ -7,6 +8,8 @@ from urllib.parse import urlparse
 from falkordb import FalkorDB
 
 from loom.config import LOOM_DB_HOST, LOOM_DB_PORT, LOOM_DB_URL
+
+logger = logging.getLogger(__name__)
 
 _DB_SINGLETON: FalkorDB | None = None
 _DB_SINGLETON_LOCK = threading.Lock()
@@ -83,13 +86,22 @@ class FalkorGateway:
         for row in res.result_set:
             d: dict[str, Any] = {}
             for i, v in enumerate(row):
-                key = (
-                    header[i][1]
-                    if i < len(header)
+                if (
+                    i < len(header)
                     and isinstance(header[i], (list, tuple))
                     and len(header[i]) > 1
-                    else str(i)
-                )
+                ):
+                    key = header[i][1]
+                else:
+                    logger.warning(
+                        "Unexpected FalkorDB header format at column %d: %r — "
+                        "using positional key '%d'. Query: %.120s",
+                        i,
+                        header[i] if i < len(header) else "<missing>",
+                        i,
+                        cypher,
+                    )
+                    key = str(i)
                 d[key] = v
             out.append(d)
         return out

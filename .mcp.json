@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "loom": {
+      "command": "/Users/devashish/Desktop/loom/.venv/bin/loom",
+      "args": ["serve", "--graph-name", "loom_repo"],
+      "env": {
+        "LOOM_DB_HOST": "localhost",
+        "LOOM_DB_PORT": "6379"
+      }
+    }
+  }
+}

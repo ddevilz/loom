@@ -64,8 +64,9 @@ class SemanticLinker:
                 )
                 all_edges = self._dedupe_edges([*all_edges, *tier3])
             else:
-                logger.debug(
-                    "LLM not configured — skipping LLM match tier. Set LOOM_LLM_MODEL to enable."
+                logger.warning(
+                    "llm_fallback=True but no LLM client configured — skipping LLM match tier. "
+                    "Set LOOM_LLM_MODEL to enable."
                 )
 
         if all_edges:

@@ -43,23 +43,22 @@ def _coerce_node_kind(raw_kind: Any, *, fallback: NodeKind) -> NodeKind:
     return coerce_row_node_kind(raw_kind, fallback=fallback) or fallback
 
 
-def _row_to_node(row: dict[str, Any]) -> Node:
-    node_id = str(row.get("id"))
-    source = NodeSource.DOC if node_id.startswith("doc:") else NodeSource.CODE
+def _row_to_node(row: dict[str, Any]) -> Node | None:
+    raw_id = row.get("id")
+    if not isinstance(raw_id, str):
+        logger.warning("Search result row missing valid id (got %r) — skipping.", raw_id)
+        return None
+    source = NodeSource.DOC if raw_id.startswith("doc:") else NodeSource.CODE
     fallback_kind = NodeKind.SECTION if source == NodeSource.DOC else NodeKind.FUNCTION
-    return row_to_node(
+    node = row_to_node(
         row,
         source=source,
         fallback_kind=_coerce_node_kind(row.get("kind"), fallback=fallback_kind),
         allow_embedding=True,
-    ) or Node(
-        id=node_id,
-        kind=fallback_kind,
-        source=source,
-        name=node_id,
-        path="",
-        metadata={},
     )
+    if node is None:
+        logger.warning("row_to_node returned None for search row with id=%r — skipping.", raw_id)
+    return node
 
 
 async def search(
@@ -86,12 +85,12 @@ async def search(
         )
         base = [
             SearchResult(
-                node=_row_to_node(row),
+                node=node,
                 score=float(row.get("score", 0.0)),
                 matched_via="vector",
             )
             for row in rows[:limit]
-            if row.get("id") is not None
+            if (node := _row_to_node(row)) is not None
         ]
     except Exception as e:
         # Vector index query failed - fall back to brute force search
@@ -110,7 +109,7 @@ async def search(
                 fallback_limit,
             )
 
-        nodes = [_row_to_node(row) for row in rows]
+        nodes = [n for row in rows if (n := _row_to_node(row)) is not None]
         scored: list[SearchResult] = []
         for node in nodes:
             if node.embedding is None:

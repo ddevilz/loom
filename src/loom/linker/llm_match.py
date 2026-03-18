@@ -2,23 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from typing import Any
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
+from loom.linker._text_utils import tokenize_text
 from loom.linker.prompts import llm_match_prompt
 from loom.llm.client import LLMClient
 
 _MIN_TOKEN_OVERLAP = 1
 _MAX_DOC_CANDIDATES_PER_CODE = 10
-
-
-def _tokenize_text(text: str) -> set[str]:
-    tokens: set[str] = set()
-    for word in re.findall(r"[a-zA-Z][a-zA-Z0-9_]*", text):
-        camel = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", word)
-        tokens.update(t.lower() for t in camel.split() if t)
-    return tokens
 
 
 def _candidate_pairs(
@@ -29,7 +21,7 @@ def _candidate_pairs(
         doc_text = doc_node.summary or doc_node.name
         if not doc_text:
             continue
-        doc_tokens = _tokenize_text(doc_text)
+        doc_tokens = tokenize_text(doc_text)
         if not doc_tokens:
             continue
         doc_candidates.append((doc_node, doc_tokens))
@@ -38,7 +30,7 @@ def _candidate_pairs(
     for code_node in code_nodes:
         if not code_node.summary:
             continue
-        code_tokens = _tokenize_text(f"{code_node.name} {code_node.summary}")
+        code_tokens = tokenize_text(f"{code_node.name} {code_node.summary}")
         if not code_tokens:
             continue
 

@@ -253,11 +253,15 @@ def _register_defaults(reg: LanguageRegistry) -> None:
         EXT_JS,
         "javascript",
         parse_javascript,
+        call_tracer=trace_calls_for_ts_file,
+        call_tracer_error_message="javascript call tracing failed",
     )
     reg.register(
         EXT_JSX,
         "javascript",
         parse_javascript,
+        call_tracer=trace_calls_for_ts_file,
+        call_tracer_error_message="javascript call tracing failed",
     )
     reg.register(EXT_GO, "go", parse_go)
     reg.register(

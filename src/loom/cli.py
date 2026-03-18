@@ -511,7 +511,8 @@ def calls(
             for r in rows:
                 console.print(f"  {r.get('id')}  ({r.get('kind')} · {r.get('path')})")
             raise typer.Exit(code=1)
-        return rows[0].get("id")
+        raw_id = rows[0].get("id")
+        return str(raw_id) if raw_id is not None else None
 
     async def _run() -> None:
         graph = LoomGraph(graph_name=graph_name)
@@ -843,6 +844,61 @@ def enrich(
                     console.print(f"Coupling: {len(edges)} file pairs found")
                 except Exception as e:
                     console.print(f"[red]Coupling analysis failed: {e}[/red]")
+
+    asyncio.run(_run())
+
+
+@app.command()
+def relink(
+    graph_name: str = typer.Option("loom", "--graph-name"),
+    embedding_threshold: float = typer.Option(0.75, "--embedding-threshold"),
+    name_threshold: float = typer.Option(0.6, "--name-threshold"),
+) -> None:
+    """Re-run the semantic linker on all graph nodes without re-indexing.
+
+    Fetches all code nodes and doc nodes already in the graph and re-creates
+    LOOM_IMPLEMENTS edges. Use this after importing new Jira tickets or after
+    adjusting similarity thresholds — no file parsing or re-embedding needed
+    if embeddings are already stored.
+
+    Examples:
+        loom relink --graph-name loom_repo
+        loom relink --graph-name loom_repo --embedding-threshold 0.8
+    """
+    from loom.core import LoomGraph
+    from loom.ingest.utils import get_code_nodes_for_linking, get_doc_nodes_for_linking
+    from loom.linker.linker import SemanticLinker
+
+    console = Console()
+
+    async def _run() -> None:
+        graph = LoomGraph(graph_name=graph_name)
+
+        console.print("Fetching code nodes from graph...")
+        code_nodes = await get_code_nodes_for_linking(graph)
+        console.print(f"  {len(code_nodes)} code nodes loaded")
+
+        console.print("Fetching doc nodes from graph...")
+        doc_nodes = await get_doc_nodes_for_linking(graph)
+        console.print(f"  {len(doc_nodes)} doc nodes loaded")
+
+        if not code_nodes:
+            console.print("[yellow]No code nodes found — index a repo first.[/yellow]")
+            return
+        if not doc_nodes:
+            console.print("[yellow]No doc nodes found — index docs or Jira tickets first.[/yellow]")
+            return
+
+        console.print(f"Linking {len(code_nodes)} code nodes with {len(doc_nodes)} doc nodes...")
+        from time import perf_counter
+        t0 = perf_counter()
+        linker = SemanticLinker(
+            embedding_threshold=embedding_threshold,
+            name_threshold=name_threshold,
+        )
+        edges = await linker.link(code_nodes, doc_nodes, graph)
+        elapsed = perf_counter() - t0
+        console.print(f"Created {len(edges)} LOOM_IMPLEMENTS edges in {elapsed:.2f}s")
 
     asyncio.run(_run())
 

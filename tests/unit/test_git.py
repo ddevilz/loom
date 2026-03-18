@@ -88,3 +88,28 @@ async def test_get_changed_files_filters_minified_files(tmp_path: Path) -> None:
     changes = await get_changed_files(str(repo), old, new)
 
     assert all(not c.path.endswith("bundle.min.js") for c in changes)
+
+
+@pytest.mark.asyncio
+async def test_get_previous_sha_uses_ref_variable() -> None:
+    """get_previous_sha must pass the ref variable to git, not the literal string 'ref'."""
+    from unittest.mock import AsyncMock, patch
+
+    from loom.ingest.git import get_previous_sha
+
+    captured_args: list[list[str]] = []
+
+    def fake_run_git(repo_path: str, args: list[str]) -> str:
+        captured_args.append(args)
+        return "abc1234\n"
+
+    with patch("loom.ingest.git._run_git", side_effect=fake_run_git):
+        result = await get_previous_sha("/some/repo", ref="HEAD~2")
+
+    assert captured_args, "expected _run_git to be called"
+    actual_args = captured_args[0]
+    assert "HEAD~2" in actual_args, (
+        f"ref variable 'HEAD~2' not passed to git; got args: {actual_args!r}. "
+        "Bug: literal string 'ref' is used instead of the ref variable."
+    )
+    assert result == "abc1234"

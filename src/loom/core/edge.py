@@ -9,9 +9,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class EdgeType(StrEnum):
     # code → code
     CALLS = "calls"
-    IMPORTS = "imports"  # Reserved: not yet created by any parser
     EXTENDS = "extends"
-    IMPLEMENTS = "implements"  # Reserved: for Java-style interface implementation (not yet implemented)
+    # Placeholders — declared to keep EdgeTypeAdapter's storage map complete,
+    # but no parser or linker produces these edges yet.
+    IMPORTS = "imports"
+    IMPLEMENTS = "implements"  # Java-style interface implementation
     USES_TYPE = "uses_type"
     MEMBER_OF = "member_of"
     STEP_IN = "step_in"

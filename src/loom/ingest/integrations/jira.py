@@ -6,6 +6,7 @@ import json
 import os
 from dataclasses import dataclass
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -117,7 +118,36 @@ def _normalize_issue(issue: dict[str, Any], config: JiraConfig) -> Node:
     )
 
 
+def _validate_credentials(config: JiraConfig) -> None:
+    """Hit /rest/api/3/myself to verify credentials before starting the index run.
+
+    Raises ValueError with a clear message on 401/403 so the user doesn't wait
+    through local indexing only to discover bad credentials at the first API call.
+    """
+    url = f"{config.base_url.rstrip('/')}/rest/api/3/myself"
+    req = Request(
+        url,
+        headers={
+            "Authorization": _auth_header(config),
+            "Accept": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urlopen(req, timeout=10) as resp:  # nosec B310
+            resp.read()
+    except HTTPError as exc:
+        if exc.code in (401, 403):
+            raise ValueError(
+                f"Jira credential check failed (HTTP {exc.code}): "
+                f"verify LOOM_JIRA_EMAIL and LOOM_JIRA_API_TOKEN for {config.base_url}"
+            ) from exc
+        raise
+
+
 def _fetch_search_results(config: JiraConfig) -> list[dict[str, Any]]:
+    _validate_credentials(config)
+
     jql = _build_jql(config)
     if not jql.strip():
         raise ValueError("JQL query cannot be empty (Jira API requirement)")

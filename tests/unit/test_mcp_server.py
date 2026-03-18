@@ -3,12 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from loom.core import NodeKind
-from loom.mcp.server import (
-    _row_to_ast_drift,
-    _row_to_code_node,
-    _row_to_doc_node,
-    build_server,
-)
+from loom.mcp.server import _row_to_ast_drift, build_server
+from loom.query.traceability import _row_to_code_node, _row_to_doc_node
 
 
 def test_build_server_returns_instance_when_fastmcp_available() -> None:

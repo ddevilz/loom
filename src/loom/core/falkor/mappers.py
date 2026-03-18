@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Collection
-from typing import Any
+from typing import Any, cast
 
 from ..edge import Edge
 from ..node import Node, NodeKind, NodeSource
@@ -21,8 +21,15 @@ def _deserialize_props(props: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+_EPHEMERAL_NODE_FIELDS = frozenset({"depth", "parent_id"})
+
+
 def serialize_node_props(node: Node) -> dict[str, Any]:
-    props = {k: v for k, v in node.model_dump().items() if v is not None}
+    props = {
+        k: v
+        for k, v in node.model_dump().items()
+        if v is not None and k not in _EPHEMERAL_NODE_FIELDS
+    }
     # FalkorDB only allows primitive property values or arrays of primitives.
     props["metadata"] = json.dumps(props.get("metadata", {}), ensure_ascii=False)
     ch = props.get("content_hash")
@@ -67,8 +74,8 @@ def coerce_row_node_kind(
         else None
     )
     if candidate is not None and (allowed_kinds is None or candidate in allowed_kinds):
-        return candidate
-    return None if require_valid_kind else fallback
+        return cast(NodeKind, candidate)
+    return None if require_valid_kind else cast(NodeKind, fallback)
 
 
 def row_to_node(
