@@ -5,3 +5,7 @@ __pycache__/
 .mypy_cache
 .pytest_cache
 .ruff_cache
+.claude/
+docs/New folder/
+scripts/audit_graph_coverage.py
+scripts/spotcheck_blast_radius.py
