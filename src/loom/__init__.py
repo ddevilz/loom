@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import sys
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("loom")
+except PackageNotFoundError:
+    __version__ = "0.0.0.dev0"
 
 
 def _install_fast_event_loop() -> None:
@@ -24,7 +30,3 @@ def _install_fast_event_loop() -> None:
 
 
 _install_fast_event_loop()
-
-
-def hello() -> str:
-    return "Hello from loom!"

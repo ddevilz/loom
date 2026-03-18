@@ -68,6 +68,8 @@ def test_fetch_search_results_paginates(monkeypatch) -> None:
     )
 
     responses = [
+        # _validate_credentials hits /rest/api/3/myself first
+        {"accountId": "user-1", "displayName": "Test User"},
         {
             "issues": [{"key": "PROJ-1", "fields": {"status": {"name": "Done"}}}],
             "total": 2,

@@ -2,11 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from loom.core import EdgeType
-from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
+from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL
 from loom.core.protocols import QueryGraph
-
-_LOOM_IMPL_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
 
 
 def _slug(text: str) -> str:
@@ -47,7 +44,7 @@ async def build_blast_radius_payload(
     nodes = await graph.blast_radius(node_id, depth=depth)
     doc_rows = await graph.query(
         f"""
-MATCH (n:Node {{id: $id}})-[r:{_LOOM_IMPL_REL}]->(d:Node)
+MATCH (n:Node {{id: $id}})-[r:{LOOM_IMPLEMENTS_REL}]->(d:Node)
 RETURN d.id AS id, d.name AS name, d.path AS path, d.kind AS kind,
        r.link_reason AS link_reason
 ORDER BY d.path, d.name

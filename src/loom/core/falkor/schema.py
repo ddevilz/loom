@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loom.config import LOOM_EMBED_DIM
 
 from ..node import NodeKind
+
+if TYPE_CHECKING:
+    from .gateway import FalkorGateway
 
 _SCHEMA_INIT_DONE: set[str] = set()
 _SCHEMA_INIT_LOCK = threading.Lock()
@@ -24,7 +27,7 @@ _ALREADY_EXISTS_FRAGMENTS = (
 )
 
 
-def _safe_run(gw, cypher: str, params: dict[str, Any] | None = None) -> None:
+def _safe_run(gw: FalkorGateway, cypher: str, params: dict[str, Any] | None = None) -> None:
     try:
         gw.run(cypher, params=params, timeout=5)
     except Exception as exc:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
+from loom.linker._text_utils import tokenize_text
 
 
 def _tokenize_name(name: str) -> set[str]:
@@ -16,14 +17,6 @@ def _tokenize_name(name: str) -> set[str]:
         camel = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", p)
         tokens.extend([t.lower() for t in camel.split() if t])
     return {t for t in tokens if t}
-
-
-def _tokenize_text(text: str) -> set[str]:
-    tokens: set[str] = set()
-    for word in re.findall(r"[a-zA-Z][a-zA-Z0-9_]*", text):
-        camel = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", word)
-        tokens.update(t.lower() for t in camel.split() if t)
-    return tokens
 
 
 def link_by_name(
@@ -42,7 +35,7 @@ def link_by_name(
         for d in doc_nodes:
             # Prefer summary (body text), fall back to name.
             d_text = d.summary or d.name
-            d_tokens = _tokenize_text(d_text)
+            d_tokens = tokenize_text(d_text)
             if not d_tokens:
                 continue
 

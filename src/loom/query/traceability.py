@@ -3,12 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from loom.core import EdgeType, Node, NodeKind, NodeSource
-from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
+from loom.core import Node, NodeKind, NodeSource
+from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL
 from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
 from loom.core.protocols import QueryGraph
-
-_LOOM_IMPL_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
 
 
 @dataclass(frozen=True)
@@ -90,7 +88,7 @@ def _row_to_code_node(row: dict[str, Any]) -> Node | None:
 
 async def unimplemented_tickets(graph: QueryGraph) -> list[Node]:
     rows = await graph.query(
-        f"MATCH (t {{source: 'doc'}}) WHERE t.path STARTS WITH 'jira://' AND NOT ( ()-[:{_LOOM_IMPL_REL}]->(t) ) RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata"
+        f"MATCH (t {{source: 'doc'}}) WHERE t.path STARTS WITH 'jira://' AND NOT ( ()-[:{LOOM_IMPLEMENTS_REL}]->(t) ) RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata"
     )
     return [n for row in rows if (n := _row_to_doc_node(row)) is not None]
 
@@ -106,7 +104,7 @@ async def untraced_functions_limited(
     path_prefix: str | None = None,
 ) -> list[Node]:
     where_clause = (
-        f"f.kind IN ['function','method'] AND NOT ( (f)-[:{_LOOM_IMPL_REL}]->() )"
+        f"f.kind IN ['function','method'] AND NOT ( (f)-[:{LOOM_IMPLEMENTS_REL}]->() )"
     )
     params: dict[str, Any] = {"limit": limit}
     if path_prefix is not None:
@@ -121,7 +119,7 @@ async def untraced_functions_limited(
 
 async def impact_of_ticket(ticket_id: str, graph: QueryGraph) -> list[Node]:
     rows = await graph.query(
-        f"MATCH (f)-[:{_LOOM_IMPL_REL}]->(t) WHERE t.name = $ticket_id OR t.id = $ticket_id RETURN f.id AS id, f.kind AS kind, f.name AS name, f.summary AS summary, f.path AS path, f.metadata AS metadata",
+        f"MATCH (f)-[:{LOOM_IMPLEMENTS_REL}]->(t) WHERE t.name = $ticket_id OR t.id = $ticket_id RETURN f.id AS id, f.kind AS kind, f.name AS name, f.summary AS summary, f.path AS path, f.metadata AS metadata",
         {"ticket_id": ticket_id},
     )
     return [n for row in rows if (n := _row_to_code_node(row)) is not None]
@@ -129,7 +127,7 @@ async def impact_of_ticket(ticket_id: str, graph: QueryGraph) -> list[Node]:
 
 async def tickets_for_function(node_id: str, graph: QueryGraph) -> list[Node]:
     rows = await graph.query(
-        f"MATCH (f {{id: $node_id}})-[:{_LOOM_IMPL_REL}]->(t) WHERE t.path STARTS WITH 'jira://' RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
+        f"MATCH (f {{id: $node_id}})-[:{LOOM_IMPLEMENTS_REL}]->(t) WHERE t.path STARTS WITH 'jira://' RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
         {"node_id": node_id},
     )
     return [n for row in rows if (n := _row_to_doc_node(row)) is not None]
@@ -139,7 +137,7 @@ async def sprint_code_coverage(
     sprint_name: str, graph: QueryGraph
 ) -> TraceCoverageReport:
     rows = await graph.query(
-        f"MATCH (f)-[:{_LOOM_IMPL_REL}]->(t) "
+        f"MATCH (f)-[:{LOOM_IMPLEMENTS_REL}]->(t) "
         "WHERE t.path STARTS WITH 'jira://' AND t.metadata.sprint = $sprint_name "
         "RETURN DISTINCT f.id AS function_id, t.id AS ticket_id",
         {"sprint_name": sprint_name},

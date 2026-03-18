@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
 from loom.core.protocols import QueryGraph
 from loom.embed.embedder import cosine_similarity, embed_nodes
+
+logger = logging.getLogger(__name__)
 
 _VECTOR_K_LIMIT = 50
 _FALLBACK_DOC_CANDIDATE_LIMIT = 1000
@@ -31,7 +35,12 @@ async def _candidate_doc_ids_from_vector_index(
                 "vec": code_node.embedding,
             },
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "Vector index query failed for node %r: %s. Falling back to full doc scan.",
+            code_node.id,
+            exc,
+        )
         return None
     return [
         row["id"]
@@ -47,7 +56,9 @@ async def link_by_embedding(
     threshold: float = 0.75,
     graph: QueryGraph | None = None,
 ) -> list[Edge]:
-    # Ensure embeddings exist where possible.
+    # Ensure embeddings exist where possible. embed_nodes is idempotent — it skips
+    # nodes that already have an embedding set, so callers that pre-embed (e.g.
+    # incremental.py/_finalize_upsert_nodes) pay no extra cost here.
     code_nodes = await embed_nodes(code_nodes)
     doc_nodes = await embed_nodes(doc_nodes)
 

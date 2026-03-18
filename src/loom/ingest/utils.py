@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Protocol
 
 from loom.core import Node, NodeSource
 from loom.core.falkor.mappers import deserialize_node_props
+
+logger = logging.getLogger(__name__)
 
 _DELETE_NON_HUMAN_OUTGOING_EDGES_FOR_FILE = """
 MATCH (a {path: $path})-[r]->()
@@ -126,3 +129,30 @@ async def delete_nodes_by_ids(graph: EdgeInvalidationGraph, ids: list[str]) -> N
 
 async def delete_nodes_by_path(graph: EdgeInvalidationGraph, *, path: str) -> None:
     await graph.query("MATCH (n {path: $path}) DETACH DELETE n", {"path": path})
+
+
+async def get_code_nodes_for_linking(graph: EdgeInvalidationGraph) -> list[Node]:
+    """Fetch all indexable code nodes from the graph for relinking."""
+    rows = await graph.query(
+        "MATCH (n) WHERE NOT (n.id STARTS WITH 'doc:') "
+        "AND n.kind IN ['function', 'method', 'class', 'interface', 'type'] "
+        "RETURN properties(n) AS props"
+    )
+    nodes = []
+    for row in rows:
+        props = row.get("props")
+        if not isinstance(props, dict):
+            continue
+        props = deserialize_node_props(props)
+        try:
+            node = Node.model_validate(props)
+            if node.source == NodeSource.CODE:
+                nodes.append(node)
+        except Exception as exc:
+            logger.warning(
+                "Skipping corrupt code node during relink: %s — row props: %r",
+                exc,
+                props,
+            )
+            continue
+    return nodes

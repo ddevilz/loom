@@ -64,3 +64,48 @@ async def test_link_by_embedding_emits_edge_above_threshold(monkeypatch):
     edges = await link_by_embedding([code], [doc], threshold=0.75)
     assert edges
     assert edges[0].link_method == "embed_match"
+
+
+@pytest.mark.asyncio
+async def test_vector_index_failure_is_logged_not_silently_swallowed(caplog):
+    """When the vector index query fails, a warning must be logged — not silently dropped."""
+    import logging
+
+    from loom.linker.embed_match import _candidate_doc_ids_from_vector_index
+
+    code = Node(
+        id="function:x:f",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="f",
+        path="x",
+        summary="does something",
+        embedding=[1.0, 0.0],
+        metadata={},
+    )
+    doc = Node(
+        id="doc:spec.md:sec",
+        kind=NodeKind.SECTION,
+        source=NodeSource.DOC,
+        name="Spec",
+        path="spec.md",
+        summary="spec text",
+        embedding=[1.0, 0.0],
+        metadata={},
+    )
+
+    class _FailingGraph:
+        async def query(self, cypher, params=None):
+            raise RuntimeError("vector index broken")
+
+    with caplog.at_level(logging.WARNING, logger="loom.linker.embed_match"):
+        result = await _candidate_doc_ids_from_vector_index(
+            code, {doc.id: doc}, _FailingGraph()
+        )
+
+    # Returns None to signal fallback (correct), but must also log a warning
+    assert result is None, "expected None on failure to trigger fallback"
+    assert caplog.records, (
+        "expected a warning log when vector index fails — "
+        "silent swallow hides broken index from operators"
+    )

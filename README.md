@@ -193,7 +193,9 @@ uv run loom serve --graph-name myrepo
 | Command | Purpose | Example |
 |---|---|---|
 | `loom analyze <path>` | Index a repository and print counts, deltas, and errors. This is the main ingest path. | `uv run loom analyze . --graph-name myrepo --exclude-tests --force` |
+| `loom tickets` | Show Jira tickets stored in the graph; use `--connected` to show ticket-to-code connections. | `uv run loom tickets --connected --graph-name myrepo --limit 20` |
 | `loom enrich` | Run expensive enrichment passes like community detection and git coupling on an already-indexed graph. | `uv run loom enrich --graph-name myrepo --coupling-months 6` |
+| `loom relink` | Re-run the semantic linker on all graph nodes without re-indexing files. Useful after importing new Jira tickets or adjusting thresholds. | `uv run loom relink --graph-name myrepo --embedding-threshold 0.8` |
 | `loom query <text>` | Search indexed nodes semantically using embeddings and graph expansion. | `uv run loom query "how does login work" --graph-name myrepo --limit 10` |
 | `loom trace <mode> [target]` | Run traceability workflows like unimplemented, untraced, impact, tickets, and coverage. | `uv run loom trace impact PROJ-123 --graph-name myrepo` |
 | `loom calls` | Inspect `CALLS` relationships for a target node or dump a slice of the call graph. | `uv run loom calls --target App --direction both --graph-name myrepo` |
@@ -239,14 +241,17 @@ Example Windsurf MCP config:
 
 Once connected, MCP clients can use Loom tools such as:
 
-- **`search_code`**
-- **`get_callers`**
-- **`get_spec`**
-- **`check_drift`** (AST drift only)
-- **`get_blast_radius`**
-- **`get_impact`**
-- **`get_ticket`**
-- **`unimplemented`**
+| Tool | Description |
+|---|---|
+| `search_code` | Semantic search over code and doc nodes using nomic-embed-text. |
+| `get_callers` | Return all functions that directly call a given node (one hop of incoming `CALLS` edges). |
+| `get_spec` | Return Jira tickets linked to a code node via `LOOM_IMPLEMENTS` edges. |
+| `check_drift` | Return AST drift records from `LOOM_VIOLATES` edges for a given node. |
+| `get_blast_radius` | BFS over incoming `CALLS` edges to find all nodes that depend on a given node. |
+| `get_impact` | Return code nodes linked to a Jira ticket (inverse of `get_spec`). |
+| `get_ticket` | Fetch raw Jira ticket data from the graph by ticket key or node id. |
+| `unimplemented` | Return Jira tickets with no linked code nodes (spec gaps). |
+| `relink` | Re-run the semantic linker on all graph nodes without re-indexing files. |
 
 `get_blast_radius` returns a structured payload with:
 

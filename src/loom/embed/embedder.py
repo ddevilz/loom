@@ -101,16 +101,20 @@ async def embed_nodes(
     if not texts:
         return nodes
 
-    print(f"Embedding {len(texts)} node summaries...")
+    logger.info("Embedding %d node summaries...", len(texts))
     if embedder is None:
         embedder = FastEmbedder()
 
     batch_size = max(1, LOOM_EMBED_BATCH_SIZE)
     vectors: list[list[float]] = []
+    num_batches = (len(texts) + batch_size - 1) // batch_size
     for start in range(0, len(texts), batch_size):
         batch = texts[start : start + batch_size]
-        print(
-            f"Embedding batch {start // batch_size + 1}/{(len(texts) + batch_size - 1) // batch_size} ({len(batch)} texts)..."
+        logger.info(
+            "Embedding batch %d/%d (%d texts)...",
+            start // batch_size + 1,
+            num_batches,
+            len(batch),
         )
         batch_vectors = await asyncio.to_thread(embedder.embed, batch)
         if batch_vectors and len(batch_vectors[0]) != LOOM_EMBED_DIM:

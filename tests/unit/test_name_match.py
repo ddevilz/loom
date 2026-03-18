@@ -4,6 +4,30 @@ from loom.core import Node, NodeKind, NodeSource
 from loom.linker.name_match import link_by_name
 
 
+def test_tokenize_text_shared_module_is_used() -> None:
+    """Both name_match and llm_match must import tokenize_text from _text_utils."""
+    import inspect
+    import loom.linker.name_match as nm
+    import loom.linker.llm_match as lm
+
+    nm_src = inspect.getsource(nm)
+    lm_src = inspect.getsource(lm)
+
+    assert "_tokenize_text" not in nm_src, "name_match still defines its own _tokenize_text"
+    assert "_tokenize_text" not in lm_src, "llm_match still defines its own _tokenize_text"
+    assert "from loom.linker._text_utils import tokenize_text" in nm_src
+    assert "from loom.linker._text_utils import tokenize_text" in lm_src
+
+
+def test_tokenize_text_shared_helper_output() -> None:
+    from loom.linker._text_utils import tokenize_text
+
+    tokens = tokenize_text("validateUser input")
+    assert "validate" in tokens
+    assert "user" in tokens
+    assert "input" in tokens
+
+
 def test_link_by_name_emits_edge_above_threshold() -> None:
     code = Node(
         id="function:x:validate_user",

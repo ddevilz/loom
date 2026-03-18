@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 
+from loom.config import LOOM_COMMUNITY_MIN_MODULARITY
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
 
@@ -166,7 +167,7 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
     modularity = partition.modularity
     logger.info("Community detection complete. Modularity: %.4f", modularity)
 
-    if modularity < 0.3:
+    if modularity < LOOM_COMMUNITY_MIN_MODULARITY:
         logger.warning(
             "Low modularity (%.4f) - clustering may not be meaningful", modularity
         )
@@ -233,11 +234,11 @@ async def detect_communities(graph: LoomGraph) -> dict[str, str]:
 
     # Bulk insert into graph
     if community_nodes:
-        logger.info(f"Creating {len(community_nodes)} community nodes")
+        logger.info("Creating %d community nodes", len(community_nodes))
         await graph.bulk_create_nodes(community_nodes)
 
     if member_edges:
-        logger.info(f"Creating {len(member_edges)} MEMBER_OF edges")
+        logger.info("Creating %d MEMBER_OF edges", len(member_edges))
         await graph.bulk_create_edges(member_edges)
 
     # Update function nodes with community_id (batched to avoid N+1)

@@ -931,3 +931,77 @@ async def test_sync_commits_relinks_renamed_code_nodes_against_existing_doc_node
     assert any(
         props.get("path") == new_path.resolve().as_posix() for props in g.nodes.values()
     )
+
+
+# ── CRITICAL 3 + 4: sync_paths correctness ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_sync_paths_added_file_counted_as_added_not_updated(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """sync_paths must count a brand-new file as files_added=1, not files_updated=1."""
+    from loom.ingest.incremental import sync_paths
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    new_file = repo / "new.py"
+    new_file.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    g = FakeGraph()  # empty graph — file has never been indexed
+
+    # Patch embedding and summary extraction so no network calls are made
+    async def _noop_embed(nodes, **kw):
+        return nodes
+
+    async def _noop_extract(nodes):
+        return nodes
+
+    async def _noop_docs(g):
+        return []
+
+    monkeypatch.setattr("loom.ingest.incremental.embed_nodes", _noop_embed)
+    monkeypatch.setattr("loom.ingest.incremental.extract_summaries", _noop_extract)
+    monkeypatch.setattr("loom.ingest.incremental.get_doc_nodes_for_linking", _noop_docs)
+
+    res = await sync_paths(str(repo), [str(new_file)], g)
+
+    assert res.files_added == 1, (
+        f"Expected files_added=1 for a new file, got files_added={res.files_added}, "
+        f"files_updated={res.files_updated}"
+    )
+    assert res.files_updated == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_added_path_missing_file_does_not_call_handle_deleted(
+    tmp_path: Path,
+) -> None:
+    """_sync_added_path: a file added then immediately deleted must not run
+    _handle_deleted_path (which runs invalidation against a path with no nodes)."""
+    from unittest.mock import AsyncMock, patch
+
+    from loom.ingest.incremental import _sync_added_path
+
+    missing = (tmp_path / "never_existed.py").as_posix()
+    g = FakeGraph()
+
+    handle_deleted_calls: list[str] = []
+
+    async def fake_handle_deleted(graph, *, path, errors):
+        handle_deleted_calls.append(path)
+
+    with patch("loom.ingest.incremental._handle_deleted_path", side_effect=fake_handle_deleted):
+        added, deleted = await _sync_added_path(
+            abs_path=missing,
+            graph=g,
+            errors=[],
+            nodes_to_upsert=[],
+            edges_to_upsert=[],
+        )
+
+    assert handle_deleted_calls == [], (
+        "_handle_deleted_path must not be called for a file that was never indexed; "
+        f"got calls: {handle_deleted_calls}"
+    )
+    assert added == 0
+    assert deleted == 0  # file was never indexed — nothing to delete
