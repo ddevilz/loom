@@ -136,12 +136,28 @@ async def tickets_for_function(node_id: str, graph: QueryGraph) -> list[Node]:
 async def sprint_code_coverage(
     sprint_name: str, graph: QueryGraph
 ) -> TraceCoverageReport:
-    rows = await graph.query(
+    # Fetch all jira-linked pairs and filter by sprint in Python — FalkorDB
+    # stores metadata as a JSON string so dot-notation property access fails.
+    all_rows = await graph.query(
         f"MATCH (f)-[:{LOOM_IMPLEMENTS_REL}]->(t) "
-        "WHERE t.path STARTS WITH 'jira://' AND t.metadata.sprint = $sprint_name "
-        "RETURN DISTINCT f.id AS function_id, t.id AS ticket_id",
-        {"sprint_name": sprint_name},
+        "WHERE t.path STARTS WITH 'jira://' "
+        "RETURN DISTINCT f.id AS function_id, t.id AS ticket_id, t.metadata AS metadata",
     )
+    rows = []
+    for row in all_rows:
+        raw_meta = row.get("metadata")
+        meta: dict[str, object] = {}
+        if isinstance(raw_meta, str):
+            try:
+                import json
+
+                meta = json.loads(raw_meta)
+            except Exception:
+                pass
+        elif isinstance(raw_meta, dict):
+            meta = raw_meta
+        if str(meta.get("sprint", "")).lower() == sprint_name.lower():
+            rows.append(row)
 
     matching_ticket_ids: set[str] = set()
     matching_function_ids: set[str] = set()

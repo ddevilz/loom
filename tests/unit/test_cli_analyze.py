@@ -86,7 +86,10 @@ def test_cli_analyze_wires_flags_and_prints_summary(monkeypatch):
     assert result.exit_code == 0
 
     assert calls["graph_name"] == "test_graph"
-    assert Path(str(calls["path"])) == Path("tests/fixtures/sample_repo")
+    assert (
+        Path(str(calls["path"])).resolve()
+        == Path("tests/fixtures/sample_repo").resolve()
+    )
     assert calls["exclude_tests"] is True
     assert calls["force"] is True
     assert calls["jira"].project_key == "PROJ"
