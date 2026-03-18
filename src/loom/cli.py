@@ -200,7 +200,10 @@ def analyze(
     from loom.ingest.pipeline import index_repo
 
     console = Console()
-    target = str(Path(path))
+    target = str(Path(path).resolve())
+    if not Path(target).exists():
+        console.print(f"[red]Error:[/red] path does not exist: {target}")
+        raise typer.Exit(code=1)
     console.print(f"Analyzing {target}...")
 
     async def _run() -> None:
@@ -276,7 +279,11 @@ def analyze(
                 )
             )
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except FileNotFoundError as exc:
+        Console().print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -924,10 +931,11 @@ def serve(
     """Start the MCP server for Claude Code integration."""
     from loom.mcp.server import build_server
 
-    console = Console()
-    console.print("[bold green]Starting Loom MCP server...[/bold green]")
-    console.print(f"Graph: {graph_name}")
-    console.print(f"Database: {LOOM_DB_HOST}:{LOOM_DB_PORT}")
+    # All startup output MUST go to stderr — stdout is reserved for the MCP
+    # stdio JSON-RPC transport. Any text on stdout will corrupt the protocol.
+    Console(stderr=True).print(
+        f"[bold green]Starting Loom MCP server...[/bold green] graph={graph_name} db={LOOM_DB_HOST}:{LOOM_DB_PORT}"
+    )
 
     mcp = build_server(graph_name=graph_name)
     mcp.run(transport="stdio")
