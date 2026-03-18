@@ -895,11 +895,16 @@ def relink(
             console.print("[yellow]No code nodes found — index a repo first.[/yellow]")
             return
         if not doc_nodes:
-            console.print("[yellow]No doc nodes found — index docs or Jira tickets first.[/yellow]")
+            console.print(
+                "[yellow]No doc nodes found — index docs or Jira tickets first.[/yellow]"
+            )
             return
 
-        console.print(f"Linking {len(code_nodes)} code nodes with {len(doc_nodes)} doc nodes...")
+        console.print(
+            f"Linking {len(code_nodes)} code nodes with {len(doc_nodes)} doc nodes..."
+        )
         from time import perf_counter
+
         t0 = perf_counter()
         linker = SemanticLinker(
             embedding_threshold=embedding_threshold,
@@ -1044,7 +1049,9 @@ def setup() -> None:
         return
 
     console.print(f"\n[yellow]⚠  {bin_dir} is not on your PATH.[/yellow]")
-    console.print("Add it now so you can run [bold]loom[/bold] directly from any terminal.\n")
+    console.print(
+        "Add it now so you can run [bold]loom[/bold] directly from any terminal.\n"
+    )
 
     shell = os.environ.get("SHELL", "")
     home = Path.home()
@@ -1073,23 +1080,33 @@ def setup() -> None:
         else f'export PATH="{bin_dir}:$PATH"'
     )
 
-    console.print(f"Detected shell: [bold]{shell_name}[/bold]  →  RC file: [bold]{rc_file}[/bold]")
+    console.print(
+        f"Detected shell: [bold]{shell_name}[/bold]  →  RC file: [bold]{rc_file}[/bold]"
+    )
     console.print(f"\nLine to add:\n  [cyan]{export_line}[/cyan]\n")
 
-    answer = typer.prompt(
-        f"Append this line to {rc_file} automatically? [y/N]",
-        default="N",
-    ).strip().lower()
+    answer = (
+        typer.prompt(
+            f"Append this line to {rc_file} automatically? [y/N]",
+            default="N",
+        )
+        .strip()
+        .lower()
+    )
 
     if answer != "y":
-        console.print("\nNo changes made. Add the line manually then restart your terminal.")
+        console.print(
+            "\nNo changes made. Add the line manually then restart your terminal."
+        )
         return
 
     rc_file.parent.mkdir(parents=True, exist_ok=True)
     existing = rc_file.read_text(encoding="utf-8") if rc_file.exists() else ""
 
     if str(bin_dir) in existing:
-        console.print(f"\n[green]✓ {bin_dir} is already referenced in {rc_file}[/green]")
+        console.print(
+            f"\n[green]✓ {bin_dir} is already referenced in {rc_file}[/green]"
+        )
         return
 
     with rc_file.open("a", encoding="utf-8") as f:
@@ -1104,7 +1121,12 @@ def _root(
     ctx: typer.Context,
     dev: bool = typer.Option(False, "--dev", help="Development mode (placeholder)."),
     version: bool = typer.Option(
-        False, "--version", "-V", callback=_version_callback, is_eager=True, help="Show version and exit."
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit.",
     ),
 ) -> None:
     if dev:

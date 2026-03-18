@@ -169,7 +169,9 @@ async def _filter_new_jira_nodes(
     existing_rows = await graph.query(
         "MATCH (n) WHERE n.id STARTS WITH 'doc:jira://' RETURN n.id AS id"
     )
-    existing_ids = {row.get("id") for row in existing_rows if isinstance(row.get("id"), str)}
+    existing_ids = {
+        row.get("id") for row in existing_rows if isinstance(row.get("id"), str)
+    }
     return [n for n in jira_nodes if n.id not in existing_ids]
 
 
@@ -193,7 +195,9 @@ async def _append_optional_jira(
         (perf_counter() - jira_t0) * 1000.0,
     )
     if skipped:
-        print(f"Jira: {len(new_jira_nodes)} new tickets, {skipped} already indexed (skipped)")
+        print(
+            f"Jira: {len(new_jira_nodes)} new tickets, {skipped} already indexed (skipped)"
+        )
 
 
 async def _process_file(

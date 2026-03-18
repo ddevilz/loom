@@ -118,7 +118,15 @@ def test_row_to_node_returns_none_for_missing_id(caplog) -> None:
     import logging
 
     with caplog.at_level(logging.WARNING, logger="loom.search.searcher"):
-        node = _row_to_node({"kind": "function", "name": "f", "summary": "s", "path": "x", "metadata": {}})
+        node = _row_to_node(
+            {
+                "kind": "function",
+                "name": "f",
+                "summary": "s",
+                "path": "x",
+                "metadata": {},
+            }
+        )
 
     assert node is None, "Expected None for row with missing id, got a stub node"
 

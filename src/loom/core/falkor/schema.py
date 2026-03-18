@@ -27,7 +27,9 @@ _ALREADY_EXISTS_FRAGMENTS = (
 )
 
 
-def _safe_run(gw: FalkorGateway, cypher: str, params: dict[str, Any] | None = None) -> None:
+def _safe_run(
+    gw: FalkorGateway, cypher: str, params: dict[str, Any] | None = None
+) -> None:
     try:
         gw.run(cypher, params=params, timeout=5)
     except Exception as exc:

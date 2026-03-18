@@ -15,14 +15,14 @@ def test_repositories_igraph_import_is_lazy() -> None:
     # Only check top-level statements in the module body
     for node in tree.body:
         if isinstance(node, ast.ImportFrom) and node.module and "igraph" in node.module:
-            assert False, (
+            raise AssertionError(
                 f"igraph imported at module level (line {node.lineno}). "
                 "Move it inside _rank_by_personalized_pagerank."
             )
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if "igraph" in alias.name:
-                    assert False, (
+                    raise AssertionError(
                         f"igraph imported at module level (line {node.lineno}). "
                         "Move it inside _rank_by_personalized_pagerank."
                     )
