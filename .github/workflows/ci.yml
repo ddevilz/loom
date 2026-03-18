@@ -31,7 +31,6 @@ jobs:
       - name: Normalize line endings
         run: |
           git config core.autocrlf false
-          git add . && git reset --hard
 
       - name: Install dependencies
         run: |
@@ -49,9 +48,9 @@ jobs:
       - name: Run tests
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            uv run pytest tests/unit/ -v --timeout=300 --tb=short
+            uv run pytest tests/unit/ -v --tb=short
           else
-            uv run pytest -v --timeout=300 --tb=short
+            uv run pytest -v --tb=short
           fi
         shell: bash
 
@@ -60,3 +59,4 @@ jobs:
           uv build --wheel
           uv pip install dist/*.whl
           uv run loom --version
+        shell: bash
