@@ -935,6 +935,7 @@ async def test_sync_commits_relinks_renamed_code_nodes_against_existing_doc_node
 
 # ── CRITICAL 3 + 4: sync_paths correctness ────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_sync_paths_added_file_counted_as_added_not_updated(
     tmp_path: Path, monkeypatch
@@ -978,7 +979,7 @@ async def test_sync_added_path_missing_file_does_not_call_handle_deleted(
 ) -> None:
     """_sync_added_path: a file added then immediately deleted must not run
     _handle_deleted_path (which runs invalidation against a path with no nodes)."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     from loom.ingest.incremental import _sync_added_path
 
@@ -990,7 +991,9 @@ async def test_sync_added_path_missing_file_does_not_call_handle_deleted(
     async def fake_handle_deleted(graph, *, path, errors):
         handle_deleted_calls.append(path)
 
-    with patch("loom.ingest.incremental._handle_deleted_path", side_effect=fake_handle_deleted):
+    with patch(
+        "loom.ingest.incremental._handle_deleted_path", side_effect=fake_handle_deleted
+    ):
         added, deleted = await _sync_added_path(
             abs_path=missing,
             graph=g,

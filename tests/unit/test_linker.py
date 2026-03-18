@@ -56,7 +56,9 @@ async def test_llm_fallback_true_but_no_llm_emits_warning(caplog) -> None:
             _FakeGraph(),
         )
 
-    warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    warning_messages = [
+        r.message for r in caplog.records if r.levelno == logging.WARNING
+    ]
     assert any("llm_fallback" in m for m in warning_messages), (
         "Expected a WARNING when llm_fallback=True but match_llm is None; got none"
     )

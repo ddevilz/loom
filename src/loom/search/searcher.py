@@ -46,7 +46,9 @@ def _coerce_node_kind(raw_kind: Any, *, fallback: NodeKind) -> NodeKind:
 def _row_to_node(row: dict[str, Any]) -> Node | None:
     raw_id = row.get("id")
     if not isinstance(raw_id, str):
-        logger.warning("Search result row missing valid id (got %r) — skipping.", raw_id)
+        logger.warning(
+            "Search result row missing valid id (got %r) — skipping.", raw_id
+        )
         return None
     source = NodeSource.DOC if raw_id.startswith("doc:") else NodeSource.CODE
     fallback_kind = NodeKind.SECTION if source == NodeSource.DOC else NodeKind.FUNCTION
@@ -57,7 +59,9 @@ def _row_to_node(row: dict[str, Any]) -> Node | None:
         allow_embedding=True,
     )
     if node is None:
-        logger.warning("row_to_node returned None for search row with id=%r — skipping.", raw_id)
+        logger.warning(
+            "row_to_node returned None for search row with id=%r — skipping.", raw_id
+        )
     return node
 
 

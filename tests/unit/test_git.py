@@ -93,7 +93,7 @@ async def test_get_changed_files_filters_minified_files(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_get_previous_sha_uses_ref_variable() -> None:
     """get_previous_sha must pass the ref variable to git, not the literal string 'ref'."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     from loom.ingest.git import get_previous_sha
 
