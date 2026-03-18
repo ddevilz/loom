@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from loom import __version__
 from loom.config import LOOM_DB_HOST, LOOM_DB_PORT
 from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.node_lookup import resolve_node_rows
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"loom {__version__}")
+        raise typer.Exit()
+
 
 app = typer.Typer(add_completion=False)
 
@@ -1003,10 +1012,100 @@ def sync(
     asyncio.run(_run())
 
 
+@app.command()
+def setup() -> None:
+    """Configure your shell so 'loom' is available on PATH after install.
+
+    Run this once after installing loom to permanently add it to your PATH.
+    Supports zsh, bash, and fish on macOS/Linux, and prints manual instructions
+    for Windows or any other shell.
+
+    Examples:
+        loom setup          # interactive — detects your shell and offers to patch RC
+        loom setup          # safe: never overwrites existing PATH entries
+    """
+    import shutil
+    import sysconfig
+
+    console = Console()
+
+    bin_dir = Path(sysconfig.get_path("scripts"))
+    loom_bin = bin_dir / "loom"
+
+    already_on_path = shutil.which("loom") is not None
+
+    console.print("\n[bold]Loom setup[/bold]")
+    console.print(f"Installed binary : {loom_bin}")
+    console.print(f"Scripts directory: {bin_dir}")
+
+    if already_on_path:
+        found = shutil.which("loom")
+        console.print(f"\n[green]✓ loom is already on your PATH[/green] ({found})")
+        return
+
+    console.print(f"\n[yellow]⚠  {bin_dir} is not on your PATH.[/yellow]")
+    console.print("Add it now so you can run [bold]loom[/bold] directly from any terminal.\n")
+
+    shell = os.environ.get("SHELL", "")
+    home = Path.home()
+
+    if sys.platform == "win32":
+        console.print("[bold]Windows — add to PATH manually:[/bold]")
+        console.print("  1. Open Start → search 'environment variables'")
+        console.print("  2. Edit the [bold]Path[/bold] variable and append:")
+        console.print(f"     [cyan]{bin_dir}[/cyan]")
+        console.print("  3. Restart your terminal.")
+        return
+
+    if "zsh" in shell:
+        rc_file = home / ".zshrc"
+        shell_name = "zsh"
+    elif "fish" in shell:
+        rc_file = home / ".config" / "fish" / "config.fish"
+        shell_name = "fish"
+    else:
+        rc_file = home / ".bashrc"
+        shell_name = "bash"
+
+    export_line = (
+        f'fish_add_path "{bin_dir}"'
+        if shell_name == "fish"
+        else f'export PATH="{bin_dir}:$PATH"'
+    )
+
+    console.print(f"Detected shell: [bold]{shell_name}[/bold]  →  RC file: [bold]{rc_file}[/bold]")
+    console.print(f"\nLine to add:\n  [cyan]{export_line}[/cyan]\n")
+
+    answer = typer.prompt(
+        f"Append this line to {rc_file} automatically? [y/N]",
+        default="N",
+    ).strip().lower()
+
+    if answer != "y":
+        console.print("\nNo changes made. Add the line manually then restart your terminal.")
+        return
+
+    rc_file.parent.mkdir(parents=True, exist_ok=True)
+    existing = rc_file.read_text(encoding="utf-8") if rc_file.exists() else ""
+
+    if str(bin_dir) in existing:
+        console.print(f"\n[green]✓ {bin_dir} is already referenced in {rc_file}[/green]")
+        return
+
+    with rc_file.open("a", encoding="utf-8") as f:
+        f.write(f"\n# Added by loom setup\n{export_line}\n")
+
+    console.print(f"\n[green]✓ Written to {rc_file}[/green]")
+    console.print(f"Restart your terminal or run:  [bold]source {rc_file}[/bold]")
+
+
 @app.callback(invoke_without_command=True)
 def _root(
     ctx: typer.Context,
     dev: bool = typer.Option(False, "--dev", help="Development mode (placeholder)."),
+    version: bool = typer.Option(
+        False, "--version", "-V", callback=_version_callback, is_eager=True, help="Show version and exit."
+    ),
 ) -> None:
     if dev:
         Console().print("loom (dev): package import OK")
