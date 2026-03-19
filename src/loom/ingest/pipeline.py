@@ -366,7 +366,9 @@ async def _link_code_nodes(
     print(f"Linking {len(code_nodes)} code nodes with {len(doc_nodes)} doc nodes...")
     link_t0 = perf_counter()
     edges = await SemanticLinker().link(code_nodes, doc_nodes, graph)
-    print(f"Completed linking: {len(edges)} edges created in {(perf_counter() - link_t0):.2f}s")
+    print(
+        f"Completed linking: {len(edges)} edges created in {(perf_counter() - link_t0):.2f}s"
+    )
 
 
 async def _process_files(
