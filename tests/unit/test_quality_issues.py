@@ -1,9 +1,9 @@
 """Tests for issues found in /review-all quality pass."""
+
 from __future__ import annotations
 
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
-
 
 # ---------------------------------------------------------------------------
 # CRITICAL-1: schema._safe_run swallows non-"already-exists" errors and still
@@ -84,7 +84,7 @@ async def test_process_file_logs_call_tracer_failure(caplog) -> None:
         ),
         caplog.at_level(logging.WARNING, logger="loom.ingest.pipeline"),
     ):
-        result = await _process_file(
+        await _process_file(
             fake_graph,
             fp=fp,
             stored_hash=None,
@@ -93,9 +93,10 @@ async def test_process_file_logs_call_tracer_failure(caplog) -> None:
         )
 
     Path(fp).unlink(missing_ok=True)
-    assert any("tracer" in r.message.lower() or "call" in r.message.lower() for r in caplog.records), (
-        "Call tracer failure was silently swallowed — no warning logged"
-    )
+    assert any(
+        "tracer" in r.message.lower() or "call" in r.message.lower()
+        for r in caplog.records
+    ), "Call tracer failure was silently swallowed — no warning logged"
 
 
 # ---------------------------------------------------------------------------
@@ -164,9 +165,6 @@ async def test_persist_batch_logs_after_not_before_db_call() -> None:
     batch.nodes_to_upsert.append(n)
 
     printed: list[str] = []
-    import builtins
-
-    real_print = builtins.print
 
     def _capture_print(*args, **kwargs):
         printed.append(" ".join(str(a) for a in args))
@@ -206,7 +204,10 @@ async def test_link_code_nodes_logs_edge_count() -> None:
             "loom.ingest.pipeline.get_doc_nodes_for_linking",
             new=AsyncMock(return_value=[MagicMock()]),
         ),
-        patch("builtins.print", side_effect=lambda *a, **k: printed.append(" ".join(str(x) for x in a))),
+        patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: printed.append(" ".join(str(x) for x in a)),
+        ),
     ):
         from loom.core import Node, NodeKind, NodeSource
 
@@ -220,7 +221,9 @@ async def test_link_code_nodes_logs_edge_count() -> None:
         )
         batch = _IndexBatch()
         batch.nodes_to_upsert.append(code_node)
-        await _link_code_nodes(fake_graph, batch, root="/repo", docs_path=None, jira=None)
+        await _link_code_nodes(
+            fake_graph, batch, root="/repo", docs_path=None, jira=None
+        )
 
     link_msgs = [m for m in printed if "link" in m.lower()]
     assert any("edges" in m.lower() for m in link_msgs), (
@@ -255,15 +258,18 @@ def test_html_extension_is_registered_not_silently_skipped() -> None:
 async def test_llm_client_raises_on_bad_response_shape() -> None:
     """LLMClient.complete must raise (not return str(res)) when response is malformed."""
     import pytest
+
     from loom.llm.client import LLMClient
 
     client = LLMClient(model="gpt-4o-mini")
 
     bad_response = MagicMock(spec=[])  # no .choices attribute
 
-    with patch("litellm.acompletion", new=AsyncMock(return_value=bad_response)):
-        with pytest.raises(Exception):
-            await client.complete(prompt="test")
+    with (
+        patch("litellm.acompletion", new=AsyncMock(return_value=bad_response)),
+        pytest.raises(AttributeError),
+    ):
+        await client.complete(prompt="test")
 
 
 # ---------------------------------------------------------------------------
