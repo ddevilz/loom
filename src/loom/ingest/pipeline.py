@@ -117,8 +117,6 @@ def _get_call_tracer(path: str) -> tuple[CallTracer | None, str | None]:
 
 def _build_global_symbol_map(nodes: list[Node]) -> dict[str, list[Node]]:
     """Build a cross-file name→[Node] map for all function/method nodes."""
-    from loom.core import NodeKind
-
     symbol_map: dict[str, list[Node]] = {}
     for n in nodes:
         if n.kind in {NodeKind.FUNCTION, NodeKind.METHOD}:
@@ -238,12 +236,19 @@ async def _process_file(
     batch.edges_to_upsert.extend(build_contains_edges(nodes))
 
     # Trace calls (failure here is non-fatal - we still have valid parsed nodes)
-    tracer, _ = _get_call_tracer(fp)
+    tracer, tracer_error_message = _get_call_tracer(fp)
     if tracer is None:
         return batch
 
-    edges = await asyncio.to_thread(tracer, fp, nodes)
-    batch.edges_to_upsert.extend(edges)
+    try:
+        edges = await asyncio.to_thread(tracer, fp, nodes)
+        batch.edges_to_upsert.extend(edges)
+    except Exception as exc:
+        logger.warning(
+            "call tracer failed for %s: %s",
+            fp,
+            tracer_error_message or exc,
+        )
 
     return batch
 
@@ -360,8 +365,8 @@ async def _link_code_nodes(
 
     print(f"Linking {len(code_nodes)} code nodes with {len(doc_nodes)} doc nodes...")
     link_t0 = perf_counter()
-    await SemanticLinker().link(code_nodes, doc_nodes, graph)
-    print(f"Completed linking in {(perf_counter() - link_t0):.2f}s")
+    edges = await SemanticLinker().link(code_nodes, doc_nodes, graph)
+    print(f"Completed linking: {len(edges)} edges created in {(perf_counter() - link_t0):.2f}s")
 
 
 async def _process_files(
@@ -380,9 +385,9 @@ async def _process_files(
         nonlocal processed_count
         file_id = file_node_id(fp)
         stored_hash = stored_hash_by_file_id.get(file_id)
-        processed_count += 1
-        logger.info(f"Processing file {processed_count}/{total_files}: {fp}")
         async with semaphore:
+            processed_count += 1
+            logger.info("Processing file %d/%d: %s", processed_count, total_files, fp)
             return await _process_file(
                 graph,
                 fp=fp,
