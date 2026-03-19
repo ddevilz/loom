@@ -1224,7 +1224,7 @@ wheels = [
 ]
 
 [[package]]
-name = "loom"
+name = "loom-tool"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

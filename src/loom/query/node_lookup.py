@@ -50,6 +50,38 @@ async def resolve_node_rows(
     )
 
 
+class AmbiguousNodeError(Exception):
+    """Raised when a name matches more than one node."""
+
+    def __init__(self, name: str, rows: list[dict[str, object]]) -> None:
+        super().__init__(f"Ambiguous target: {len(rows)} nodes named {name!r}")
+        self.rows = rows
+
+
+class NodeNotFoundError(Exception):
+    """Raised when a name matches no node."""
+
+
+def resolve_node_id_from_rows(
+    name: str,
+    rows: list[dict[str, object]],
+) -> str:
+    """Extract a single node id from resolve_node_rows output.
+
+    Raises:
+        NodeNotFoundError: when rows is empty.
+        AmbiguousNodeError: when rows has more than one entry.
+    """
+    if len(rows) == 0:
+        raise NodeNotFoundError(f"No node named {name!r}")
+    if len(rows) > 1:
+        raise AmbiguousNodeError(name, rows)
+    raw_id = rows[0].get("id")
+    if not isinstance(raw_id, str):
+        raise NodeNotFoundError(f"Node {name!r} has no id")
+    return raw_id
+
+
 async def resolve_node_id(
     graph: QueryGraph,
     *,
@@ -57,10 +89,15 @@ async def resolve_node_id(
     kind: NodeKind | None = None,
     limit: int = 10,
 ) -> str | None:
+    """Resolve a target name to a single node id, returning None if not found or ambiguous.
+
+    Callers that need to distinguish "not found" from "ambiguous" should use
+    resolve_node_rows + resolve_node_id_from_rows directly.
+    """
     if ":" in target:
         return target
     rows = await resolve_node_rows(graph, target=target, kind=kind, limit=limit)
-    if len(rows) != 1:
+    try:
+        return resolve_node_id_from_rows(target, rows)
+    except (NodeNotFoundError, AmbiguousNodeError):
         return None
-    node_id = rows[0].get("id")
-    return node_id if isinstance(node_id, str) else None

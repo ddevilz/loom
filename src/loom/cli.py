@@ -283,7 +283,7 @@ def analyze(
         asyncio.run(_run())
     except FileNotFoundError as exc:
         Console().print(f"[red]Error:[/red] {exc}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command()
@@ -495,6 +495,11 @@ def calls(
     from loom.core import EdgeType, LoomGraph
     from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
     from loom.core.node import NodeKind
+    from loom.query.node_lookup import (
+        AmbiguousNodeError,
+        NodeNotFoundError,
+        resolve_node_id_from_rows,
+    )
 
     console = Console()
     calls_rel = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
@@ -505,30 +510,28 @@ def calls(
         if kind is not None:
             try:
                 resolved_kind = NodeKind(kind)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 console.print(f"Invalid --kind: {kind}")
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from None
 
         rows = await resolve_node_rows(graph, target=node, kind=resolved_kind, limit=10)
-        if len(rows) == 0:
-            console.print(
-                f"[red]Target not found:[/red] no node named [bold]{node!r}[/bold]"
-            )
+        try:
+            return resolve_node_id_from_rows(node, rows)
+        except NodeNotFoundError:
+            console.print(f"[red]Target not found:[/red] no node named [bold]{node!r}[/bold]")
             if kind is None:
                 console.print(
                     "Tip: use [bold]--kind[/bold] (e.g. function, class, method) to narrow the search."
                 )
-            raise typer.Exit(code=1)
-        if len(rows) > 1:
+            raise typer.Exit(code=1) from None
+        except AmbiguousNodeError as exc:
             console.print(
-                f"[yellow]Ambiguous target[/yellow]: {len(rows)} nodes named [bold]{node!r}[/bold]. "
+                f"[yellow]Ambiguous target[/yellow]: {len(exc.rows)} nodes named [bold]{node!r}[/bold]. "
                 "Pass the full node id or use [bold]--kind[/bold] to disambiguate:"
             )
-            for r in rows:
+            for r in exc.rows:
                 console.print(f"  {r.get('id')}  ({r.get('kind')} · {r.get('path')})")
-            raise typer.Exit(code=1)
-        raw_id = rows[0].get("id")
-        return str(raw_id) if raw_id is not None else None
+            raise typer.Exit(code=1) from None
 
     async def _run() -> None:
         graph = LoomGraph(graph_name=graph_name)
@@ -625,6 +628,11 @@ def blast_radius(
 ) -> None:
     from loom.core import LoomGraph
     from loom.core.node import NodeKind
+    from loom.query.node_lookup import (
+        AmbiguousNodeError,
+        NodeNotFoundError,
+        resolve_node_id_from_rows,
+    )
 
     console = Console()
 
@@ -633,36 +641,28 @@ def blast_radius(
         if kind is not None:
             try:
                 resolved_kind = NodeKind(kind)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 console.print(f"Invalid --kind: {kind}")
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from None
 
-        rows = await resolve_node_rows(
-            graph, target=target, kind=resolved_kind, limit=10
-        )
-        if len(rows) == 0:
-            console.print(
-                f"[red]Target not found:[/red] no node named [bold]{target!r}[/bold]"
-            )
+        rows = await resolve_node_rows(graph, target=target, kind=resolved_kind, limit=10)
+        try:
+            return resolve_node_id_from_rows(target, rows)
+        except NodeNotFoundError:
+            console.print(f"[red]Target not found:[/red] no node named [bold]{target!r}[/bold]")
             if kind is None:
                 console.print(
                     "Tip: use [bold]--kind[/bold] (e.g. function, class, method) to narrow the search."
                 )
-            raise typer.Exit(code=1)
-        if len(rows) > 1:
+            raise typer.Exit(code=1) from None
+        except AmbiguousNodeError as exc:
             console.print(
-                f"[yellow]Ambiguous target[/yellow]: {len(rows)} nodes named [bold]{target!r}[/bold]. "
+                f"[yellow]Ambiguous target[/yellow]: {len(exc.rows)} nodes named [bold]{target!r}[/bold]. "
                 "Pass the full node id or use [bold]--kind[/bold] to disambiguate:"
             )
-            for row in rows:
-                console.print(
-                    f"  {row.get('id')}  ({row.get('kind')} · {row.get('path')})"
-                )
-            raise typer.Exit(code=1)
-        resolved_id = rows[0].get("id")
-        if not isinstance(resolved_id, str):
-            raise typer.Exit(code=1)
-        return resolved_id
+            for row in exc.rows:
+                console.print(f"  {row.get('id')}  ({row.get('kind')} · {row.get('path')})")
+            raise typer.Exit(code=1) from None
 
     async def _run() -> None:
         graph = LoomGraph(graph_name=graph_name)
@@ -987,7 +987,7 @@ def sync(
             changes = await get_changed_files(repo_path, old_sha, new_sha)
         except Exception as e:
             console.print(f"Invalid git refs or repo: {e}")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from e
 
         console.print(f"Syncing {old_sha}..{new_sha} ({len(changes)} files changed)")
         for ch in changes[:50]:

@@ -29,7 +29,4 @@ class LLMClient:
                 response_format={"type": "json_object"},
             )
 
-        try:
-            return res.choices[0].message.content  # type: ignore[attr-defined]
-        except Exception:
-            return str(res)
+        return res.choices[0].message.content  # type: ignore[attr-defined]
