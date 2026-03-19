@@ -33,6 +33,7 @@ LOOM_EMBED_CACHE_DIR = os.getenv(
 )
 LOOM_COMMUNITY_MIN_MODULARITY = float(os.getenv("LOOM_COMMUNITY_MIN_MODULARITY", "0.3"))
 
+
 # Semantic linker thresholds
 def _threshold(env_var: str, default: str) -> float:
     value = float(os.getenv(env_var, default))

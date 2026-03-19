@@ -84,13 +84,15 @@ def schema_init(gw, *, embedding_dim: int = LOOM_EMBED_DIM) -> None:
 
         # vector index — embedding_dim is an int from config, safe to interpolate
         assert isinstance(embedding_dim, int), "embedding_dim must be int"
-        results.append(_safe_run(
-            gw,
-            (
-                "CREATE VECTOR INDEX FOR (n:Node) ON (n.embedding) "
-                f"OPTIONS {{dimension: {embedding_dim}, similarityFunction: 'cosine'}}"
-            ),
-        ))
+        results.append(
+            _safe_run(
+                gw,
+                (
+                    "CREATE VECTOR INDEX FOR (n:Node) ON (n.embedding) "
+                    f"OPTIONS {{dimension: {embedding_dim}, similarityFunction: 'cosine'}}"
+                ),
+            )
+        )
 
         all_ok = all(results)
 

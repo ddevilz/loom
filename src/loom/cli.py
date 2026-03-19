@@ -518,7 +518,9 @@ def calls(
         try:
             return resolve_node_id_from_rows(node, rows)
         except NodeNotFoundError:
-            console.print(f"[red]Target not found:[/red] no node named [bold]{node!r}[/bold]")
+            console.print(
+                f"[red]Target not found:[/red] no node named [bold]{node!r}[/bold]"
+            )
             if kind is None:
                 console.print(
                     "Tip: use [bold]--kind[/bold] (e.g. function, class, method) to narrow the search."
@@ -645,11 +647,15 @@ def blast_radius(
                 console.print(f"Invalid --kind: {kind}")
                 raise typer.Exit(code=1) from None
 
-        rows = await resolve_node_rows(graph, target=target, kind=resolved_kind, limit=10)
+        rows = await resolve_node_rows(
+            graph, target=target, kind=resolved_kind, limit=10
+        )
         try:
             return resolve_node_id_from_rows(target, rows)
         except NodeNotFoundError:
-            console.print(f"[red]Target not found:[/red] no node named [bold]{target!r}[/bold]")
+            console.print(
+                f"[red]Target not found:[/red] no node named [bold]{target!r}[/bold]"
+            )
             if kind is None:
                 console.print(
                     "Tip: use [bold]--kind[/bold] (e.g. function, class, method) to narrow the search."
@@ -661,7 +667,9 @@ def blast_radius(
                 "Pass the full node id or use [bold]--kind[/bold] to disambiguate:"
             )
             for row in exc.rows:
-                console.print(f"  {row.get('id')}  ({row.get('kind')} · {row.get('path')})")
+                console.print(
+                    f"  {row.get('id')}  ({row.get('kind')} · {row.get('path')})"
+                )
             raise typer.Exit(code=1) from None
 
     async def _run() -> None:

@@ -219,19 +219,7 @@ link (semantic_linker.py)
 
 Loom exposes an MCP server so agents can query the graph directly.
 
-Example Windsurf MCP config:
-
-```json
-{
-  "mcpServers": {
-    "loom": {
-      "command": "uv",
-      "args": ["run", "loom", "serve", "--graph-name", "loom_graph"],
-      "cwd": "F:\\loom"
-    }
-  }
-}
-```
+A ready-to-use MCP config is included at `.mcp.json` in the repository root. Copy and adjust the `graph-name` and environment variables to match your setup.
 
 Once connected, MCP clients can use Loom tools such as:
 
