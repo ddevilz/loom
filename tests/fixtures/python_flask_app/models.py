@@ -3,7 +3,7 @@ Database models module
 Demonstrates: classes, inheritance, type hints, properties
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 
 
@@ -19,17 +19,17 @@ class BaseModel:
     """Base model with common fields"""
 
     def __init__(self):
-        self.created_at: datetime = datetime.now(tz=timezone.utc)
-        self.updated_at: datetime = datetime.now(tz=timezone.utc)
+        self.created_at: datetime = datetime.now(tz=UTC)
+        self.updated_at: datetime = datetime.now(tz=UTC)
 
     def update_timestamp(self) -> None:
         """Update the timestamp"""
-        self.updated_at = datetime.now(tz=timezone.utc)
+        self.updated_at = datetime.now(tz=UTC)
 
     @property
     def age_seconds(self) -> float:
         """Get age in seconds"""
-        return (datetime.now(tz=timezone.utc) - self.created_at).total_seconds()
+        return (datetime.now(tz=UTC) - self.created_at).total_seconds()
 
 
 class Account(BaseModel):
@@ -76,7 +76,7 @@ class Transaction:
         self.from_account = from_account
         self.to_account = to_account
         self.amount = amount
-        self.timestamp = datetime.now(tz=timezone.utc)
+        self.timestamp = datetime.now(tz=UTC)
         self.status = "pending"
 
     def complete(self) -> None:
