@@ -6,7 +6,11 @@ from typing import Any
 import logging
 
 from loom.core import Node, NodeKind, NodeSource
-from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL
+from loom.core.falkor.edge_type_adapter import (
+    CALLS_REL,
+    LOOM_IMPLEMENTS_REL,
+    LOOM_VIOLATES_REL,
+)
 from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
 from loom.core.protocols import QueryGraph
 
@@ -131,10 +135,45 @@ async def impact_of_ticket(ticket_id: str, graph: QueryGraph) -> list[Node]:
 
 async def tickets_for_function(node_id: str, graph: QueryGraph) -> list[Node]:
     rows = await graph.query(
-        f"MATCH (f {{id: $node_id}})-[:{LOOM_IMPLEMENTS_REL}]->(t) WHERE t.path STARTS WITH 'jira://' RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
+        f"MATCH (f:Node {{id: $node_id}})-[:{LOOM_IMPLEMENTS_REL}]->(t:Node) WHERE t.path STARTS WITH 'jira://' RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
         {"node_id": node_id},
     )
     return [n for row in rows if (n := _row_to_doc_node(row)) is not None]
+
+
+async def callers_of_node(
+    node_id: str,
+    graph: QueryGraph,
+) -> list[dict[str, object]]:
+    return await graph.query(
+        f"MATCH (a:Node)-[r:{CALLS_REL}]->(b:Node {{id: $id}}) "
+        "RETURN a.id AS id, a.name AS name, a.path AS path, r.confidence AS confidence",
+        {"id": node_id},
+    )
+
+
+async def ast_drift_rows_for_node(
+    node_id: str,
+    graph: QueryGraph,
+) -> list[dict[str, object]]:
+    return await graph.query(
+        f"MATCH (f:Node {{id: $id}})-[r:{LOOM_VIOLATES_REL}]->() "
+        "RETURN f.id AS node_id, r.link_method AS link_method, "
+        "r.link_reason AS link_reason, r.metadata AS metadata",
+        {"id": node_id},
+    )
+
+
+async def ticket_rows_by_id(
+    ticket_id: str,
+    graph: QueryGraph,
+) -> list[dict[str, object]]:
+    return await graph.query(
+        "MATCH (t:Node) WHERE (t.name = $ticket_id OR t.id = $ticket_id) "
+        "AND t.path STARTS WITH 'jira://' "
+        "RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
+        {"ticket_id": ticket_id},
+    )
 
 
 async def sprint_code_coverage(

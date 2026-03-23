@@ -89,3 +89,5 @@ class EdgeTypeAdapter:
 
 # Pre-computed storage strings for the most commonly used edge types in Cypher queries.
 LOOM_IMPLEMENTS_REL: str = EdgeTypeAdapter.to_storage(EdgeType.LOOM_IMPLEMENTS)
+CALLS_REL: str = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
+LOOM_VIOLATES_REL: str = EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)

@@ -1,18 +1,22 @@
 from __future__ import annotations
 
-from loom.core import EdgeType, LoomGraph
-from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
+from loom.core import LoomGraph
 from loom.core.falkor.mappers import deserialize_metadata_value
 from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.traceability import (
+    ast_drift_rows_for_node,
+    callers_of_node,
     impact_of_ticket,
+    ticket_rows_by_id,
     tickets_for_function,
     unimplemented_tickets,
 )
 from loom.search.searcher import search
-
-_CALLS_REL = EdgeTypeAdapter.to_storage(EdgeType.CALLS)
-_VIOLATES_REL = EdgeTypeAdapter.to_storage(EdgeType.LOOM_VIOLATES)
+from loom.ingest.utils import (
+    get_code_nodes_for_linking,
+    get_doc_nodes_for_linking,
+)
+from loom.linker.linker import SemanticLinker
 
 try:
     from fastmcp import FastMCP
@@ -133,10 +137,7 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
         node_id = _require_non_empty_text(
             node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
         )
-        rows = await graph.query(
-            f"MATCH (a)-[r:{_CALLS_REL}]->(b {{id: $id}}) RETURN a.id AS id, a.name AS name, a.path AS path, r.confidence AS confidence",
-            {"id": node_id},
-        )
+        rows = await callers_of_node(node_id, graph)
         return [
             formatted
             for row in rows
@@ -173,12 +174,7 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
         node_id = _require_non_empty_text(
             node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
         )
-        drift_rows = await graph.query(
-            f"MATCH (f {{id: $id}})-[r:{_VIOLATES_REL}]->() "
-            "RETURN f.id AS node_id, r.link_method AS link_method, "
-            "r.link_reason AS link_reason, r.metadata AS metadata",
-            {"id": node_id},
-        )
+        drift_rows = await ast_drift_rows_for_node(node_id, graph)
         ast_drift = [
             report
             for row in drift_rows
@@ -236,12 +232,7 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
         ticket_id = _require_non_empty_text(
             ticket_id, field_name="ticket_id", max_length=_MAX_IDENTIFIER_LENGTH
         )
-        rows = await graph.query(
-            "MATCH (t) WHERE (t.name = $ticket_id OR t.id = $ticket_id) AND t.path STARTS WITH 'jira://' "
-            "RETURN t.id AS id, t.name AS name, t.summary AS summary, t.path AS path, t.metadata AS metadata",
-            {"ticket_id": ticket_id},
-        )
-        return rows
+        return await ticket_rows_by_id(ticket_id, graph)
 
     @mcp.tool()
     async def unimplemented() -> list[dict[str, object]]:
@@ -270,11 +261,6 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
             embedding_threshold: Minimum cosine similarity to create an IMPLEMENTS edge (default 0.75).
             name_threshold: Minimum name-match score to create an IMPLEMENTS edge (default 0.6).
         """
-        from loom.ingest.utils import (
-            get_code_nodes_for_linking,
-            get_doc_nodes_for_linking,
-        )
-        from loom.linker.linker import SemanticLinker
 
         code_nodes = await get_code_nodes_for_linking(graph)
         doc_nodes = await get_doc_nodes_for_linking(graph)

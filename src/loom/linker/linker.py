@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Protocol
 
+from loom.config import LOOM_LINKER_EMBED_THRESHOLD, LOOM_LINKER_NAME_THRESHOLD
 from loom.core import Edge, EdgeOrigin, Node
 from loom.core.protocols import BulkGraph
 from loom.linker.embed_match import link_by_embedding
@@ -22,8 +23,8 @@ class SummaryLLMClient(Protocol):
 
 @dataclass
 class SemanticLinker:
-    name_threshold: float = 0.6
-    embedding_threshold: float = 0.75
+    name_threshold: float = LOOM_LINKER_NAME_THRESHOLD
+    embedding_threshold: float = LOOM_LINKER_EMBED_THRESHOLD
     llm_threshold: float = 0.6
     llm_fallback: bool = False
     summary_llm: SummaryLLMClient | None = None

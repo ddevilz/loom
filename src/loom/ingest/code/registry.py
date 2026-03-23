@@ -109,7 +109,8 @@ class LanguageRegistry:
     """Maps file extensions → parser functions.
 
     Only files whose extension is registered will be parsed.
-    Everything else is silently skipped — no errors on .html, .xml, etc.
+    Markup formats (.html, .xml, .json, etc.) are registered and produced as FILE nodes.
+    Unrecognised extensions are silently skipped.
     """
 
     def __init__(self) -> None:
