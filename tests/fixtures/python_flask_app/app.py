@@ -6,7 +6,7 @@ Demonstrates: decorators, async functions, classes, type hints, imports
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
@@ -140,7 +140,7 @@ def create_user():
 @app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint"""
-    return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()})
+    return jsonify({"status": "healthy", "timestamp": datetime.now(tz=UTC).isoformat()})
 
 
 async def async_background_task(user_id: int) -> None:

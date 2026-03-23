@@ -40,15 +40,12 @@ Loom gives you a persistent graph model of your system so those relationships ca
 - **Call graph extraction**
   - builds `CALLS` relationships for supported languages
 
-- **Document ingestion**
-  - ingests Markdown and PDF files into document/section graphs
-
 - **Jira and traceability workflows**
-  - links code to Jira tickets and docs
+  - links code to Jira tickets
   - supports queries like unimplemented tickets, impact, and coverage
 
 - **Semantic linking**
-  - links code to docs with name matching, embedding similarity, and optional LLM fallback
+  - links code to Jira tickets with name matching, embedding similarity, and optional LLM fallback
 
 - **Incremental sync and watch mode**
   - updates graph state from git diffs and filesystem changes
@@ -67,7 +64,6 @@ Loom stores a graph where nodes can represent:
 - **Functions**
 - **Methods**
 - **Classes / interfaces / enums / types**
-- **Documents / chapters / sections / paragraphs**
 - **Communities**
 
 And edges can represent relationships like:
@@ -83,9 +79,8 @@ Example:
 
 ```text
 validate_user()  --CALLS---------> hash_password()
-validate_user()  --IMPLEMENTS---> §3.2.4 Input Validation
+validate_user()  --LOOM_IMPLEMENTS---> PROJ-42: Input Validation
 validate_user()  --MEMBER_OF----> community:auth
-§3.2.4           --CHILD_OF-----> Chapter 3: Security
 ```
 
 ## Product workflow
@@ -211,35 +206,20 @@ uv run loom serve --graph-name myrepo
 Example `blast_radius` output:
 
 ```text
-Blast radius: 6 nodes across 3 hops
+Blast radius: 5 nodes across 4 hops
 
 link (semantic_linker.py)
-├─ SemanticLinker (semantic_linker.py)    ← CALLS
-│  └─ ingest_repository (pipeline.py)    ← CALLS
-│     └─ Registry (registry.py)    ← CALLS
-│        └─ LoomServer (server.py)    ← CALLS
-└─ ARCHITECTURE.md    ← IMPLEMENTS (doc at risk)
-
-⚠  ARCHITECTURE.md#semantic-linker requires update if link() signature changes.
+└─ SemanticLinker (semantic_linker.py)    ← CALLS
+   └─ ingest_repository (pipeline.py)    ← CALLS
+      └─ Registry (registry.py)    ← CALLS
+         └─ LoomServer (server.py)    ← CALLS
 ```
 
 ## MCP integration
 
 Loom exposes an MCP server so agents can query the graph directly.
 
-Example Windsurf MCP config:
-
-```json
-{
-  "mcpServers": {
-    "loom": {
-      "command": "uv",
-      "args": ["run", "loom", "serve", "--graph-name", "loom_graph"],
-      "cwd": "F:\\loom"
-    }
-  }
-}
-```
+A ready-to-use MCP config is included at `.mcp.json` in the repository root. Copy and adjust the `graph-name` and environment variables to match your setup.
 
 Once connected, MCP clients can use Loom tools such as:
 
@@ -268,7 +248,7 @@ Once connected, MCP clients can use Loom tools such as:
 ```text
 src/loom/
 ├── core/                 # Node/edge models, graph facade, FalkorDB access
-├── ingest/               # repo parsing, local docs ingestion, Jira ingestion, incremental sync
+├── ingest/               # repo parsing, Jira ingestion, incremental sync
 ├── analysis/             # calls, communities, coupling, static summary extraction
 ├── embed/                # embeddings and similarity helpers
 ├── linker/               # semantic linking between code and docs

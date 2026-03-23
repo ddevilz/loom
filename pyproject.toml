@@ -76,9 +76,7 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "UP", "B", "C4", "DTZ", "T10", "SIM", "ARG", "PTH"]
 ignore = [
   "E501",
-  "B006",
   "B008",
-  "B904",
   "ARG001",
   "ARG002",
   "ARG003",
@@ -93,7 +91,6 @@ ignore = [
   "UP036",
   "UP042",
   "UP046",
-  "DTZ003",
   "W293",
 ]
 

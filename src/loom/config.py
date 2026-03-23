@@ -33,6 +33,18 @@ LOOM_EMBED_CACHE_DIR = os.getenv(
 )
 LOOM_COMMUNITY_MIN_MODULARITY = float(os.getenv("LOOM_COMMUNITY_MIN_MODULARITY", "0.3"))
 
+
+# Semantic linker thresholds
+def _threshold(env_var: str, default: str) -> float:
+    value = float(os.getenv(env_var, default))
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"{env_var}={value!r} must be in [0.0, 1.0]")
+    return value
+
+
+LOOM_LINKER_NAME_THRESHOLD = _threshold("LOOM_LINKER_NAME_THRESHOLD", "0.6")
+LOOM_LINKER_EMBED_THRESHOLD = _threshold("LOOM_LINKER_EMBED_THRESHOLD", "0.75")
+
 # Jira configuration
 LOOM_JIRA_URL = os.getenv("LOOM_JIRA_URL", "")
 LOOM_JIRA_EMAIL = os.getenv("LOOM_JIRA_EMAIL", "")

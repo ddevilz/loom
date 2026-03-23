@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +10,8 @@ from ..node import NodeKind
 
 if TYPE_CHECKING:
     from .gateway import FalkorGateway
+
+logger = logging.getLogger(__name__)
 
 _SCHEMA_INIT_DONE: set[str] = set()
 _SCHEMA_INIT_LOCK = threading.Lock()
@@ -30,18 +33,19 @@ _ALREADY_EXISTS_FRAGMENTS = (
 
 def _safe_run(
     gw: FalkorGateway, cypher: str, params: dict[str, Any] | None = None
-) -> None:
+) -> bool:
+    """Run a DDL statement, returning True on success or already-exists, False on unexpected error."""
     try:
         gw.run(cypher, params=params, timeout=5)
+        return True
     except Exception as exc:
         msg = str(exc).lower()
         if any(frag in msg for frag in _ALREADY_EXISTS_FRAGMENTS):
-            return
-        import logging
-
-        logging.getLogger(__name__).warning(
+            return True
+        logger.warning(
             "schema_init DDL failed (continuing): %s | query: %.120s", exc, cypher
         )
+        return False
 
 
 def schema_init(gw, *, embedding_dim: int = LOOM_EMBED_DIM) -> None:
@@ -63,26 +67,37 @@ def schema_init(gw, *, embedding_dim: int = LOOM_EMBED_DIM) -> None:
         if isinstance(graph_name, str) and graph_name in _SCHEMA_INIT_DONE:
             return
 
-        # property indexes
-        _safe_run(gw, "CREATE INDEX ON :Node(id)")
-        _safe_run(gw, "CREATE INDEX ON :Node(kind)")
-        _safe_run(gw, "CREATE INDEX ON :Node(name)")
-        _safe_run(gw, "CREATE INDEX ON :Node(community_id)")
-        _safe_run(gw, "CREATE INDEX ON :Node(path)")
+        # Run all DDL statements regardless of individual failures (best-effort schema
+        # creation). all_ok tracks whether every statement succeeded or was already-exists;
+        # the graph is only cached as initialised when the full set passes.
+        results = [
+            _safe_run(gw, "CREATE INDEX ON :Node(id)"),
+            _safe_run(gw, "CREATE INDEX ON :Node(kind)"),
+            _safe_run(gw, "CREATE INDEX ON :Node(name)"),
+            _safe_run(gw, "CREATE INDEX ON :Node(community_id)"),
+            _safe_run(gw, "CREATE INDEX ON :Node(path)"),
+        ]
 
         # per-kind indexes (support fast label-specific lookups like (:Function {id: ...}))
         for kind in NodeKind:
             label = kind.name.title()
-            _safe_run(gw, f"CREATE INDEX ON :`{label}`(id)")
+            results.append(_safe_run(gw, f"CREATE INDEX ON :`{label}`(id)"))
 
-        # vector index for similarity search
-        _safe_run(
-            gw,
-            (
-                "CREATE VECTOR INDEX FOR (n:Node) ON (n.embedding) "
-                f"OPTIONS {{dimension: {embedding_dim}, similarityFunction: 'cosine'}}"
-            ),
+        # vector index — embedding_dim is an int from config, safe to interpolate
+        assert isinstance(embedding_dim, int), "embedding_dim must be int"
+        results.append(
+            _safe_run(
+                gw,
+                (
+                    "CREATE VECTOR INDEX FOR (n:Node) ON (n.embedding) "
+                    f"OPTIONS {{dimension: {embedding_dim}, similarityFunction: 'cosine'}}"
+                ),
+            )
         )
 
-        if isinstance(graph_name, str):
+        all_ok = all(results)
+
+        # Only mark as initialised when all DDL statements succeeded (or were already-exists).
+        # A partial schema must not be cached — the next call must retry.
+        if all_ok and isinstance(graph_name, str):
             _SCHEMA_INIT_DONE.add(graph_name)
