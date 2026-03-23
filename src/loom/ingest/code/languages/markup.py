@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import tomllib
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
@@ -407,6 +410,11 @@ def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
 def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from .env files: environment variables, sensitive keys."""
+    logger.warning(
+        "Indexing .env file: %s — variable names (not values) will be stored in the graph. "
+        "Ensure this file does not contain secrets you don't want persisted to the database.",
+        path,
+    )
     p = Path(path)
     src = p.read_bytes()
     content = src.decode("utf-8", errors="replace")
@@ -466,7 +474,22 @@ def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
     dependencies: list[str] = []
     dev_dependencies: list[str] = []
 
-    data = tomllib.loads(src.decode("utf-8", errors="replace"))
+    try:
+        data = tomllib.loads(src.decode("utf-8", errors="replace"))
+    except tomllib.TOMLDecodeError as exc:
+        logger.warning("Failed to parse TOML file %s: %s", path, exc)
+        meta[META_PARSE_ERROR] = str(exc)
+        node = Node(
+            id=f"{NodeKind.FILE.value}:{path}",
+            kind=NodeKind.FILE,
+            source=NodeSource.CODE,
+            name=p.name,
+            path=path.replace("\\", "/"),
+            content_hash=content_hash_bytes(src),
+            language=LANG_TOML,
+            metadata=meta,
+        )
+        return [node]
 
     project = data.get("project")
     if isinstance(project, dict):

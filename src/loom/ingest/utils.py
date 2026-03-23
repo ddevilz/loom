@@ -61,7 +61,15 @@ def _deserialize_doc_node(row: dict[str, Any]) -> Node | None:
     if not isinstance(props, dict):
         return None
     props = deserialize_node_props(props)
-    node = Node.model_validate(props)
+    try:
+        node = Node.model_validate(props)
+    except Exception as exc:
+        logger.warning(
+            "Skipping corrupt doc node during linking: %s — row props: %r",
+            exc,
+            props,
+        )
+        return None
     return node if node.source == NodeSource.DOC else None
 
 

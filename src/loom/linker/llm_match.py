@@ -4,10 +4,14 @@ import asyncio
 import json
 from typing import Any
 
+import logging
+
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
 from loom.linker._text_utils import tokenize_text
 from loom.linker.prompts import llm_match_prompt
 from loom.llm.client import LLMClient
+
+logger = logging.getLogger(__name__)
 
 _MIN_TOKEN_OVERLAP = 1
 _MAX_DOC_CANDIDATES_PER_CODE = 10
@@ -71,7 +75,8 @@ async def link_by_llm(
         data: dict[str, Any]
         try:
             data = json.loads(raw)
-        except Exception:
+        except Exception as exc:
+            logger.debug("LLM returned non-JSON for link check (%s): %r", exc, raw[:200])
             return None
         if not isinstance(data, dict):
             return None

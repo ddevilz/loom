@@ -20,7 +20,7 @@ def add(x: int, y: int) -> int:
     assert node.metadata["params"]
     assert node.metadata["return_type"] == "int"
     assert "add(" in node.metadata["signature"]
-    assert "return x + y" in node.metadata["source_text"]
+    assert "source_text" not in node.metadata
 
 
 def test_java_parser_emits_signature_metadata(tmp_path: Path) -> None:

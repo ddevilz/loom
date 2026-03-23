@@ -14,6 +14,8 @@ async def resolve_node_rows(
     if ":" in target:
         return [{"id": target}]
 
+    if kind is not None and not isinstance(kind, NodeKind):
+        raise TypeError(f"kind must be a NodeKind enum member, got {kind!r}")
     label_clause = ":Node" if kind is None else f":`{kind.name.title()}`"
     if "." in target:
         rows = await graph.query(

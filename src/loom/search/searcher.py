@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +13,7 @@ from loom.embed.embedder import Embedder, FastEmbedder, cosine_similarity
 
 logger = logging.getLogger(__name__)
 _DEFAULT_SEARCH_EMBEDDER: Embedder | None = None
+_DEFAULT_SEARCH_EMBEDDER_LOCK = threading.Lock()
 
 
 _QUERY_CANDIDATES = (
@@ -78,9 +80,10 @@ async def search(
 
     if embedder is None:
         global _DEFAULT_SEARCH_EMBEDDER
-        if _DEFAULT_SEARCH_EMBEDDER is None:
-            _DEFAULT_SEARCH_EMBEDDER = FastEmbedder()
-        embedder = _DEFAULT_SEARCH_EMBEDDER
+        with _DEFAULT_SEARCH_EMBEDDER_LOCK:
+            if _DEFAULT_SEARCH_EMBEDDER is None:
+                _DEFAULT_SEARCH_EMBEDDER = FastEmbedder()
+            embedder = _DEFAULT_SEARCH_EMBEDDER
 
     query_vector = (await asyncio.to_thread(embedder.embed, [query_text]))[0]
     try:

@@ -16,7 +16,8 @@ _SCHEMA_INIT_LOCK = threading.Lock()
 
 def invalidate_schema_init(graph_name: str | None) -> None:
     if isinstance(graph_name, str):
-        _SCHEMA_INIT_DONE.discard(graph_name)
+        with _SCHEMA_INIT_LOCK:
+            _SCHEMA_INIT_DONE.discard(graph_name)
 
 
 _ALREADY_EXISTS_FRAGMENTS = (
