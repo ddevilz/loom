@@ -10,7 +10,7 @@ from loom.analysis.code.extractor import extract_summaries
 from loom.analysis.code.parser import parse_code
 from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
-from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL
+from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL, EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_edge_props, deserialize_node_props
 from loom.core.protocols import BulkGraph
 from loom.drift.detector import detect_ast_drift
@@ -85,7 +85,13 @@ async def _create_edge(
     rel_type: str,
     props: dict[str, Any],
 ) -> None:
-    # Relationship type can't be parameterized.
+    if not EdgeTypeAdapter.is_valid_storage_name(rel_type):
+        logger.warning(
+            "Refusing to create edge with unknown rel_type %r — possible injection or schema mismatch.",
+            rel_type,
+        )
+        return
+    # Relationship type can't be parameterized in Cypher; validated above.
     await graph.query(
         f"MATCH (a {{id: $from_id}}), (b {{id: $to_id}}) MERGE (a)-[r:`{rel_type}`]->(b) SET r += $props",
         {"from_id": from_id, "to_id": to_id, "props": props},

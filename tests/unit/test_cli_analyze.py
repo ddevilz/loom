@@ -169,7 +169,7 @@ def test_cli_enrich_infers_repo_path_for_coupling(monkeypatch):
         async def query(self, cypher: str, params=None):
             if (
                 cypher
-                == "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000"
+                == "MATCH (n:File) RETURN n.path AS path LIMIT 1000"
             ):
                 return [
                     {"path": "/repo/src/a.py"},

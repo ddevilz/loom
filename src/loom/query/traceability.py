@@ -3,10 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import logging
+
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL
 from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
 from loom.core.protocols import QueryGraph
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -152,8 +156,8 @@ async def sprint_code_coverage(
                 import json
 
                 meta = json.loads(raw_meta)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to parse sprint metadata JSON (%s): %r", exc, raw_meta[:200])
         elif isinstance(raw_meta, dict):
             meta = raw_meta
         if str(meta.get("sprint", "")).lower() == sprint_name.lower():

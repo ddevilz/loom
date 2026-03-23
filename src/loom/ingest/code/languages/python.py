@@ -135,7 +135,6 @@ def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict[str, Any]:
         "params": params,
         "return_type": return_type,
         "signature": signature,
-        "source_text": _node_text(src, n),
     }
 
 

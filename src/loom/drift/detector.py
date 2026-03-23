@@ -5,9 +5,13 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+import logging
+
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
 from loom.linker.prompts import drift_detection_prompt
 from loom.llm.client import LLMClient as DriftLLM
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -123,7 +127,8 @@ async def detect_violations(
             raw = await llm.complete(prompt=prompt, model=model)
             try:
                 data: dict[str, Any] = json.loads(raw)
-            except Exception:
+            except Exception as exc:
+                logger.debug("LLM returned non-JSON for drift check (%s): %r", exc, raw[:200])
                 return None
             if not isinstance(data, dict):
                 return None
