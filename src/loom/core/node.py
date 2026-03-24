@@ -17,6 +17,9 @@ class NodeKind(StrEnum):
     FILE = "file"
     COMMUNITY = "community"
 
+    # ticket
+    TICKET = "ticket"
+
     DOCUMENT = "document"
     SECTION = "section"
     CHAPTER = "chapter"
@@ -27,6 +30,7 @@ class NodeKind(StrEnum):
 class NodeSource(StrEnum):
     CODE = "code"
     DOC = "doc"
+    TICKET = "ticket"
 
 
 class Node(BaseModel):
@@ -60,6 +64,13 @@ class Node(BaseModel):
 
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    # ticket-specific fields (None for code/doc nodes)
+    status: str | None = None          # e.g. "open", "closed", "in-progress"
+    priority: str | None = None        # e.g. "P0", "high", "medium"
+    assignee: str | None = None        # display name or login
+    url: str | None = None             # link back to source (GitHub/Jira/Linear)
+    external_id: str | None = None     # provider's native key e.g. "PROJ-42", "#99"
+
     @computed_field
     @property
     def is_code(self) -> bool:
@@ -70,10 +81,15 @@ class Node(BaseModel):
     def is_doc(self) -> bool:
         return self.source == NodeSource.DOC
 
+    @computed_field
+    @property
+    def is_ticket(self) -> bool:
+        return self.source == NodeSource.TICKET
+
     def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
         exclude = kwargs.pop("exclude", None)
         exclude_set: set[str] = set(exclude) if exclude is not None else set()
-        exclude_set.update({"is_code", "is_doc"})
+        exclude_set.update({"is_code", "is_doc", "is_ticket"})
         return super().model_dump(exclude=exclude_set, **kwargs)
 
     @model_validator(mode="after")
@@ -81,6 +97,9 @@ class Node(BaseModel):
         if self.source == NodeSource.DOC:
             if not self.id.startswith("doc:"):
                 raise ValueError("Doc node id must start with 'doc:'")
+        elif self.source == NodeSource.TICKET:
+            if not self.id.startswith("ticket:"):
+                raise ValueError("Ticket node id must start with 'ticket:'")
         else:
             expected_prefix = f"{self.kind.value}:"
             if not self.id.startswith(expected_prefix):
@@ -96,3 +115,17 @@ class Node(BaseModel):
     @staticmethod
     def make_doc_id(doc_path: str, section_ref: str) -> str:
         return f"doc:{doc_path}:{section_ref}"
+
+    @staticmethod
+    def make_ticket_id(provider: str, project: str, key: str) -> str:
+        """Create a canonical ticket node ID.
+
+        Args:
+            provider: Source system name ("jira", "github", "linear")
+            project: Project key or owner/repo (e.g. "PROJ", "owner/repo")
+            key: Ticket key or number (e.g. "PROJ-42", "99")
+
+        Returns:
+            Canonical node ID string, e.g. "ticket:jira:PROJ/PROJ-42"
+        """
+        return f"ticket:{provider}:{project}/{key}"

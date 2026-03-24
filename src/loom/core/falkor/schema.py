@@ -83,6 +83,11 @@ def schema_init(gw, *, embedding_dim: int = LOOM_EMBED_DIM) -> None:
             label = kind.name.title()
             results.append(_safe_run(gw, f"CREATE INDEX ON :`{label}`(id)"))
 
+        # ticket-specific property indexes
+        results.append(_safe_run(gw, "CREATE INDEX ON :Node(status)"))
+        results.append(_safe_run(gw, "CREATE INDEX ON :Node(external_id)"))
+        results.append(_safe_run(gw, "CREATE INDEX ON :Node(source)"))
+
         # vector index — embedding_dim is an int from config, safe to interpolate
         assert isinstance(embedding_dim, int), "embedding_dim must be int"
         results.append(
