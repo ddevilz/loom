@@ -64,6 +64,7 @@ check_untyped_defs = true
 disable_error_code = ["arg-type", "assignment", "attr-defined", "misc", "no-redef", "operator", "prop-decorator", "var-annotated"]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow-running",
 ]

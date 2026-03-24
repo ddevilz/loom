@@ -116,4 +116,11 @@ def row_to_node(
         if allow_embedding and isinstance(row.get("embedding"), list)
         else None,
         metadata=deserialize_metadata_value(row.get("metadata")),
+        status=row.get("status") if isinstance(row.get("status"), str) else None,
+        priority=row.get("priority") if isinstance(row.get("priority"), str) else None,
+        assignee=row.get("assignee") if isinstance(row.get("assignee"), str) else None,
+        url=row.get("url") if isinstance(row.get("url"), str) else None,
+        external_id=row.get("external_id")
+        if isinstance(row.get("external_id"), str)
+        else None,
     )

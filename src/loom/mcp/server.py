@@ -17,6 +17,7 @@ from loom.ingest.utils import (
     get_doc_nodes_for_linking,
 )
 from loom.linker.linker import SemanticLinker
+from loom.mcp.tools.tickets import register_ticket_tools
 
 try:
     from fastmcp import FastMCP
@@ -146,7 +147,7 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
 
     @mcp.tool()
     async def get_spec(node_id: str) -> list[dict[str, object]]:
-        """Return Jira tickets linked to a code node via LOOM_IMPLEMENTS edges.
+        """Return tickets linked to a code node via LOOM_IMPLEMENTS edges. For multi-provider support, use get_ticket_for_symbol() instead.
 
         Shows which tickets this function/class is implementing. Useful for
         checking whether a symbol is covered by a spec or requirement.
@@ -236,7 +237,7 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
 
     @mcp.tool()
     async def unimplemented() -> list[dict[str, object]]:
-        """Return Jira tickets that have no linked code nodes (unimplemented tickets).
+        """Return Jira tickets (legacy) that have no linked code nodes. See find_unimplemented_tickets() for multi-provider support.
 
         A ticket is unimplemented when it has no LOOM_IMPLEMENTS edges pointing
         to it from any code symbol. Useful for finding spec gaps: requirements
@@ -283,5 +284,8 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
             "code_nodes": len(code_nodes),
             "doc_nodes": len(doc_nodes),
         }
+
+    # Register ticket tools
+    register_ticket_tools(mcp, graph)
 
     return mcp
