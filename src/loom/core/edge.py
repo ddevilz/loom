@@ -32,17 +32,10 @@ class EdgeType(StrEnum):
 
     # cross-domain
     LOOM_IMPLEMENTS = "loom_implements"
-    LOOM_SPECIFIES = "loom_specifies"
     LOOM_VIOLATES = "loom_violates"
 
-    # ticket edges
-    REALIZES = "realizes"         # code → ticket: this function implements this ticket
-    CLOSES = "closes"             # code → ticket: this commit/function closes this ticket
-    VERIFIED_BY = "verified_by"   # ticket → code: this ticket is verified by this test
-    DEPENDS_ON = "depends_on"     # ticket → ticket: dependency relationship
 
-
-LinkMethod = Literal["name_match", "embed_match", "llm_match", "ast_diff", "git_log", "ticket_ref"]
+LinkMethod = Literal["embed_match", "git_commit", "ast_diff", "llm_match", "name_match"]
 
 
 class EdgeOrigin(str, Enum):
@@ -50,6 +43,7 @@ class EdgeOrigin(str, Enum):
     NAME_MATCH = "name_match"
     EMBED_MATCH = "embed_match"
     LLM_MATCH = "llm_match"
+    GIT_COMMIT = "git_commit"
     HUMAN = "human"
 
 
@@ -72,12 +66,7 @@ class Edge(BaseModel):
     def is_loom_edge(self) -> bool:
         return self.kind in {
             EdgeType.LOOM_IMPLEMENTS,
-            EdgeType.LOOM_SPECIFIES,
             EdgeType.LOOM_VIOLATES,
-            EdgeType.REALIZES,
-            EdgeType.CLOSES,
-            EdgeType.VERIFIED_BY,
-            EdgeType.DEPENDS_ON,
         }
 
     @model_validator(mode="after")

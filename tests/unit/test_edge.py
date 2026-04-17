@@ -25,7 +25,6 @@ def test_edgetype_has_required_members():
         "REFERENCES",
         # cross-domain
         "LOOM_IMPLEMENTS",
-        "LOOM_SPECIFIES",
         "LOOM_VIOLATES",
     }
     assert required.issubset(set(EdgeType.__members__.keys()))
@@ -61,10 +60,10 @@ def test_loom_edges_allow_optional_link_fields():
     e2 = Edge(
         from_id="a",
         to_id="b",
-        kind=EdgeType.LOOM_SPECIFIES,
+        kind=EdgeType.LOOM_VIOLATES,
         confidence=0.42,
         link_method="llm_match",
-        link_reason="LLM judged the function implements the spec",
+        link_reason="LLM judged the function violates the spec",
     )
     assert e2.link_method == "llm_match"
     assert e2.link_reason is not None

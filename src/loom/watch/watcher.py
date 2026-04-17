@@ -8,7 +8,7 @@ from watchfiles import Change, awatch
 
 from loom.core import EdgeType
 from loom.core.falkor.edge_type_adapter import EdgeTypeAdapter
-from loom.core.protocols import BulkGraph, QueryGraph
+from loom.core.types import BulkGraph, QueryGraph
 from loom.ingest.incremental import sync_paths
 from loom.ingest.utils import (
     delete_nodes_by_ids,

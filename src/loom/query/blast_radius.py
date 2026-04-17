@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from loom.config import LOOM_BLAST_RADIUS_MAX_DEPTH
 from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL
-from loom.core.protocols import QueryGraph
+from loom.core.types import QueryGraph
 
 
 def _slug(text: str) -> str:
@@ -24,8 +25,10 @@ async def build_blast_radius_payload(
     graph: QueryGraph,
     *,
     node_id: str,
-    depth: int,
+    depth: int = LOOM_BLAST_RADIUS_MAX_DEPTH,
 ) -> dict[str, Any]:
+    # Cap depth to config max — MCP server also clamps, but enforce here too
+    depth = min(depth, LOOM_BLAST_RADIUS_MAX_DEPTH)
     root_rows = await graph.query(
         "MATCH (n:Node {id: $id}) "
         "RETURN n.id AS id, n.name AS name, n.path AS path, n.kind AS kind "

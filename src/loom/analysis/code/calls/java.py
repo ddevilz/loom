@@ -6,6 +6,7 @@ from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
 from tree_sitter_java import language as java_language
 
+from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
 from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind
 
@@ -17,15 +18,11 @@ _JAVA_METHOD_DECL = "method_declaration"
 _JAVA_CTOR_DECL = "constructor_declaration"
 
 
-def _node_text(src: bytes, n: TSNode) -> str:
-    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
-
-
 def _extract_method_call_name(src: bytes, n: TSNode) -> str | None:
     name_node = n.child_by_field_name("name")
     if name_node is None:
         return None
-    return _node_text(src, name_node)
+    return node_text(src, name_node)
 
 
 def _extract_constructor_call_name(src: bytes, n: TSNode) -> str | None:
@@ -35,7 +32,7 @@ def _extract_constructor_call_name(src: bytes, n: TSNode) -> str | None:
 
     # type can be scoped_type_identifier, type_identifier, generic_type, etc.
     # We take the last identifier-looking token.
-    text = _node_text(src, type_node)
+    text = node_text(src, type_node)
     text = text.split("<", 1)[0]
     text = text.split(".")[-1]
     text = text.strip()
@@ -49,7 +46,7 @@ def _enclosing_named_method(src: bytes, n: TSNode) -> tuple[str | None, int] | N
             name_node = cur.child_by_field_name("name")
             if name_node is None:
                 return None
-            name = _node_text(src, name_node)
+            name = node_text(src, name_node)
             start_line = cur.start_point[0] + 1
             return name, start_line
         cur = cur.parent

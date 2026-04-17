@@ -5,13 +5,18 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-import logging
+import litellm
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
-from loom.linker.prompts import drift_detection_prompt
-from loom.llm.client import LLMClient as DriftLLM
 
-logger = logging.getLogger(__name__)
+
+def drift_detection_prompt(*, code_summary: str, doc_text: str) -> str:
+    return (
+        "You are checking whether code behavior violates a requirement.\n"
+        "Return STRICT JSON with keys: violates (bool), confidence (float 0-1), reason (string).\n\n"
+        f"REQUIREMENT:\n{doc_text}\n\n"
+        f"CODE SUMMARY:\n{code_summary}\n"
+    )
 
 
 @dataclass(frozen=True)
@@ -88,9 +93,8 @@ async def detect_violations(
     doc_nodes: list[Node],
     implements_edges: list[Edge],
     *,
-    llm: DriftLLM,
+    model: str,
     threshold: float = 0.6,
-    model: str | None = None,
     max_concurrent_llm_calls: int = 10,
 ) -> list[ViolationReport]:
     """Check whether code nodes violate linked doc requirements via LLM.
@@ -124,11 +128,15 @@ async def detect_violations(
             prompt = drift_detection_prompt(
                 code_summary=code.summary, doc_text=doc.summary or doc.name
             )
-            raw = await llm.complete(prompt=prompt, model=model)
+            res = await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+            )
+            raw = res.choices[0].message.content
             try:
                 data: dict[str, Any] = json.loads(raw)
-            except Exception as exc:
-                logger.debug("LLM returned non-JSON for drift check (%s): %r", exc, raw[:200])
+            except Exception:
                 return None
             if not isinstance(data, dict):
                 return None

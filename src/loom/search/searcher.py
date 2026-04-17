@@ -8,7 +8,7 @@ from typing import Any
 
 from loom.core import EdgeType, Node, NodeKind, NodeSource
 from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
-from loom.core.protocols import NeighborGraph
+from loom.core.types import NeighborGraph
 from loom.embed.embedder import Embedder, FastEmbedder, cosine_similarity
 
 logger = logging.getLogger(__name__)

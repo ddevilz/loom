@@ -14,7 +14,6 @@ class QueryGraph(Protocol):
 
 class BulkGraph(QueryGraph, Protocol):
     async def bulk_create_nodes(self, nodes: list[Node]) -> None: ...
-
     async def bulk_create_edges(self, edges: list[Edge]) -> None: ...
 
 

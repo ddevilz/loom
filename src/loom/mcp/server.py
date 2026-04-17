@@ -1,7 +1,16 @@
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+
 from loom.core import LoomGraph
 from loom.core.falkor.mappers import deserialize_metadata_value
+from loom.ingest.git_linker import link_commits_to_tickets
+from loom.ingest.utils import (
+    get_code_nodes_for_linking,
+    get_doc_nodes_for_linking,
+)
+from loom.linker.linker import SemanticLinker
 from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.traceability import (
     ast_drift_rows_for_node,
@@ -12,12 +21,8 @@ from loom.query.traceability import (
     unimplemented_tickets,
 )
 from loom.search.searcher import search
-from loom.ingest.utils import (
-    get_code_nodes_for_linking,
-    get_doc_nodes_for_linking,
-)
-from loom.linker.linker import SemanticLinker
-from loom.mcp.tools.tickets import register_ticket_tools
+
+logger = logging.getLogger(__name__)
 
 try:
     from fastmcp import FastMCP
@@ -147,7 +152,7 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
 
     @mcp.tool()
     async def get_spec(node_id: str) -> list[dict[str, object]]:
-        """Return tickets linked to a code node via LOOM_IMPLEMENTS edges. For multi-provider support, use get_ticket_for_symbol() instead.
+        """Return Jira tickets linked to a code node via LOOM_IMPLEMENTS edges.
 
         Shows which tickets this function/class is implementing. Useful for
         checking whether a symbol is covered by a spec or requirement.
@@ -237,7 +242,7 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
 
     @mcp.tool()
     async def unimplemented() -> list[dict[str, object]]:
-        """Return Jira tickets (legacy) that have no linked code nodes. See find_unimplemented_tickets() for multi-provider support.
+        """Return Jira tickets that have no linked code nodes (unimplemented tickets).
 
         A ticket is unimplemented when it has no LOOM_IMPLEMENTS edges pointing
         to it from any code symbol. Useful for finding spec gaps: requirements
@@ -248,44 +253,71 @@ def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
 
     @mcp.tool()
     async def relink(
-        embedding_threshold: float = 0.75,
-        name_threshold: float = 0.6,
+        repo_path: str | None = None,
+        embedding_threshold: float = 0.85,
     ) -> dict[str, object]:
-        """Re-run the semantic linker on all graph nodes without re-indexing.
+        """Re-run the semantic linker and git-commit linker without re-indexing.
 
-        Fetches all code nodes and doc nodes already in the graph and re-creates
-        LOOM_IMPLEMENTS edges based on embedding similarity and name matching.
-        Call this after importing new Jira tickets to link them to existing code,
-        or after the graph has been updated incrementally.
+        Fetches all code nodes and markdown doc nodes already in the graph and
+        re-creates LOOM_IMPLEMENTS edges. Does two passes:
+          1. Embedding similarity (code ↔ markdown docs).
+          2. Git-commit linking (code ↔ Jira tickets via commit messages).
+
+        If repo_path is not provided, the repo path stored during the last
+        `loom index` run is recovered from the graph (_LoomMeta node).
 
         Args:
-            embedding_threshold: Minimum cosine similarity to create an IMPLEMENTS edge (default 0.75).
-            name_threshold: Minimum name-match score to create an IMPLEMENTS edge (default 0.6).
+            repo_path: Root of the git repo. Inferred from graph if omitted.
+            embedding_threshold: Minimum cosine similarity for IMPLEMENTS edge (default 0.85).
         """
+        # Resolve repo_path — fall back to _LoomMeta stored during last index run
+        resolved_repo: Path | None = None
+        if repo_path:
+            resolved_repo = Path(repo_path)
+        else:
+            meta_rows = await graph.query(
+                "MATCH (m:_LoomMeta {key: 'repo_path'}) RETURN m.value AS value",
+                {},
+            )
+            if meta_rows:
+                stored = meta_rows[0].get("value")
+                if isinstance(stored, str) and stored:
+                    resolved_repo = Path(stored)
+                    logger.info("relink: recovered repo_path from graph: %s", stored)
+            if resolved_repo is None:
+                logger.warning(
+                    "relink: no repo_path provided and none stored in graph — "
+                    "git-based linking will be skipped"
+                )
 
         code_nodes = await get_code_nodes_for_linking(graph)
-        doc_nodes = await get_doc_nodes_for_linking(graph)
+        all_doc_nodes = await get_doc_nodes_for_linking(graph)
+        # Only link markdown doc nodes — Jira ticket linking is handled by git_linker
+        doc_nodes = [n for n in all_doc_nodes if not (n.path or "").startswith("jira://")]
 
-        if not code_nodes or not doc_nodes:
-            return {
-                "edges_created": 0,
-                "code_nodes": len(code_nodes),
-                "doc_nodes": len(doc_nodes),
-                "message": "Nothing to link — index code and docs first.",
-            }
+        embed_edges_created = 0
+        if code_nodes and doc_nodes:
+            linker = SemanticLinker(
+                embedding_threshold=max(0.0, min(1.0, embedding_threshold)),
+            )
+            embed_edges = await linker.link(code_nodes, doc_nodes, graph)
+            embed_edges_created = len(embed_edges)
 
-        linker = SemanticLinker(
-            embedding_threshold=max(0.0, min(1.0, embedding_threshold)),
-            name_threshold=max(0.0, min(1.0, name_threshold)),
-        )
-        edges = await linker.link(code_nodes, doc_nodes, graph)
-        return {
-            "edges_created": len(edges),
+        git_edges_created = 0
+        if resolved_repo is not None:
+            git_edges = await link_commits_to_tickets(resolved_repo, graph)
+            git_edges_created = len(git_edges)
+
+        total = embed_edges_created + git_edges_created
+        result: dict[str, object] = {
+            "edges_created": total,
+            "embed_edges_created": embed_edges_created,
+            "git_edges_created": git_edges_created,
             "code_nodes": len(code_nodes),
             "doc_nodes": len(doc_nodes),
         }
-
-    # Register ticket tools
-    register_ticket_tools(mcp, graph)
+        if not code_nodes and not doc_nodes and resolved_repo is None:
+            result["message"] = "Nothing to link — index code and docs first."
+        return result
 
     return mcp

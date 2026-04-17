@@ -6,6 +6,7 @@ from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
 from tree_sitter_typescript import language_tsx, language_typescript
 
+from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
 from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind
 
@@ -21,18 +22,14 @@ _TS_ARROW_FUNCTION = "arrow_function"
 _TS_FUNCTION_EXPR = "function"
 
 
-def _node_text(src: bytes, n: TSNode) -> str:
-    return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
-
-
 def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float]:
     if func_node.type == _TS_IDENTIFIER:
-        return _node_text(src, func_node), 1.0
+        return node_text(src, func_node), 1.0
 
     if func_node.type == _TS_MEMBER_EXPRESSION:
         prop = func_node.child_by_field_name("property")
         if prop is not None and prop.type == _TS_IDENTIFIER:
-            return _node_text(src, prop), 0.8
+            return node_text(src, prop), 0.8
 
     return None, 0.5
 
@@ -44,7 +41,7 @@ def _enclosing_named_function(src: bytes, n: TSNode) -> tuple[str | None, int] |
             name_node = cur.child_by_field_name("name")
             if name_node is None:
                 return None
-            name = _node_text(src, name_node)
+            name = node_text(src, name_node)
             start_line = cur.start_point[0] + 1
             return name, start_line
 
@@ -56,7 +53,7 @@ def _enclosing_named_function(src: bytes, n: TSNode) -> tuple[str | None, int] |
                     maybe = parent.child_by_field_name(field)
                     if maybe is not None and maybe.type == _TS_IDENTIFIER:
                         start_line = cur.start_point[0] + 1
-                        return _node_text(src, maybe), start_line
+                        return node_text(src, maybe), start_line
 
         cur = cur.parent
     return None

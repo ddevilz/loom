@@ -42,8 +42,14 @@ def _threshold(env_var: str, default: str) -> float:
     return value
 
 
-LOOM_LINKER_NAME_THRESHOLD = _threshold("LOOM_LINKER_NAME_THRESHOLD", "0.6")
-LOOM_LINKER_EMBED_THRESHOLD = _threshold("LOOM_LINKER_EMBED_THRESHOLD", "0.75")
+LOOM_LINKER_EMBED_THRESHOLD = _threshold("LOOM_LINKER_EMBED_THRESHOLD", "0.85")
+
+# Blast radius depth cap
+LOOM_BLAST_RADIUS_MAX_DEPTH: int = int(os.getenv("LOOM_BLAST_RADIUS_MAX_DEPTH", "10"))
+if not 1 <= LOOM_BLAST_RADIUS_MAX_DEPTH <= 50:
+    raise ValueError(
+        f"LOOM_BLAST_RADIUS_MAX_DEPTH must be 1–50, got {LOOM_BLAST_RADIUS_MAX_DEPTH}"
+    )
 
 # Jira configuration
 LOOM_JIRA_URL = os.getenv("LOOM_JIRA_URL", "")

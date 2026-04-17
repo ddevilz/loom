@@ -199,9 +199,11 @@ def get_registry() -> LanguageRegistry:
 
 
 def _register_defaults(reg: LanguageRegistry) -> None:
-    from loom.analysis.code.calls import trace_calls_for_file
-    from loom.analysis.code.calls_java import trace_calls_for_java_file
-    from loom.analysis.code.calls_ts import trace_calls_for_ts_file
+    from loom.analysis.code.calls import (
+        trace_calls_for_file,
+        trace_calls_for_java_file,
+        trace_calls_for_ts_file,
+    )
     from loom.ingest.code.languages.go_lang import parse_go
     from loom.ingest.code.languages.java import parse_java
     from loom.ingest.code.languages.javascript import parse_javascript

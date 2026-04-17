@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from tree_sitter import Language, Parser
@@ -9,6 +8,7 @@ from tree_sitter_go import language as go_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
+from loom.ingest.code.languages._base import _BaseContext
 from loom.ingest.code.languages._ts_utils import (
     get_name as _get_name,
 )
@@ -33,17 +33,11 @@ from loom.ingest.code.languages.constants import (
 _GO_LANGUAGE = Language(go_language())
 
 
-@dataclass(frozen=True)
-class _Context:
-    type_stack: tuple[str, ...] = ()
-
-    def push_type(self, name: str) -> _Context:
-        return _Context(type_stack=self.type_stack + (name,))
-
-    def qualname(self, name: str) -> str:
-        if self.type_stack:
-            return ".".join(self.type_stack) + "." + name
-        return name
+def _qualname(ctx: _BaseContext, name: str) -> str:
+    # Go uses class_stack as type_stack
+    if ctx.class_stack:
+        return ".".join(ctx.class_stack) + "." + name
+    return name
 
 
 def _extract_from_def(
@@ -51,7 +45,7 @@ def _extract_from_def(
     path: str,
     src: bytes,
     n: TSNode,
-    ctx: _Context,
+    ctx: _BaseContext,
     out: list[Node],
 ) -> None:
     # Go: type_declaration (struct/interface), function_declaration, method_declaration
@@ -94,13 +88,15 @@ def _extract_from_def(
                     )
 
                     # Walk the type body for nested definitions
+                    ctx.push_class(name)
                     _walk(
                         path=path,
                         src=src,
                         n=type_node,
-                        ctx=ctx.push_type(name),
+                        ctx=ctx,
                         out=out,
                     )
+                    ctx.pop_class()
         return
 
     if n.type == TS_GO_FUNCTION_DECL:
@@ -162,7 +158,7 @@ def _extract_from_def(
         return
 
 
-def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
+def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node]) -> None:
     for child in n.children:
         if child.type in {TS_GO_FUNCTION_DECL, TS_GO_METHOD_DECL, TS_GO_TYPE_DECL}:
             _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
@@ -180,6 +176,10 @@ def parse_go(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     out: list[Node] = []
     _walk(
-        path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out
+        path=path.replace("\\", "/"),
+        src=src,
+        n=tree.root_node,
+        ctx=_BaseContext(),
+        out=out,
     )
     return out

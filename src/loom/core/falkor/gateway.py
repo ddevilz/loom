@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -26,6 +27,30 @@ def _falkordb_connect_kwargs() -> dict[str, Any]:
     }
 
 
+_CONNECT_RETRY_DELAYS = (1, 2, 4)  # seconds; total wait ≤ 7s before raising
+
+
+def _connect_with_retry() -> FalkorDB:
+    kwargs = _falkordb_connect_kwargs()
+    last_exc: Exception | None = None
+    for attempt, delay in enumerate(_CONNECT_RETRY_DELAYS, start=1):
+        try:
+            return FalkorDB(**kwargs)
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "FalkorDB connection attempt %d/%d failed: %s. Retrying in %ds.",
+                attempt,
+                len(_CONNECT_RETRY_DELAYS),
+                exc,
+                delay,
+            )
+            time.sleep(delay)
+    raise ConnectionError(
+        f"FalkorDB connection failed after {len(_CONNECT_RETRY_DELAYS)} attempts"
+    ) from last_exc
+
+
 def get_falkordb_singleton() -> FalkorDB:
     """Get or create FalkorDB singleton with thread-safe double-checked locking.
 
@@ -38,7 +63,7 @@ def get_falkordb_singleton() -> FalkorDB:
 
     with _DB_SINGLETON_LOCK:
         if _DB_SINGLETON is None:
-            _DB_SINGLETON = FalkorDB(**_falkordb_connect_kwargs())
+            _DB_SINGLETON = _connect_with_retry()
         return _DB_SINGLETON
 
 

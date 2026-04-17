@@ -122,13 +122,10 @@ def test_resolve_node_from_rows_helper_exists() -> None:
 
 def test_linker_defaults_come_from_config() -> None:
     """SemanticLinker default thresholds should reference config constants."""
-    from loom.config import LOOM_LINKER_EMBED_THRESHOLD, LOOM_LINKER_NAME_THRESHOLD
+    from loom.config import LOOM_LINKER_EMBED_THRESHOLD
     from loom.linker.linker import SemanticLinker
 
     linker = SemanticLinker()
-    assert linker.name_threshold == LOOM_LINKER_NAME_THRESHOLD, (
-        "SemanticLinker.name_threshold does not match config.LOOM_LINKER_NAME_THRESHOLD"
-    )
     assert linker.embedding_threshold == LOOM_LINKER_EMBED_THRESHOLD, (
         "SemanticLinker.embedding_threshold does not match config.LOOM_LINKER_EMBED_THRESHOLD"
     )
@@ -188,12 +185,21 @@ async def test_persist_batch_logs_after_not_before_db_call() -> None:
 
 async def test_link_code_nodes_logs_edge_count() -> None:
     """When SemanticLinker creates 0 edges, output must indicate this (not just timing)."""
+    from loom.core import Node, NodeKind, NodeSource
     from loom.ingest.pipeline import _IndexBatch, _link_code_nodes
 
     fake_graph = MagicMock()
     fake_graph.query = AsyncMock(return_value=[])
 
     printed: list[str] = []
+
+    doc_node = Node(
+        id="doc:spec.md:s1",
+        kind=NodeKind.SECTION,
+        source=NodeSource.DOC,
+        name="Spec",
+        path="spec.md",
+    )
 
     with (
         patch(
@@ -202,15 +208,13 @@ async def test_link_code_nodes_logs_edge_count() -> None:
         ),
         patch(
             "loom.ingest.pipeline.get_doc_nodes_for_linking",
-            new=AsyncMock(return_value=[MagicMock()]),
+            new=AsyncMock(return_value=[doc_node]),
         ),
         patch(
             "builtins.print",
             side_effect=lambda *a, **k: printed.append(" ".join(str(x) for x in a)),
         ),
     ):
-        from loom.core import Node, NodeKind, NodeSource
-
         code_node = Node(
             id="function:f.py:foo",
             kind=NodeKind.FUNCTION,
@@ -248,28 +252,6 @@ def test_html_extension_is_registered_not_silently_skipped() -> None:
         "HTML files are not registered — or the registry comment is right and "
         "markup parsers are missing"
     )
-
-
-# ---------------------------------------------------------------------------
-# CLEANUP-2: llm/client.py bare except swallows attribute errors silently.
-# ---------------------------------------------------------------------------
-
-
-async def test_llm_client_raises_on_bad_response_shape() -> None:
-    """LLMClient.complete must raise (not return str(res)) when response is malformed."""
-    import pytest
-
-    from loom.llm.client import LLMClient
-
-    client = LLMClient(model="gpt-4o-mini")
-
-    bad_response = MagicMock(spec=[])  # no .choices attribute
-
-    with (
-        patch("litellm.acompletion", new=AsyncMock(return_value=bad_response)),
-        pytest.raises(AttributeError),
-    ):
-        await client.complete(prompt="test")
 
 
 # ---------------------------------------------------------------------------
