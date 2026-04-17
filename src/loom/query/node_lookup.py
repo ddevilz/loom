@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loom.core.node import NodeKind
-from loom.core.protocols import QueryGraph
+from loom.core.types import QueryGraph
 
 
 async def resolve_node_rows(

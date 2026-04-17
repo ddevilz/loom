@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from loom.core import Edge, Node, NodeKind, NodeSource
+from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
 from loom.linker.linker import SemanticLinker
 
 
@@ -16,13 +16,9 @@ class _FakeGraph:
         self.persisted.extend(edges)
 
 
-class _FakeReranker:
-    def rerank(self, code_node: Node, doc_node: Node) -> float:
-        return 0.95 if code_node.name == "target" else 0.1
-
-
 @pytest.mark.asyncio
-async def test_semantic_linker_uses_reranker_for_tier2_candidates() -> None:
+async def test_semantic_linker_uses_embed_threshold(monkeypatch) -> None:
+    """SemanticLinker passes the configured threshold to link_by_embedding."""
     code = Node(
         id="function:x:target",
         kind=NodeKind.FUNCTION,
@@ -44,10 +40,28 @@ async def test_semantic_linker_uses_reranker_for_tier2_candidates() -> None:
         metadata={},
     )
 
+    captured_threshold: list[float] = []
+
+    async def _fake_link_by_embedding(code_nodes, doc_nodes, *, threshold, graph=None):
+        captured_threshold.append(threshold)
+        return [
+            Edge(
+                from_id=code.id,
+                to_id=doc.id,
+                kind=EdgeType.LOOM_IMPLEMENTS,
+                origin=EdgeOrigin.EMBED_MATCH,
+                confidence=0.95,
+                link_method="embed_match",
+                link_reason="cosine=0.950",
+                metadata={},
+            )
+        ]
+
+    monkeypatch.setattr("loom.linker.linker.link_by_embedding", _fake_link_by_embedding)
+
     graph = _FakeGraph()
-    linker = SemanticLinker(reranker=_FakeReranker(), rerank_threshold=0.5)
+    linker = SemanticLinker(embedding_threshold=0.9)
     edges = await linker.link([code], [doc], graph)
 
     assert edges
-    assert edges[0].confidence == 0.95
-    assert "cross_encoder" in (edges[0].link_reason or "")
+    assert captured_threshold == [0.9]

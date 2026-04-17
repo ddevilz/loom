@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 import pytest
 
 from loom.core import Edge, Node, NodeKind, NodeSource
@@ -45,20 +43,21 @@ class _FakeGraph:
 
 
 @pytest.mark.asyncio
-async def test_llm_fallback_true_but_no_llm_emits_warning(caplog) -> None:
-    """When llm_fallback=True but match_llm is None, a WARNING must be emitted."""
-    linker = SemanticLinker(llm_fallback=True, match_llm=None)
+async def test_semantic_linker_returns_no_edges_when_embed_match_empty(
+    monkeypatch,
+) -> None:
+    """SemanticLinker returns empty list when embed match yields nothing."""
 
-    with caplog.at_level(logging.WARNING, logger="loom.linker.linker"):
-        await linker.link(
-            [_make_code_node("foo")],
-            [_make_doc_node("bar")],
-            _FakeGraph(),
-        )
+    async def _fake_link_by_embedding(code_nodes, doc_nodes, *, threshold, graph=None):
+        return []
 
-    warning_messages = [
-        r.message for r in caplog.records if r.levelno == logging.WARNING
-    ]
-    assert any("llm_fallback" in m for m in warning_messages), (
-        "Expected a WARNING when llm_fallback=True but match_llm is None; got none"
+    monkeypatch.setattr("loom.linker.linker.link_by_embedding", _fake_link_by_embedding)
+
+    linker = SemanticLinker()
+    edges = await linker.link(
+        [_make_code_node("foo")],
+        [_make_doc_node("bar")],
+        _FakeGraph(),
     )
+
+    assert edges == []

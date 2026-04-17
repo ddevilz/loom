@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from tree_sitter import Language, Parser
@@ -9,6 +8,7 @@ from tree_sitter_java import language as java_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
+from loom.ingest.code.languages._base import _BaseContext
 from loom.ingest.code.languages._ts_utils import (
     get_name as _get_name,
 )
@@ -40,22 +40,14 @@ from loom.ingest.code.languages.constants import (
 _JAVA_LANGUAGE = Language(java_language())
 
 
-@dataclass(frozen=True)
-class _Context:
-    class_stack: tuple[str, ...] = ()
-    package: str = ""
-
-    def push_class(self, name: str) -> _Context:
-        return _Context(class_stack=self.class_stack + (name,), package=self.package)
-
-    def qualname(self, name: str) -> str:
-        parts: list[str] = []
-        if self.package:
-            parts.append(self.package)
-        if self.class_stack:
-            parts.append(".".join(self.class_stack))
-        parts.append(name)
-        return ".".join(parts)
+def _qualname(ctx: _BaseContext, name: str, package: str = "") -> str:
+    parts: list[str] = []
+    if package:
+        parts.append(package)
+    if ctx.class_stack:
+        parts.append(".".join(ctx.class_stack))
+    parts.append(name)
+    return ".".join(parts)
 
 
 def _extract_annotations(src: bytes, n: TSNode) -> list[str]:
@@ -169,8 +161,9 @@ def _extract_from_def(
     path: str,
     src: bytes,
     n: TSNode,
-    ctx: _Context,
+    ctx: _BaseContext,
     out: list[Node],
+    package: str = "",
 ) -> None:
     # Java: class_declaration, interface_declaration, enum_declaration, annotation_type_declaration, record_declaration
     if n.type in {
@@ -225,7 +218,7 @@ def _extract_from_def(
         if n.type == TS_JAVA_RECORD_DECL:
             metadata["is_record"] = True
 
-        symbol = ctx.qualname(name)
+        symbol = _qualname(ctx, name, package)
         out.append(
             Node(
                 id=f"{kind.value}:{path}:{symbol}",
@@ -243,7 +236,9 @@ def _extract_from_def(
 
         body = n.child_by_field_name("body")
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx.push_class(name), out=out)
+            ctx.push_class(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, package=package)
+            ctx.pop_class()
         return
 
     if n.type in {TS_JAVA_METHOD_DECL, TS_JAVA_CTOR_DECL}:
@@ -255,7 +250,7 @@ def _extract_from_def(
 
         # Methods inside classes are METHOD, top-level would be FUNCTION (rare in Java)
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
-        symbol = ctx.qualname(name) if ctx.class_stack else name
+        symbol = _qualname(ctx, name, package) if ctx.class_stack else name
 
         # Extract metadata
         metadata = {}
@@ -294,11 +289,19 @@ def _extract_from_def(
         )
 
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, package=package)
         return
 
 
-def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
+def _walk(
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _BaseContext,
+    out: list[Node],
+    package: str = "",
+) -> None:
     for child in n.children:
         if child.type in {
             TS_JAVA_CLASS_DECL,
@@ -309,10 +312,12 @@ def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -
             TS_JAVA_METHOD_DECL,
             TS_JAVA_CTOR_DECL,
         }:
-            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
+            _extract_from_def(
+                path=path, src=src, n=child, ctx=ctx, out=out, package=package
+            )
         else:
             if child.child_count:
-                _walk(path=path, src=src, n=child, ctx=ctx, out=out)
+                _walk(path=path, src=src, n=child, ctx=ctx, out=out, package=package)
 
 
 def _extract_package(src: bytes, root: TSNode) -> str:
@@ -338,7 +343,8 @@ def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:
         path=path.replace("\\", "/"),
         src=src,
         n=tree.root_node,
-        ctx=_Context(package=package),
+        ctx=_BaseContext(),
         out=out,
+        package=package,
     )
     return out

@@ -82,9 +82,9 @@ async def test_bulk_edges_mixed_types_and_neighbor_filtering():
         Edge(
             from_id=nodes[1].id,
             to_id="doc:spec.pdf:1.0",
-            kind=EdgeType.LOOM_SPECIFIES,
+            kind=EdgeType.LOOM_VIOLATES,
             confidence=0.4,
-            link_method="name_match",
+            link_method="embed_match",
             link_reason="matched section heading",
             metadata={"score": 0.4},
         ),

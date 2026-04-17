@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from loom.core import Edge, EdgeOrigin, EdgeType, Node
-from loom.core.protocols import QueryGraph
+from loom.core.types import QueryGraph
 from loom.embed.embedder import cosine_similarity, embed_nodes
 
 logger = logging.getLogger(__name__)

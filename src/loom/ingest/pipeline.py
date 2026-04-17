@@ -7,20 +7,20 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
+from typing import Literal
 
 from tqdm import tqdm
 
 from loom.analysis.code.extractor import extract_summaries
 from loom.analysis.code.parser import parse_code
-from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
+from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
-from loom.core.protocols import BulkGraph
+from loom.core.types import BulkGraph
 from loom.embed.embedder import embed_nodes
 from loom.ingest.code.registry import get_registry
 from loom.ingest.code.walker import walk_repo
-from loom.ingest.helpers import build_contains_edges, file_node_id, make_file_node
+from loom.ingest.git_linker import link_commits_to_tickets
 from loom.ingest.integrations.jira import JiraConfig, fetch_jira_nodes
-from loom.ingest.result import IndexError, IndexResult
 from loom.ingest.utils import (
     delete_nodes_by_ids,
     delete_nodes_by_path,
@@ -32,6 +32,96 @@ from loom.ingest.utils import (
 from loom.linker.linker import SemanticLinker
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Helpers (inlined from loom.ingest.helpers)
+# ---------------------------------------------------------------------------
+
+
+def file_node_id(path: str) -> str:
+    return f"{NodeKind.FILE.value}:{path}"
+
+
+def make_file_node(path: str, *, content_hash: str) -> Node:
+    p = Path(path)
+    return Node(
+        id=file_node_id(path),
+        kind=NodeKind.FILE,
+        source=NodeSource.CODE,
+        name=p.name,
+        path=path,
+        content_hash=content_hash,
+        metadata={},
+    )
+
+
+def build_contains_edges(nodes: list[Node]) -> list[Edge]:
+    return [
+        Edge(
+            from_id=node.parent_id,
+            to_id=node.id,
+            kind=EdgeType.CONTAINS,
+            origin=EdgeOrigin.COMPUTED,
+            confidence=1.0,
+        )
+        for node in nodes
+        if isinstance(node.parent_id, str) and node.parent_id
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Result types (inlined from loom.ingest.result)
+# ---------------------------------------------------------------------------
+
+IndexPhase = Literal[
+    "parse",
+    "calls",
+    "calls_global",
+    "persist",
+    "summarize",
+    "link",
+    "embed",
+    "hash",
+    "invalidate",
+    "jira",
+    "process",
+]
+
+
+@dataclass(frozen=True)
+class IngestError:
+    path: str
+    phase: IndexPhase
+    message: str
+
+
+@dataclass(frozen=True)
+class IndexResult:
+    node_count: int
+    edge_count: int
+    file_count: int
+    files_skipped: int
+    files_updated: int
+    files_added: int
+    files_deleted: int
+    error_count: int
+    duration_ms: float
+    errors: list[IngestError] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+def append_index_error(
+    errors: list[IngestError],
+    *,
+    path: str,
+    phase: IndexPhase,
+    error: Exception,
+) -> None:
+    logger.error(
+        "Indexing error in phase '%s' for '%s': %s", phase, path, error, exc_info=True
+    )
+    errors.append(IngestError(path=path, phase=phase, message=str(error)))
 
 
 def _merge_file_result(batch: _IndexBatch, file_result: _IndexBatch) -> None:
@@ -59,7 +149,7 @@ class _IndexBatch:
     files_added: int = 0
     nodes_to_upsert: list[Node] = field(default_factory=list)
     edges_to_upsert: list[Edge] = field(default_factory=list)
-    errors: list[IndexError] = field(default_factory=list)
+    errors: list[IngestError] = field(default_factory=list)
 
 
 _FileProcessResult = _IndexBatch
@@ -256,7 +346,7 @@ async def _process_file(
 async def _delete_missing_files(
     graph: BulkGraph,
     deleted_file_ids: set[str],
-    errors: list[IndexError],
+    errors: list[IngestError],
 ) -> None:
     for file_id in sorted(deleted_file_ids):
         path = _path_fromfile_node_id(file_id)
@@ -270,7 +360,7 @@ async def _delete_existing_repo_nodes(
     graph: BulkGraph,
     *,
     root: str,
-    errors: list[IndexError],
+    errors: list[IngestError],
 ) -> None:
     await graph.query(_DELETE_NODES_BY_PATH_PREFIX, {"path_prefix": root})
 
@@ -302,7 +392,7 @@ async def _persist_batch(graph: BulkGraph, root: str, batch: _IndexBatch) -> Non
 
 
 async def _query_graph_counts(
-    graph: BulkGraph, root: str, errors: list[IndexError]
+    graph: BulkGraph, root: str, errors: list[IngestError]
 ) -> tuple[int, int]:
     rows = await graph.query(_COUNT_NODES)
     node_count = int(rows[0]["c"]) if rows else 0
@@ -363,9 +453,14 @@ async def _link_code_nodes(
         print("No doc nodes to link")
         return
 
-    print(f"Linking {len(code_nodes)} code nodes with {len(doc_nodes)} doc nodes...")
+    # Only link markdown doc nodes — Jira ticket linking is handled by git_linker
+    markdown_doc_nodes = [n for n in doc_nodes if not (n.path or "").startswith("jira://")]
+    if not markdown_doc_nodes:
+        print("No markdown doc nodes to link")
+        return
+    print(f"Linking {len(code_nodes)} code nodes with {len(markdown_doc_nodes)} doc nodes...")
     link_t0 = perf_counter()
-    edges = await SemanticLinker().link(code_nodes, doc_nodes, graph)
+    edges = await SemanticLinker().link(code_nodes, markdown_doc_nodes, graph)
     print(
         f"Completed linking: {len(edges)} edges created in {(perf_counter() - link_t0):.2f}s"
     )
@@ -390,13 +485,18 @@ async def _process_files(
         async with semaphore:
             processed_count += 1
             logger.info("Processing file %d/%d: %s", processed_count, total_files, fp)
-            return await _process_file(
-                graph,
-                fp=fp,
-                stored_hash=stored_hash,
-                exclude_tests=exclude_tests,
-                batch=_FileProcessResult(),
-            )
+            result = _FileProcessResult()
+            try:
+                return await _process_file(
+                    graph,
+                    fp=fp,
+                    stored_hash=stored_hash,
+                    exclude_tests=exclude_tests,
+                    batch=result,
+                )
+            except Exception as exc:
+                append_index_error(result.errors, path=fp, phase="process", error=exc)
+                return result
 
     show_progress = os.environ.get("LOOM_PROGRESS", "1") != "0" and os.isatty(1)
     tasks = [asyncio.create_task(_process_one(fp)) for fp in current_files]
@@ -659,6 +759,22 @@ async def index_repo(
         "index_repo link_code_nodes root=%s duration_ms=%.2f",
         root,
         (perf_counter() - link_t0) * 1000.0,
+    )
+
+    # Git-commit linking for Jira tickets
+    git_edges = await link_commits_to_tickets(Path(root), graph)
+    if git_edges:
+        await graph.bulk_create_edges(git_edges)
+        logger.info(
+            "index_repo git_linker root=%s edges=%d",
+            root,
+            len(git_edges),
+        )
+
+    # Write _LoomMeta node so MCP relink() can recover repo_path
+    await graph.query(
+        "MERGE (m:_LoomMeta {key: 'repo_path'}) SET m.value = $val",
+        {"val": root},
     )
 
     node_count, edge_count = await _count_graph(graph=graph, root=root)

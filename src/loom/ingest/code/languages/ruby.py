@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from tree_sitter import Language, Parser
@@ -9,6 +8,7 @@ from tree_sitter_ruby import language as ruby_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
+from loom.ingest.code.languages._base import _BaseContext
 from loom.ingest.code.languages._ts_utils import (
     get_name as _get_name,
 )
@@ -29,17 +29,10 @@ from loom.ingest.code.languages.constants import (
 _RUBY_LANGUAGE = Language(ruby_language())
 
 
-@dataclass(frozen=True)
-class _Context:
-    class_stack: tuple[str, ...] = ()
-
-    def push_class(self, name: str) -> _Context:
-        return _Context(class_stack=self.class_stack + (name,))
-
-    def qualname(self, name: str) -> str:
-        if self.class_stack:
-            return ".".join(self.class_stack) + "." + name
-        return name
+def _qualname(ctx: _BaseContext, name: str) -> str:
+    if ctx.class_stack:
+        return ".".join(ctx.class_stack) + "." + name
+    return name
 
 
 # Rails DSL method names we want to capture as class metadata
@@ -84,7 +77,7 @@ def _extract_from_def(
     path: str,
     src: bytes,
     n: TSNode,
-    ctx: _Context,
+    ctx: _BaseContext,
     out: list[Node],
 ) -> None:
     # Ruby: class, module, method, singleton_method
@@ -155,7 +148,9 @@ def _extract_from_def(
         )
 
         # Walk body for nested definitions
-        _walk(path=path, src=src, n=n, ctx=ctx.push_class(name), out=out)
+        ctx.push_class(name)
+        _walk(path=path, src=src, n=n, ctx=ctx, out=out)
+        ctx.pop_class()
         return
 
     if n.type in {TS_RUBY_METHOD, TS_RUBY_SINGLETON_METHOD}:
@@ -167,7 +162,7 @@ def _extract_from_def(
 
         # Methods inside classes are METHOD, top-level are FUNCTION
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
-        symbol = ctx.qualname(name) if ctx.class_stack else name
+        symbol = _qualname(ctx, name) if ctx.class_stack else name
 
         out.append(
             Node(
@@ -186,7 +181,7 @@ def _extract_from_def(
         return
 
 
-def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
+def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node]) -> None:
     for child in n.children:
         if child.type in {
             TS_RUBY_CLASS,
@@ -209,6 +204,10 @@ def parse_ruby(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     out: list[Node] = []
     _walk(
-        path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out
+        path=path.replace("\\", "/"),
+        src=src,
+        n=tree.root_node,
+        ctx=_BaseContext(),
+        out=out,
     )
     return out

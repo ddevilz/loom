@@ -83,6 +83,10 @@ class FakeGraph:
                 self.nodes.pop(node_id, None)
             return []
 
+        if cypher.strip().startswith("MERGE (m:_LoomMeta"):
+            # _LoomMeta metadata write — accepted, no-op in tests
+            return []
+
         raise AssertionError(f"Unexpected cypher: {cypher}")
 
     async def bulk_create_nodes(self, nodes: list[Any]) -> None:

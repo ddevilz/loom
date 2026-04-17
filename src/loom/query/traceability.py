@@ -14,7 +14,7 @@ from loom.core.falkor.edge_type_adapter import (
 )
 from loom.core.edge import EdgeType
 from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
-from loom.core.protocols import QueryGraph
+from loom.core.types import QueryGraph
 
 logger = logging.getLogger(__name__)
 

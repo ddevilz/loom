@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +9,7 @@ from tree_sitter_python import language as python_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
+from loom.ingest.code.languages._base import _BaseContext
 from loom.ingest.code.languages._ts_utils import (
     get_name as _get_name,
 )
@@ -64,42 +64,28 @@ from loom.ingest.code.languages.constants import (
 _PY_LANGUAGE = Language(python_language())
 
 
-@dataclass(frozen=True)
-class _Context:
-    class_stack: tuple[str, ...] = ()
-    func_stack: tuple[str, ...] = ()
+def _qualname(ctx: _BaseContext, name: str) -> str:
+    parts: list[str] = []
+    if ctx.class_stack:
+        parts.append(".".join(ctx.class_stack))
+    if ctx.fn_stack:
+        parts.append(".".join(ctx.fn_stack))
+    parts.append(name)
+    return ".".join(parts)
 
-    def push_class(self, name: str) -> _Context:
-        return _Context(
-            class_stack=self.class_stack + (name,), func_stack=self.func_stack
-        )
 
-    def push_func(self, name: str) -> _Context:
-        return _Context(
-            class_stack=self.class_stack, func_stack=self.func_stack + (name,)
-        )
-
-    def qualname(self, name: str) -> str:
-        parts: list[str] = []
-        if self.class_stack:
-            parts.append(".".join(self.class_stack))
-        if self.func_stack:
-            parts.append(".".join(self.func_stack))
-        parts.append(name)
-        return ".".join(parts)
-
-    def parent_id(self, path: str) -> str | None:
-        if self.func_stack:
-            if self.class_stack:
-                return Node.make_code_id(
-                    NodeKind.METHOD,
-                    path,
-                    ".".join((*self.class_stack, *self.func_stack)),
-                )
-            return Node.make_code_id(NodeKind.FUNCTION, path, ".".join(self.func_stack))
-        if self.class_stack:
-            return Node.make_code_id(NodeKind.CLASS, path, ".".join(self.class_stack))
-        return None
+def _parent_id(ctx: _BaseContext, path: str) -> str | None:
+    if ctx.fn_stack:
+        if ctx.class_stack:
+            return Node.make_code_id(
+                NodeKind.METHOD,
+                path,
+                ".".join((*ctx.class_stack, *ctx.fn_stack)),
+            )
+        return Node.make_code_id(NodeKind.FUNCTION, path, ".".join(ctx.fn_stack))
+    if ctx.class_stack:
+        return Node.make_code_id(NodeKind.CLASS, path, ".".join(ctx.class_stack))
+    return None
 
 
 def _is_test_path(path: str) -> bool:
@@ -198,7 +184,7 @@ def _extract_from_def(
     path: str,
     src: bytes,
     n: TSNode,
-    ctx: _Context,
+    ctx: _BaseContext,
     out: list[Node],
     decorators: list[str] | None = None,
 ) -> None:
@@ -218,7 +204,7 @@ def _extract_from_def(
 
         start_line, end_line = _lines(n)
         meta: dict[str, Any] = {}
-        parent_id = ctx.parent_id(path)
+        parent_id = _parent_id(ctx, path)
         if decorators:
             meta[META_DECORATORS] = decorators
             hint = _detect_framework_hint(decorators)
@@ -242,7 +228,9 @@ def _extract_from_def(
 
         body = n.child_by_field_name("body")
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx.push_class(name), out=out)
+            ctx.push_class(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_class()
         return
 
     if n.type == TS_PY_FUNCTION_DEF:
@@ -252,9 +240,9 @@ def _extract_from_def(
 
         start_line, end_line = _lines(n)
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
-        parent_id = ctx.parent_id(path)
-        if kind == NodeKind.METHOD or ctx.func_stack:
-            symbol = ctx.qualname(name)
+        parent_id = _parent_id(ctx, path)
+        if kind == NodeKind.METHOD or ctx.fn_stack:
+            symbol = _qualname(ctx, name)
         else:
             symbol = name
         meta: dict[str, Any] = {}
@@ -284,7 +272,9 @@ def _extract_from_def(
         )
 
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out)
+            ctx.push_fn(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_fn()
         return
 
 
@@ -297,7 +287,7 @@ def _try_extract_assignment(
     path: str,
     src: bytes,
     n: TSNode,
-    ctx: _Context,
+    ctx: _BaseContext,
     out: list[Node],
 ) -> bool:
     """Handle `name = lambda ...` and `Name = TypedDict(...)` patterns.
@@ -318,11 +308,11 @@ def _try_extract_assignment(
 
         name = _node_text(src, lhs)
         start_line, end_line = _lines(n)
-        parent_id = ctx.parent_id(path)
+        parent_id = _parent_id(ctx, path)
 
         # named lambda: my_func = lambda x: ...
         if rhs.type == "lambda":
-            symbol = ctx.qualname(name) if ctx.class_stack else name
+            symbol = _qualname(ctx, name) if ctx.class_stack else name
             kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
             out.append(
                 Node(
@@ -369,7 +359,7 @@ def _try_extract_assignment(
     return False
 
 
-def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
+def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node]) -> None:
     # We walk all children and recursively extract definitions.
     for child in n.children:
         if child.type in {TS_PY_FUNCTION_DEF, TS_PY_CLASS_DEF, TS_PY_DECORATED_DEF}:
@@ -393,6 +383,10 @@ def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     out: list[Node] = []
     _walk(
-        path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out
+        path=path.replace("\\", "/"),
+        src=src,
+        n=tree.root_node,
+        ctx=_BaseContext(),
+        out=out,
     )
     return out

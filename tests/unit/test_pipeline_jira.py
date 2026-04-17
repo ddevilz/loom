@@ -97,4 +97,5 @@ async def test_index_repo_with_jira_adds_jira_nodes(monkeypatch, tmp_path) -> No
 
     assert any(n.name == "PROJ-1" for n in graph.nodes)
     assert res.node_count >= 1
-    assert linker.called is True
+    # Jira nodes are filtered out from SemanticLinker — only markdown doc nodes are linked
+    assert linker.called is False

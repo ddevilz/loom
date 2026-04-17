@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from tree_sitter import Language, Parser
@@ -9,6 +8,7 @@ from tree_sitter_javascript import language as javascript_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
+from loom.ingest.code.languages._base import _BaseContext
 from loom.ingest.code.languages._ts_utils import (
     get_name as _get_name,
 )
@@ -30,29 +30,14 @@ from loom.ingest.code.languages.constants import (
 _JS_LANGUAGE = Language(javascript_language())
 
 
-@dataclass(frozen=True)
-class _Context:
-    class_stack: tuple[str, ...] = ()
-    func_stack: tuple[str, ...] = ()
-
-    def push_class(self, name: str) -> _Context:
-        return _Context(
-            class_stack=self.class_stack + (name,), func_stack=self.func_stack
-        )
-
-    def push_func(self, name: str) -> _Context:
-        return _Context(
-            class_stack=self.class_stack, func_stack=self.func_stack + (name,)
-        )
-
-    def qualname(self, name: str) -> str:
-        parts: list[str] = []
-        if self.class_stack:
-            parts.append(".".join(self.class_stack))
-        if self.func_stack:
-            parts.append(".".join(self.func_stack))
-        parts.append(name)
-        return ".".join(parts)
+def _qualname(ctx: _BaseContext, name: str) -> str:
+    parts: list[str] = []
+    if ctx.class_stack:
+        parts.append(".".join(ctx.class_stack))
+    if ctx.fn_stack:
+        parts.append(".".join(ctx.fn_stack))
+    parts.append(name)
+    return ".".join(parts)
 
 
 def _extract_from_def(
@@ -60,7 +45,7 @@ def _extract_from_def(
     path: str,
     src: bytes,
     n: TSNode,
-    ctx: _Context,
+    ctx: _BaseContext,
     out: list[Node],
 ) -> None:
     if n.type == TS_JS_CLASS_DECL:
@@ -86,7 +71,9 @@ def _extract_from_def(
 
         body = n.child_by_field_name("body")
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx.push_class(name), out=out)
+            ctx.push_class(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_class()
         return
 
     if n.type in {TS_JS_FUNCTION_DECL, TS_JS_FUNCTION, TS_JS_ARROW_FUNCTION}:
@@ -115,7 +102,9 @@ def _extract_from_def(
 
         body = n.child_by_field_name("body")
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out)
+            ctx.push_fn(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_fn()
         return
 
     if n.type == TS_JS_METHOD_DEF:
@@ -124,7 +113,7 @@ def _extract_from_def(
             return
 
         start_line, end_line = _lines(n)
-        symbol = ctx.qualname(name)
+        symbol = _qualname(ctx, name)
 
         out.append(
             Node(
@@ -143,7 +132,9 @@ def _extract_from_def(
 
         body = n.child_by_field_name("body")
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out)
+            ctx.push_fn(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_fn()
         return
 
 
@@ -152,7 +143,7 @@ def _try_extract_const_function(
     path: str,
     src: bytes,
     n: TSNode,
-    ctx: _Context,
+    ctx: _BaseContext,
     out: list[Node],
 ) -> bool:
     """Handle `const name = () => {}` and `const name = function() {}`."""
@@ -205,13 +196,15 @@ def _try_extract_const_function(
 
         body = value_node.child_by_field_name("body")
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx.push_func(name), out=out)
+            ctx.push_fn(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_fn()
         found = True
 
     return found
 
 
-def _walk(*, path: str, src: bytes, n: TSNode, ctx: _Context, out: list[Node]) -> None:
+def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node]) -> None:
     for child in n.children:
         if child.type in {
             TS_JS_FUNCTION_DECL,
@@ -237,6 +230,10 @@ def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:
 
     out: list[Node] = []
     _walk(
-        path=path.replace("\\", "/"), src=src, n=tree.root_node, ctx=_Context(), out=out
+        path=path.replace("\\", "/"),
+        src=src,
+        n=tree.root_node,
+        ctx=_BaseContext(),
+        out=out,
     )
     return out

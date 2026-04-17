@@ -12,14 +12,19 @@ from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL, EdgeTypeAdapter
 from loom.core.falkor.mappers import deserialize_edge_props, deserialize_node_props
-from loom.core.protocols import BulkGraph
+from loom.core.types import BulkGraph
 from loom.drift.detector import detect_ast_drift
 from loom.embed.embedder import embed_nodes
 from loom.ingest.code.registry import get_registry
 from loom.ingest.differ import diff_nodes
 from loom.ingest.git import get_changed_files
-from loom.ingest.helpers import build_contains_edges, make_file_node
-from loom.ingest.result import IndexError, IndexResult, append_index_error
+from loom.ingest.pipeline import (
+    IndexResult,
+    IngestError,
+    append_index_error,
+    build_contains_edges,
+    make_file_node,
+)
 from loom.ingest.utils import (
     delete_nodes_by_ids,
     get_doc_nodes_for_linking,
@@ -85,13 +90,10 @@ async def _create_edge(
     rel_type: str,
     props: dict[str, Any],
 ) -> None:
+    # Relationship type can't be parameterized in Cypher — validate against known
+    # EdgeType names to prevent injection if graph data is tampered with.
     if not EdgeTypeAdapter.is_valid_storage_name(rel_type):
-        logger.warning(
-            "Refusing to create edge with unknown rel_type %r — possible injection or schema mismatch.",
-            rel_type,
-        )
-        return
-    # Relationship type can't be parameterized in Cypher; validated above.
+        raise ValueError(f"Unknown edge type {rel_type!r} — refusing to interpolate into Cypher")
     await graph.query(
         f"MATCH (a {{id: $from_id}}), (b {{id: $to_id}}) MERGE (a)-[r:`{rel_type}`]->(b) SET r += $props",
         {"from_id": from_id, "to_id": to_id, "props": props},
@@ -102,7 +104,7 @@ async def _handle_deleted_path(
     graph: BulkGraph,
     *,
     path: str,
-    errors: list[IndexError],
+    errors: list[IngestError],
 ) -> None:
     await invalidate_edges_for_file(graph, path=path)
     rows = await graph.query(
@@ -185,7 +187,9 @@ async def _finalize_upsert_nodes(
     if not code_nodes:
         return
 
-    doc_nodes = await get_doc_nodes_for_linking(graph)
+    all_doc_nodes = await get_doc_nodes_for_linking(graph)
+    # Only link markdown doc nodes — Jira ticket linking is handled by git_linker
+    doc_nodes = [n for n in all_doc_nodes if not (n.path or "").startswith("jira://")]
     if not doc_nodes:
         return
     await SemanticLinker().link(code_nodes, doc_nodes, graph)
@@ -222,7 +226,7 @@ async def _finalize_incremental_updates(
     graph: BulkGraph,
     *,
     t0: float,
-    errors: list[IndexError],
+    errors: list[IngestError],
     warnings: list[str],
     nodes_to_upsert: list[Node],
     edges_to_upsert: list[Edge],
@@ -261,7 +265,7 @@ async def sync_paths(
     graph: BulkGraph,
 ) -> IndexResult:
     t0 = perf_counter()
-    errors: list[IndexError] = []
+    errors: list[IngestError] = []
     warnings: list[str] = []
     files_added = 0
     files_updated = 0
@@ -313,7 +317,7 @@ async def _sync_added_path(
     *,
     abs_path: str,
     graph: BulkGraph,
-    errors: list[IndexError],
+    errors: list[IngestError],
     nodes_to_upsert: list[Node],
     edges_to_upsert: list[Edge],
 ) -> tuple[int, int]:
@@ -332,7 +336,7 @@ async def _sync_modified_path(
     *,
     abs_path: str,
     graph: BulkGraph,
-    errors: list[IndexError],
+    errors: list[IngestError],
     warnings: list[str],
     nodes_to_upsert: list[Node],
     edges_to_upsert: list[Edge],
@@ -393,7 +397,7 @@ async def _sync_deleted_path(
     *,
     abs_path: str,
     graph: BulkGraph,
-    errors: list[IndexError],
+    errors: list[IngestError],
 ) -> int:
     await _handle_deleted_path(graph, path=abs_path, errors=errors)
     return 1
@@ -405,7 +409,7 @@ async def _sync_renamed_path(
     abs_path: str,
     old_path: str | None,
     graph: BulkGraph,
-    errors: list[IndexError],
+    errors: list[IngestError],
     nodes_to_upsert: list[Node],
     edges_to_upsert: list[Edge],
 ) -> tuple[int, int]:
@@ -539,7 +543,7 @@ async def sync_commits(
     """
 
     t0 = perf_counter()
-    errors: list[IndexError] = []
+    errors: list[IngestError] = []
     warnings: list[str] = []
 
     changes = await get_changed_files(repo_path, old_sha, new_sha)

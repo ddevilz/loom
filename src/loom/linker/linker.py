@@ -1,36 +1,25 @@
+# src/loom/linker/linker.py
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Protocol
 
-from loom.config import LOOM_LINKER_EMBED_THRESHOLD, LOOM_LINKER_NAME_THRESHOLD
+from loom.config import LOOM_LINKER_EMBED_THRESHOLD
 from loom.core import Edge, EdgeOrigin, Node
-from loom.core.protocols import BulkGraph
+from loom.core.types import BulkGraph
 from loom.linker.embed_match import link_by_embedding
-from loom.linker.llm_match import link_by_llm
-from loom.linker.name_match import link_by_name
-from loom.linker.reranker import PairReranker, rerank_edges
 
 logger = logging.getLogger(__name__)
 
 
-class SummaryLLMClient(Protocol):
-    async def summarize(
-        self, *, prompt: str, max_tokens: int = 200, model: str | None = None
-    ) -> str: ...
-
-
 @dataclass
 class SemanticLinker:
-    name_threshold: float = LOOM_LINKER_NAME_THRESHOLD
+    """Links markdown doc nodes to code nodes by embedding similarity only.
+
+    Does NOT link Jira tickets — use git_linker.link_commits_to_tickets() for that.
+    """
+
     embedding_threshold: float = LOOM_LINKER_EMBED_THRESHOLD
-    llm_threshold: float = 0.6
-    llm_fallback: bool = False
-    summary_llm: SummaryLLMClient | None = None
-    match_llm: object | None = None
-    reranker: PairReranker | None = None
-    rerank_threshold: float = 0.0
 
     async def link(
         self,
@@ -38,41 +27,18 @@ class SemanticLinker:
         doc_nodes: list[Node],
         graph: BulkGraph,
     ) -> list[Edge]:
-        tier1 = link_by_name(code_nodes, doc_nodes, threshold=self.name_threshold)
-        tier2 = await link_by_embedding(
+        # embed_match → embed_nodes → asyncio.to_thread(embedder.embed, batch)
+        # CPU-bound fastembed work is already offloaded to thread pool inside embed_nodes.
+        edges = await link_by_embedding(
             code_nodes,
             doc_nodes,
             threshold=self.embedding_threshold,
             graph=graph,
         )
-        if self.reranker is not None and tier2:
-            tier2 = rerank_edges(
-                tier2,
-                code_nodes=code_nodes,
-                doc_nodes=doc_nodes,
-                reranker=self.reranker,
-                threshold=self.rerank_threshold,
-            )
-        all_edges = self._dedupe_edges([*tier1, *tier2])
-
-        if self.llm_fallback:
-            if self.match_llm is not None:
-                tier3 = await link_by_llm(
-                    code_nodes,
-                    doc_nodes,
-                    llm=self.match_llm,
-                    threshold=self.llm_threshold,
-                )
-                all_edges = self._dedupe_edges([*all_edges, *tier3])
-            else:
-                logger.warning(
-                    "llm_fallback=True but no LLM client configured — skipping LLM match tier. "
-                    "Set LOOM_LLM_MODEL to enable."
-                )
-
-        if all_edges:
-            await graph.bulk_create_edges(all_edges)
-        return all_edges
+        deduped = self._dedupe_edges(edges)
+        if deduped:
+            await graph.bulk_create_edges(deduped)
+        return deduped
 
     @staticmethod
     def _dedupe_edges(edges: list[Edge]) -> list[Edge]:
