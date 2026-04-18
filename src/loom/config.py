@@ -44,6 +44,15 @@ def _threshold(env_var: str, default: str) -> float:
 
 LOOM_LINKER_EMBED_THRESHOLD = _threshold("LOOM_LINKER_EMBED_THRESHOLD", "0.85")
 
+# Embedding backend selection
+LOOM_EMBED_BACKEND: str = os.getenv("LOOM_EMBED_BACKEND", "fastembed")
+if LOOM_EMBED_BACKEND not in ("infinity", "fastembed"):
+    raise ValueError(
+        f"LOOM_EMBED_BACKEND must be 'infinity' or 'fastembed', got {LOOM_EMBED_BACKEND!r}"
+    )
+
+LOOM_EMBED_CACHE_SIZE_GB: int = int(os.getenv("LOOM_EMBED_CACHE_SIZE_GB", "1"))
+
 # Blast radius depth cap
 LOOM_BLAST_RADIUS_MAX_DEPTH: int = int(os.getenv("LOOM_BLAST_RADIUS_MAX_DEPTH", "10"))
 if not 1 <= LOOM_BLAST_RADIUS_MAX_DEPTH <= 50:

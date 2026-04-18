@@ -53,7 +53,7 @@ def _find_git_root(candidate: Path) -> Path | None:
 
 async def _infer_repo_root(graph) -> str | None:
     rows = await graph.query(
-        "MATCH (n) WHERE n.kind = 'file' RETURN n.path AS path LIMIT 1000"
+        "MATCH (n:File) RETURN n.path AS path LIMIT 1000"
     )
     paths = [
         row.get("path")

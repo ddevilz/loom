@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
-import logging
-
 from loom.core import Node, NodeKind, NodeSource
+from loom.core.edge import EdgeType
 from loom.core.falkor.edge_type_adapter import (
     CALLS_REL,
     LOOM_IMPLEMENTS_REL,
     LOOM_VIOLATES_REL,
     EdgeTypeAdapter,
 )
-from loom.core.edge import EdgeType
 from loom.core.falkor.mappers import coerce_row_node_kind, row_to_node
 from loom.core.types import QueryGraph
 
