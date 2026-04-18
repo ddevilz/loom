@@ -34,8 +34,17 @@ class EdgeType(StrEnum):
     LOOM_IMPLEMENTS = "loom_implements"
     LOOM_VIOLATES = "loom_violates"
 
+    # ticket linkage
+    REALIZES = "realizes"
+    CLOSES = "closes"
+    VERIFIED_BY = "verified_by"
+    DEPENDS_ON = "depends_on"
 
-LinkMethod = Literal["embed_match", "git_commit", "ast_diff", "llm_match", "name_match"]
+
+LinkMethod = Literal[
+    "embed_match", "git_commit", "ast_diff", "llm_match", "name_match",
+    "git_log", "ticket_ref",
+]
 
 
 class EdgeOrigin(str, Enum):
@@ -67,6 +76,10 @@ class Edge(BaseModel):
         return self.kind in {
             EdgeType.LOOM_IMPLEMENTS,
             EdgeType.LOOM_VIOLATES,
+            EdgeType.REALIZES,
+            EdgeType.CLOSES,
+            EdgeType.VERIFIED_BY,
+            EdgeType.DEPENDS_ON,
         }
 
     @model_validator(mode="after")
