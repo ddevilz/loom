@@ -1,13 +1,11 @@
-from .edge import Edge, EdgeOrigin, EdgeType
-from .graph import LoomGraph
+from .edge import ConfidenceTier, Edge, EdgeType
 from .node import Node, NodeKind, NodeSource
 
 __all__ = [
+    "ConfidenceTier",
+    "Edge",
+    "EdgeType",
     "Node",
     "NodeKind",
     "NodeSource",
-    "Edge",
-    "EdgeOrigin",
-    "EdgeType",
-    "LoomGraph",
 ]
