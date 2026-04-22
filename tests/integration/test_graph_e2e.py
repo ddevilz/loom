@@ -27,8 +27,7 @@ async def test_graph_e2e_foundation(tmp_path: Path) -> None:
     await g.bulk_upsert_edges(edges)
 
     stats = await g.stats()
-    # 15 function nodes + 2 doc sections
-    assert stats["nodes"] == 17
+    assert stats["nodes"] == 15
 
     # Blast radius from x: who calls x transitively?
     # x calls a,b,c; a calls d,e; b calls f,g; c calls h; h→i→j; d→k

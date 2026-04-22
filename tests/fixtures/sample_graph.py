@@ -36,27 +36,7 @@ def build_sample_graph():
         for name in functions
     ]
 
-    # 2 doc sections
-    doc_nodes = [
-        Node(
-            id="doc:spec.pdf:1.0",
-            kind=NodeKind.SECTION,
-            source=NodeSource.DOC,
-            name="1.0",
-            path="spec.pdf",
-            metadata={},
-        ),
-        Node(
-            id="doc:spec.pdf:2.0",
-            kind=NodeKind.SECTION,
-            source=NodeSource.DOC,
-            name="2.0",
-            path="spec.pdf",
-            metadata={},
-        ),
-    ]
-
-    nodes = func_nodes + doc_nodes
+    nodes = func_nodes
 
     fid = {n.name: n.id for n in func_nodes}
 
@@ -107,14 +87,6 @@ def build_searchable_sample_graph():
                 node.model_copy(
                     update={
                         "summary": "validate user authentication and enforce password policy",
-                    }
-                )
-            )
-        elif node.id == "doc:spec.pdf:1.0":
-            nodes.append(
-                node.model_copy(
-                    update={
-                        "summary": "authentication and password policy requirements",
                     }
                 )
             )

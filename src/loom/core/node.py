@@ -17,16 +17,10 @@ class NodeKind(StrEnum):
     FILE = "file"
     COMMUNITY = "community"
 
-    DOCUMENT = "document"
-    SECTION = "section"
-    CHAPTER = "chapter"
-    SUBSECTION = "subsection"
-    PARAGRAPH = "paragraph"
 
 
 class NodeSource(StrEnum):
     CODE = "code"
-    DOC = "doc"
 
 
 class Node(BaseModel):
@@ -62,34 +56,21 @@ class Node(BaseModel):
     def is_code(self) -> bool:
         return self.source == NodeSource.CODE
 
-    @computed_field
-    @property
-    def is_doc(self) -> bool:
-        return self.source == NodeSource.DOC
-
     def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
         exclude = kwargs.pop("exclude", None)
         exclude_set: set[str] = set(exclude) if exclude is not None else set()
-        exclude_set.update({"is_code", "is_doc"})
+        exclude_set.add("is_code")
         return super().model_dump(exclude=exclude_set, **kwargs)
 
     @model_validator(mode="after")
     def _validate_id_convention(self) -> Node:
-        if self.source == NodeSource.DOC:
-            if not self.id.startswith("doc:"):
-                raise ValueError("Doc node id must start with 'doc:'")
-        else:
-            expected_prefix = f"{self.kind.value}:"
-            if not self.id.startswith(expected_prefix):
-                raise ValueError(
-                    f"Code node id must start with {expected_prefix!r} (got {self.id!r})"
-                )
+        expected_prefix = f"{self.kind.value}:"
+        if not self.id.startswith(expected_prefix):
+            raise ValueError(
+                f"Node id must start with {expected_prefix!r} (got {self.id!r})"
+            )
         return self
 
     @staticmethod
     def make_code_id(kind: NodeKind, path: str, symbol: str) -> str:
         return f"{kind.value}:{path}:{symbol}"
-
-    @staticmethod
-    def make_doc_id(doc_path: str, section_ref: str) -> str:
-        return f"doc:{doc_path}:{section_ref}"

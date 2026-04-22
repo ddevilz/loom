@@ -201,7 +201,6 @@ async def index_repo(
     repo_path: Path,
     graph: LoomGraph,
     *,
-    docs_path: Path | None = None,
     workers: int | None = None,
 ) -> IndexResult:
     """Index a repo into the graph.
@@ -259,17 +258,6 @@ async def index_repo(
 
     # Cross-file call resolution (Python only)
     nodes_all, edges_all = resolve_calls(nodes_all, edges_all, repo_path)
-
-    # Optional docs ingestion
-    if docs_path is not None:
-        try:
-            from loom.ingest.docs.base import walk_docs  # type: ignore[attr-defined]
-
-            doc_nodes, doc_edges = walk_docs(str(docs_path))
-            nodes_all.extend(doc_nodes)
-            edges_all.extend(doc_edges)
-        except Exception as exc:
-            logger.warning("docs ingestion failed for %s: %s", docs_path, exc)
 
     # Group per-file and atomically replace
     by_path: dict[str, tuple[list[Node], list[Edge]]] = {}
