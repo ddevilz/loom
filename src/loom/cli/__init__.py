@@ -39,10 +39,12 @@ def main() -> int:
 
 # Register sub-commands by importing their modules (side-effect: app.command() decorators run)
 import loom.cli.analysis as _analysis  # noqa: E402, F401
+import loom.cli.export as _export  # noqa: E402, F401
 import loom.cli.graph as _graph  # noqa: E402, F401
 import loom.cli.ingest as _ingest  # noqa: E402, F401
 import loom.cli.install as _install  # noqa: E402, F401
 from loom.cli.analysis import communities, dead_code  # noqa: E402, F401
+from loom.cli.export import export_graph  # noqa: E402, F401
 from loom.cli.graph import (  # noqa: E402, F401
     blast_radius,
     callees,
@@ -67,4 +69,5 @@ __all__ = [
     "communities",
     "dead_code",
     "install",
+    "export_graph",
 ]

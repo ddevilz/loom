@@ -70,6 +70,9 @@ ignore = [
     "UP036",  # version-block check false-positive on event-loop shim
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"src/loom/cli/export.py" = ["E501"]  # embedded HTML/CSS/JS template strings
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
