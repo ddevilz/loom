@@ -30,10 +30,8 @@ def parse_pdf(path: str) -> tuple[list[Node], list[Edge]]:
             path=str(p),
             depth=1,
             parent_id=doc.id,
-            page_start=i,
-            page_end=i,
             summary=summary,
-            metadata={},
+            metadata={"page_start": i, "page_end": i},
         )
         nodes.append(n)
         edges.append(make_child_of(n.id, doc.id))

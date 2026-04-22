@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter_go import language as go_language
+from tree_sitter import Parser
+from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
@@ -30,7 +30,7 @@ from loom.ingest.code.languages.constants import (
     TS_GO_TYPE_SPEC,
 )
 
-_GO_LANGUAGE = Language(go_language())
+_GO_LANGUAGE = _get_ts_language("go")
 
 
 def _qualname(ctx: _BaseContext, name: str) -> str:

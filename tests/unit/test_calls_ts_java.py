@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loom.analysis.code.calls import trace_calls_for_java_file
-from loom.analysis.code.calls import trace_calls_for_ts_file
+from loom.analysis.code.calls import trace_calls_for_java_file, trace_calls_for_ts_file
 from loom.analysis.code.parser import parse_code
 
 

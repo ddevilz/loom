@@ -173,9 +173,7 @@ class LanguageRegistry:
             return True
         if filename.endswith((".min.js", ".min.css")):
             return True
-        if ext not in self._handlers:
-            return True
-        return False
+        return ext not in self._handlers
 
     def should_skip_path(self, path: str) -> bool:
         p = Path(path)

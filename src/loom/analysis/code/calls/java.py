@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter_java import language as java_language
+from tree_sitter import Parser
+from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
-from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind
+from loom.core import Edge, EdgeType, Node, NodeKind
 
-_JAVA_LANGUAGE = Language(java_language())
+_JAVA_LANGUAGE = _get_ts_language("java")
 
 _JAVA_METHOD_INVOCATION = "method_invocation"
 _JAVA_OBJECT_CREATION = "object_creation_expression"
@@ -120,7 +120,6 @@ def trace_calls_for_java_file(path: str, nodes: list[Node]) -> list[Edge]:
                 from_id=caller.id,
                 to_id=callee_node.id if callee_node else f"unresolved:{callee_name}",
                 kind=EdgeType.CALLS,
-                origin=EdgeOrigin.COMPUTED,
                 confidence=confidence,
                 metadata=metadata,
             )

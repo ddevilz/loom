@@ -25,9 +25,7 @@ def _is_hidden_dir(name: str) -> bool:
 def _should_skip_dir(name: str, *, skip_dirs: frozenset[str]) -> bool:
     if name in skip_dirs:
         return True
-    if _is_hidden_dir(name):
-        return True
-    return False
+    return bool(_is_hidden_dir(name))
 
 
 def _to_posix_rel(root: Path, p: Path) -> str:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-
 _FTS5_PROBE = "CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_probe USING fts5(x);"
 
 
@@ -13,7 +12,6 @@ def connect(db_path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
 
@@ -56,8 +54,8 @@ CREATE INDEX IF NOT EXISTS idx_nodes_lang ON nodes(language);
 
 CREATE TABLE IF NOT EXISTS edges (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_id          TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-    to_id            TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    from_id          TEXT NOT NULL,
+    to_id            TEXT NOT NULL,
     kind             TEXT NOT NULL,
     confidence       REAL NOT NULL DEFAULT 1.0,
     confidence_tier  TEXT NOT NULL DEFAULT 'extracted',

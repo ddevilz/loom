@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter_python import language as python_language
+from tree_sitter import Parser
+from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
-from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind
+from loom.core import Edge, EdgeType, Node, NodeKind
 from loom.ingest.code.languages.constants import (
     TS_PY_ATTRIBUTE,
     TS_PY_CALL,
@@ -17,7 +17,7 @@ from loom.ingest.code.languages.constants import (
     TS_PY_IDENTIFIER,
 )
 
-_PY_LANGUAGE = Language(python_language())
+_PY_LANGUAGE = _get_ts_language("python")
 
 
 def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float]:
@@ -116,7 +116,6 @@ def trace_calls(
                     from_id=function_node.id,
                     to_id=f"unresolved:{callee_name}",
                     kind=EdgeType.CALLS,
-                    origin=EdgeOrigin.COMPUTED,
                     confidence=confidence,
                     metadata={"unresolved": True},
                 )
@@ -157,7 +156,6 @@ def trace_calls(
                     from_id=function_node.id,
                     to_id=callee_node.id,
                     kind=EdgeType.CALLS,
-                    origin=EdgeOrigin.COMPUTED,
                     confidence=confidence,
                     metadata=metadata,
                 )
@@ -209,10 +207,7 @@ def trace_calls_for_file_with_global_symbols(
     parser = Parser(_PY_LANGUAGE)
     tree = parser.parse(src)
 
-    if global_symbol_map is not None:
-        symbol_map = global_symbol_map
-    else:
-        symbol_map = _build_symbol_map(nodes)
+    symbol_map = global_symbol_map if global_symbol_map is not None else _build_symbol_map(nodes)
 
     all_edges: list[Edge] = []
     for node in nodes:

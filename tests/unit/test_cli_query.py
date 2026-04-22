@@ -8,32 +8,22 @@ runner = CliRunner()
 
 
 def test_cli_query_prints_search_results(monkeypatch) -> None:
-    class FakeGraph:
-        def __init__(self, graph_name: str = "loom", *, gateway=None) -> None:
-            pass
+    from loom.core import Node, NodeKind, NodeSource
+    from loom.query.search import SearchResult
 
-    class Result:
-        def __init__(self) -> None:
-            from loom.core import Node, NodeKind, NodeSource
+    node = Node(
+        id="function:x:f",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="f",
+        path="x",
+        metadata={},
+    )
 
-            self.node = Node(
-                id="function:x:f",
-                kind=NodeKind.FUNCTION,
-                source=NodeSource.CODE,
-                name="f",
-                path="x",
-                metadata={},
-            )
-            self.score = 0.9
-            self.matched_via = "vector"
+    async def fake_search(query, graph, *, limit=10):
+        return [SearchResult(node=node, score=1.0)]
 
-    async def fake_search(
-        query_text, graph, *, limit=10, expand_depth=1, embedder=None
-    ):
-        return [Result()]
-
-    monkeypatch.setattr("loom.core.LoomGraph", FakeGraph)
-    monkeypatch.setattr("loom.search.searcher.search", fake_search)
+    monkeypatch.setattr("loom.cli.graph.search_nodes", fake_search)
 
     result = runner.invoke(loom.cli.app, ["query", "how does auth work?"])
     assert result.exit_code == 0

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter_typescript import language_tsx, language_typescript
+from tree_sitter import Parser
+from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
@@ -36,8 +36,8 @@ from loom.ingest.code.languages.constants import (
     TS_JS_TYPE_ALIAS_DECL,
 )
 
-_TS_LANGUAGE = Language(language_typescript())
-_TSX_LANGUAGE = Language(language_tsx())
+_TS_LANGUAGE = _get_ts_language("typescript")
+_TSX_LANGUAGE = _get_ts_language("tsx")
 
 
 def _qualname(ctx: _BaseContext, name: str) -> str:

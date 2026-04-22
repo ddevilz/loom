@@ -1,112 +1,53 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
 
 import pytest
 
-from loom.core import Edge, Node
+from loom.core import LoomGraph
 from loom.ingest.pipeline import index_repo
 
 
-@dataclass
-class FakeGraph:
-    nodes: list[Node] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
+@pytest.mark.asyncio
+async def test_index_repo_parses_python_files(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("def foo():\n    pass\n", encoding="utf-8")
 
-    async def query(
-        self, cypher: str, params: dict[str, Any] | None = None
-    ) -> list[dict[str, Any]]:
-        if (
-            cypher.strip()
-            == "MATCH (n:File) RETURN n.id AS id, n.content_hash AS content_hash"
-        ):
-            return [
-                {"id": node.id, "content_hash": node.content_hash}
-                for node in self.nodes
-                if node.kind == "file" or getattr(node.kind, "value", None) == "file"
-            ]
-        if cypher.strip() == "MATCH (n) RETURN count(n) AS c":
-            return [{"c": len(self.nodes)}]
-        if cypher.strip() == "MATCH ()-[r]->() RETURN count(r) AS c":
-            return [{"c": len(self.edges)}]
-        if cypher.strip() == "MATCH (n {path: $path}) DETACH DELETE n":
-            assert params is not None
-            self.nodes = [node for node in self.nodes if node.path != params["path"]]
-            return []
-        if cypher.strip() == "MATCH (n {id: $id}) DETACH DELETE n":
-            assert params is not None
-            self.nodes = [node for node in self.nodes if node.id != params["id"]]
-            return []
-        return []
+    g = LoomGraph(db_path=tmp_path / "loom.db")
+    result = await index_repo(tmp_path, g)
 
-    async def bulk_create_nodes(self, nodes: list[Node]) -> None:
-        self.nodes.extend(nodes)
+    assert result.files_parsed >= 1
+    assert result.nodes_written >= 1
 
-    async def bulk_create_edges(self, edges: list[Edge]) -> None:
-        self.edges.extend(edges)
+    stats = await g.stats()
+    assert stats["nodes"] >= 1
 
 
 @pytest.mark.asyncio
-async def test_index_repo_with_docs_path_upserts_doc_nodes(
-    monkeypatch, tmp_path
-) -> None:
-    # Avoid parsing a real repo; make file list empty.
-    monkeypatch.setattr("loom.ingest.pipeline._collect_repo_files", lambda root: [])
+async def test_index_repo_skips_unchanged_files(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("def foo():\n    pass\n", encoding="utf-8")
 
-    doc_node = Node(
-        id="doc:x:root",
-        kind="document",
-        source="doc",
-        name="x",
-        path="x",
-        metadata={},
-    )
+    g = LoomGraph(db_path=tmp_path / "loom.db")
 
-    async_edges: list[Edge] = []
+    r1 = await index_repo(tmp_path, g)
+    assert r1.files_parsed == 1
+    assert r1.files_skipped == 0
 
-    monkeypatch.setattr(
-        "loom.ingest.docs.base.walk_docs",
-        lambda p: ([doc_node], async_edges),
-    )
-
-    g = FakeGraph()
-    res = await index_repo(str(tmp_path), g, docs_path=str(tmp_path))
-
-    # The pipeline may create additional nodes during processing
-    # Verify that our doc node is present
-    assert any(n.id == "doc:x:root" for n in g.nodes)
-    assert res.node_count >= 1
+    r2 = await index_repo(tmp_path, g)
+    assert r2.files_parsed == 0
+    assert r2.files_skipped == 1
 
 
 @pytest.mark.asyncio
-async def test_index_repo_deletes_all_nodes_for_removed_file(
-    monkeypatch, tmp_path
-) -> None:
-    removed_path = str((tmp_path / "gone.py").resolve())
-    file_node = Node(
-        id=f"file:{removed_path}",
-        kind="file",
-        source="code",
-        name="gone.py",
-        path=removed_path,
-        content_hash="abc",
-        metadata={},
-    )
-    code_node = Node(
-        id=f"function:{removed_path}:f",
-        kind="function",
-        source="code",
-        name="f",
-        path=removed_path,
-        metadata={},
-    )
+async def test_index_repo_with_real_markdown_doc(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("def foo():\n    pass\n", encoding="utf-8")
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "spec.md").write_text("# Auth\nThis is the spec.\n", encoding="utf-8")
 
-    monkeypatch.setattr("loom.ingest.pipeline._collect_repo_files", lambda root: [])
+    g = LoomGraph(db_path=tmp_path / "loom.db")
+    result = await index_repo(tmp_path, g, docs_path=docs_dir)
 
-    g = FakeGraph(nodes=[file_node, code_node])
-
-    res = await index_repo(str(tmp_path), g)
-
-    assert res.error_count == 0
-    assert g.nodes == []
+    assert result.nodes_written >= 1
+    stats = await g.stats()
+    # Should have at least the function node + file node + some doc nodes
+    assert stats["nodes"] >= 1

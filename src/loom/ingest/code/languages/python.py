@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter_python import language as python_language
+from tree_sitter import Parser
+from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
@@ -61,7 +61,7 @@ from loom.ingest.code.languages.constants import (
     TS_PY_IDENTIFIER,
 )
 
-_PY_LANGUAGE = Language(python_language())
+_PY_LANGUAGE = _get_ts_language("python")
 
 
 def _qualname(ctx: _BaseContext, name: str) -> str:
@@ -99,10 +99,7 @@ def _is_test_path(path: str) -> bool:
 def _is_async_function(src: bytes, n: TSNode) -> bool:
     """Check if a function is async."""
     # Check for 'async' keyword before 'def'
-    for child in n.children:
-        if child.type == "async":
-            return True
-    return False
+    return any(child.type == "async" for child in n.children)
 
 
 def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict[str, Any]:
@@ -241,10 +238,7 @@ def _extract_from_def(
         start_line, end_line = _lines(n)
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
         parent_id = _parent_id(ctx, path)
-        if kind == NodeKind.METHOD or ctx.fn_stack:
-            symbol = _qualname(ctx, name)
-        else:
-            symbol = name
+        symbol = _qualname(ctx, name) if kind == NodeKind.METHOD or ctx.fn_stack else name
         meta: dict[str, Any] = {}
         meta.update(_function_metadata(src, n, name=name))
         if decorators:
@@ -293,14 +287,18 @@ def _try_extract_assignment(
     """Handle `name = lambda ...` and `Name = TypedDict(...)` patterns.
 
     Returns True if the node was consumed.
+    Handles both expression_statement-wrapped assignments (older tree-sitter
+    Python grammar) and bare assignment nodes (newer grammar).
     """
-    if n.type != "expression_statement":
+    # Newer tree-sitter-python promotes assignment directly; older wraps it.
+    if n.type == "assignment":
+        assignments = [n]
+    elif n.type == "expression_statement":
+        assignments = [c for c in n.children if c.type == "assignment"]
+    else:
         return False
 
-    for child in n.children:
-        if child.type != "assignment":
-            continue
-
+    for child in assignments:
         lhs = child.child_by_field_name("left")
         rhs = child.child_by_field_name("right")
         if lhs is None or rhs is None or lhs.type != TS_PY_IDENTIFIER:

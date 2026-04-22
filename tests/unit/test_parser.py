@@ -145,7 +145,8 @@ def test_flask_route_gets_framework_hint():
 def test_fastapi_route_hint(tmp_path: Path):
     p = tmp_path / "api.py"
     p.write_text(
-        "class app:\n    @staticmethod\n    def get(path):\n        def w(fn): return fn\n        return w\n\n"
+        "class app:\n    @staticmethod\n    def get(path):\n"
+        "        def w(fn): return fn\n        return w\n\n"
         "@app.get('/users')\ndef list_users():\n    return []\n",
         encoding="utf-8",
     )

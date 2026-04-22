@@ -12,7 +12,6 @@ from loom.core.db import connect, has_fts5, init_schema
 from loom.core.edge import ConfidenceTier, Edge, EdgeType
 from loom.core.node import Node, NodeKind, NodeSource
 
-
 DEFAULT_DB_PATH = Path.home() / ".loom" / "loom.db"
 
 
@@ -34,7 +33,7 @@ def _row_to_node(row: sqlite3.Row) -> Node:
         community_id=row["community_id"],
         metadata=metadata,
     )
-    if "_depth" in row.keys():
+    if "_depth" in row.keys():  # noqa: SIM118 — sqlite3.Row needs .keys()
         node.depth = row["_depth"]
     return node
 
@@ -150,13 +149,21 @@ class LoomGraph:
                 conn = self._connect()
                 conn.execute("BEGIN IMMEDIATE")
                 try:
+                    # Explicitly remove edges whose from_id belongs to this
+                    # file (no FK cascade since cross-file edges are valid).
+                    conn.execute(
+                        "DELETE FROM edges WHERE from_id IN "
+                        "(SELECT id FROM nodes WHERE path = ?)",
+                        (path,),
+                    )
                     conn.execute("DELETE FROM nodes WHERE path = ?", (path,))
                     if node_rows:
                         conn.executemany(
-                            """INSERT INTO nodes (id, kind, source, name, path,
-                                 start_line, end_line, language, content_hash,
-                                 file_hash, summary, is_dead_code, community_id,
-                                 metadata, updated_at)
+                            """INSERT OR REPLACE INTO nodes
+                                 (id, kind, source, name, path,
+                                  start_line, end_line, language, content_hash,
+                                  file_hash, summary, is_dead_code, community_id,
+                                  metadata, updated_at)
                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                             node_rows,
                         )

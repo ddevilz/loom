@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 
@@ -100,7 +99,7 @@ def test_walk_repo_handles_symlink_dir_without_loop(tmp_path: Path):
 
     link = tmp_path / "link"
     try:
-        os.symlink(str(target), str(link), target_is_directory=True)
+        link.symlink_to(target, target_is_directory=True)
     except (OSError, NotImplementedError):
         pytest.skip("symlink creation not supported")
 

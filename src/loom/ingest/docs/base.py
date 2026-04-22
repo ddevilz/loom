@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind, NodeSource
+from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 
 DocParser = Callable[[str], tuple[list[Node], list[Edge]]]
@@ -84,7 +84,6 @@ def make_child_of(child_id: str, parent_id: str) -> Edge:
         from_id=child_id,
         to_id=parent_id,
         kind=EdgeType.CHILD_OF,
-        origin=EdgeOrigin.COMPUTED,
         confidence=1.0,
         metadata={},
     )

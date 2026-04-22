@@ -11,8 +11,7 @@ except PackageNotFoundError:
 
 def _install_fast_event_loop() -> None:
     if sys.platform == "win32":
-        if sys.version_info >= (3, 12):
-            return
+        return
         try:
             import winloop  # type: ignore
 

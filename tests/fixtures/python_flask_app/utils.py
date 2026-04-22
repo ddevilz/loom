@@ -6,7 +6,7 @@ Demonstrates: functions, type hints, decorators, lambda expressions
 import time
 from collections.abc import Callable
 from functools import wraps
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -69,7 +69,7 @@ def create_multiplier(factor: int) -> Callable[[int], int]:
     return multiply
 
 
-class DataProcessor(Generic[T]):
+class DataProcessor[T]:
     """Generic data processor"""
 
     def __init__(self):

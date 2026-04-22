@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
-logger = logging.getLogger(__name__)
-
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.ingest.code.languages.constants import (
@@ -96,6 +94,8 @@ from loom.ingest.code.languages.constants import (
     YAML_KEY_SERVICES,
     YAML_KEY_VERSION,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:

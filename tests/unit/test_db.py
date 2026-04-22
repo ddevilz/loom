@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -61,7 +60,10 @@ def test_fts5_index_usable_when_available(tmp_path: Path):
     assert any(r[0] == "function:a.py:validate" for r in rows)
 
 
-def test_foreign_keys_cascade(tmp_path: Path):
+def test_cross_file_edge_insert_allowed(tmp_path: Path):
+    """Edges may reference nodes not yet in the DB (cross-file calls).
+    No FK cascade — that's intentional; replace_file handles cleanup.
+    """
     db = tmp_path / "t.db"
     conn = connect(db)
     init_schema(conn)
@@ -69,15 +71,11 @@ def test_foreign_keys_cascade(tmp_path: Path):
         "INSERT INTO nodes (id, kind, source, name, path, updated_at) "
         "VALUES ('function:a:f', 'function', 'code', 'f', 'a', 0)"
     )
-    conn.execute(
-        "INSERT INTO nodes (id, kind, source, name, path, updated_at) "
-        "VALUES ('function:b:g', 'function', 'code', 'g', 'b', 0)"
-    )
+    conn.commit()
+    # Edge to a node that does not exist yet — must not raise
     conn.execute(
         "INSERT INTO edges (from_id, to_id, kind) VALUES ('function:a:f', 'function:b:g', 'calls')"
     )
     conn.commit()
-    conn.execute("DELETE FROM nodes WHERE id = 'function:a:f'")
-    conn.commit()
     remaining = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-    assert remaining == 0
+    assert remaining == 1
