@@ -91,3 +91,28 @@ def stats(db: Path | None = typer.Option(None, "--db")) -> None:
     g = LoomGraph(db_path=db)
     s = asyncio.run(g.stats())
     console.print_json(data=s)
+
+
+@app.command()
+def summaries(
+    db: Path | None = typer.Option(None, "--db"),
+    limit: int = typer.Option(20, "--limit", "-n"),
+) -> None:
+    """Show nodes with agent-written summaries (most recently updated first)."""
+    g = LoomGraph(db_path=db)
+
+    def _run():  # type: ignore[return]
+        with g._lock:
+            conn = g._connect()
+            return conn.execute(
+                "SELECT name, path, summary FROM nodes "
+                "WHERE summary IS NOT NULL AND kind NOT IN ('file', 'community') "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+
+    rows = asyncio.run(asyncio.to_thread(_run))
+    t = Table("name", "path", "summary")
+    for r in rows:
+        t.add_row(r["name"], r["path"], (r["summary"] or "")[:72])
+    console.print(t)

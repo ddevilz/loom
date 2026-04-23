@@ -1,518 +1,370 @@
-# Loom — Simplification Migration
+# Loom — Agent Memory Layer
 
-**Goal:** Strip Loom down to its defensible core. Remove all infrastructure that
-doesn't directly serve the call graph, blast radius, and MCP server. The end state
-is a tool that works with `pip install loom-tool` and zero Docker.
+**What Loom is:** A persistent symbol index for AI coding agents.
+Agents query it to find functions instantly. Agents populate summaries
+as they work. The cache gets richer over time — zero LLM cost from Loom's side.
 
-**Reference projects studied:**
-- `safishamsi/graphify` — NetworkX + tree-sitter, no server, 71.5× token reduction
-- `tirth8205/code-review-graph` — SQLite + NetworkX, SHA-256 incremental, MCP, 8.2× reduction
+**Core loop:**
+1. `loom analyze .` — tree-sitter extracts all symbols into `~/.loom/loom.db`
+2. Agent calls `search_code("login")` → instant: `{name, path, line, summary}`
+3. Agent reads only those lines, understands the function
+4. Agent calls `store_understanding(id, "Validates JWT tokens for login")` → cached
+5. Next agent/session: `search_code("login")` returns the summary already written
+6. On `git commit` → post-commit hook fires → only changed files re-indexed
 
----
-
-## What changes and why
-
-### 1. Replace FalkorDB with SQLite + NetworkX
-
-**Remove entirely:**
-```
-src/loom/core/falkor/
-  gateway.py       # FalkorDB connection, singleton, reconnect logic
-  repositories.py  # NodeRepository, EdgeRepository, TraversalRepository
-  schema.py        # DDL init, index creation, thread locks
-  cypher.py        # All Cypher query strings
-  mappers.py       # Serialize/deserialize node/edge props
-  edge_type_adapter.py  # EdgeType ↔ uppercase storage name
-docker-compose.yml
-```
-
-**Replace with:**
-```
-src/loom/core/graph.py  # Rewrite using sqlite3 (stdlib) + networkx
-```
-
-**New schema — two tables only:**
-```sql
-CREATE TABLE IF NOT EXISTS nodes (
-    id           TEXT PRIMARY KEY,
-    kind         TEXT NOT NULL,
-    source       TEXT NOT NULL,
-    name         TEXT NOT NULL,
-    path         TEXT NOT NULL,
-    start_line   INTEGER,
-    end_line     INTEGER,
-    language     TEXT,
-    content_hash TEXT,
-    summary      TEXT,
-    metadata     TEXT DEFAULT '{}'
-);
-CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
-CREATE INDEX IF NOT EXISTS idx_nodes_path ON nodes(path);
-CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
-
-CREATE TABLE IF NOT EXISTS edges (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_id    TEXT NOT NULL,
-    to_id      TEXT NOT NULL,
-    kind       TEXT NOT NULL,
-    confidence REAL DEFAULT 1.0,
-    origin     TEXT DEFAULT 'computed',
-    metadata   TEXT DEFAULT '{}'
-);
-CREATE INDEX IF NOT EXISTS idx_edges_from    ON edges(from_id);
-CREATE INDEX IF NOT EXISTS idx_edges_to      ON edges(to_id);
-CREATE INDEX IF NOT EXISTS idx_edges_kind    ON edges(kind);
-CREATE INDEX IF NOT EXISTS idx_edges_to_kind ON edges(to_id, kind);
-```
-
-**SQLite connection settings to always apply:**
-```python
-conn.execute("PRAGMA journal_mode=WAL")   # concurrent reads
-conn.execute("PRAGMA synchronous=NORMAL") # safe but faster writes
-```
-
-**Blast radius implementation — load only CALLS subgraph into NetworkX:**
-```python
-def blast_radius(self, node_id: str, depth: int = 3) -> list[Node]:
-    # Load only CALLS edges into NetworkX — not the whole graph
-    edge_rows = conn.execute(
-        "SELECT from_id, to_id FROM edges WHERE kind = 'calls'"
-    ).fetchall()
-    g = nx.DiGraph()
-    for row in edge_rows:
-        g.add_edge(row["from_id"], row["to_id"])
-
-    # BFS over predecessors (who calls this node, transitively?)
-    visited: dict[str, int] = {}
-    frontier = {node_id}
-    for d in range(1, depth + 1):
-        next_frontier: set[str] = set()
-        for nid in frontier:
-            for pred in g.predecessors(nid):
-                if pred not in visited and pred != node_id:
-                    visited[pred] = d
-                    next_frontier.add(pred)
-        frontier = next_frontier
-        if not frontier:
-            break
-
-    # Fetch full node data only for the result set
-    if not visited:
-        return []
-    placeholders = ",".join("?" * len(visited))
-    rows = conn.execute(
-        f"SELECT * FROM nodes WHERE id IN ({placeholders})",
-        list(visited.keys()),
-    ).fetchall()
-    result = [_row_to_node(r) for r in rows]
-    for node in result:
-        node.depth = visited.get(node.id)
-    return sorted(result, key=lambda n: n.depth or 0)
-```
-
-**Why not DuckDB or kuzu:**
-- DuckDB is columnar/analytical — graph BFS in recursive CTEs is awkward
-- kuzu is purpose-built but newer (~2022), adds a binary dep, smaller community
-- SQLite is stdlib, zero install, universally understood, fast enough to 50K nodes
+**Zero LLM calls from Loom. Claude Code populates summaries organically.**
 
 ---
 
-### 2. Remove the entire embedding pipeline
+## Current state (read before touching anything)
 
-**Remove entirely:**
-```
-src/loom/embed/
-  embedder.py      # FastEmbedder, InfinityEmbedder, CachedEmbedder, embed_nodes()
-```
+The migration from FalkorDB to SQLite is complete. Do not re-introduce:
+- FalkorDB / Redis / Docker
+- fastembed / sentence-transformers / infinity-emb / diskcache
+- Jira / GitHub ticket connectors
+- Semantic linker / embedding pipeline
+- Cypher query strings anywhere
 
-**Remove from pyproject.toml:**
-```toml
-# DELETE these lines:
-"fastembed>=0.7.4",
-"sentence-transformers>=3.0.1",
-"infinity-emb[optimum]>=0.0.45",
-"diskcache>=5.6",
-```
-
-**Remove from config.py:**
-```python
-# DELETE these config vars:
-LOOM_EMBED_ENABLED
-LOOM_EMBED_MODEL
-LOOM_EMBED_DIM
-LOOM_EMBED_BATCH_SIZE
-LOOM_EMBED_CACHE_DIR
-LOOM_EMBED_BACKEND
-LOOM_EMBED_CACHE_SIZE_GB
-```
-
-**Why:** Graphify proves you don't need a separate embedding model for code
-knowledge graphs. Community detection works from graph topology alone (edge
-density via Leiden). Blast radius works from explicit CALLS edges. The
-embedding pipeline added ~3 minutes to first-run install time and made
-`loom analyze` require model download before first use.
-
-**What replaces search:** Name-prefix search over SQLite is sufficient for the
-current use cases. Add optional semantic search back in v0.3 if users ask.
+The database is `~/.loom/loom.db` (SQLite, WAL mode).
+Two core tables: `nodes`, `edges`.
+FTS5 virtual table `nodes_fts` provides full-text search on name + summary + path.
+Schema lives in `src/loom/core/db.py`. Do not alter schema without updating `db.py`.
 
 ---
 
-### 3. Remove the semantic linker
+## Dead code — DELETE THESE FILES NOW
 
-**Remove entirely:**
+These files reference types/protocols that no longer exist in the codebase
+(`NodeKind.TICKET`, `NodeSource.TICKET`, `EdgeOrigin`, `QueryGraph.query(cypher)`).
+They will cause import errors if anything imports them. Delete cleanly:
+
 ```
-src/loom/linker/
-  linker.py        # SemanticLinker — depended on embedding pipeline
-  embed_match.py   # link_by_embedding — depended on embedding pipeline
-  ticket_linker.py # TicketLinker — depended on embedding pipeline
-```
-
-**Downstream:** Remove all calls to `SemanticLinker().link(...)` in:
-- `src/loom/ingest/pipeline.py` — `_link_code_nodes()` function, delete it
-- `src/loom/ingest/incremental.py` — `_finalize_upsert_nodes()`, remove linker call
-- `src/loom/cli/ingest.py` — `relink` command, delete it
-
----
-
-### 4. Remove the drift detector
-
-**Remove entirely:**
-```
-src/loom/drift/
-  detector.py      # detect_violations(), detect_ast_drift(), ViolationReport
-```
-
-**Downstream:** Remove drift detection calls in:
-- `src/loom/ingest/incremental.py` — `_sync_modified_path()`, remove drift block
-- `src/loom/mcp/server.py` — `check_drift` tool, remove it
-
-**Why:** LLM-based violation detection requires an API call per code→doc pair.
-Adds cost, adds latency, adds complexity. `LOOM_VIOLATES` edges are removed
-from the EdgeType enum (or kept dormant for future use).
-
----
-
-### 5. Remove external ticket connectors
-
-**Remove entirely:**
-```
-src/loom/ingest/integrations/
-  jira.py          # JiraConfig, fetch_jira_nodes()
-  __init__.py
-
 src/loom/ingest/connectors/
-  github_issues.py # GitHubConnector, GitHubConfig
-  base.py          # TicketConnector, TicketFetchResult
   __init__.py
+  base.py                          # TicketConnector, TicketFetchResult
+  github_issues.py                 # references NodeKind.TICKET, NodeSource.TICKET
 
-src/loom/ingest/git_linker.py   # link_commits_to_tickets()
-src/loom/ingest/git_miner.py    # mine_repo(), CommitRef, MiningResult
-src/loom/linker/ticket_linker.py # already removed above
-src/loom/mcp/tools/tickets.py   # MCP ticket tools
+src/loom/ingest/git_linker.py      # references EdgeOrigin, QueryGraph.query(cypher)
+src/loom/ingest/git_miner.py       # references subprocess git, no graph usage left
+
+src/loom/mcp/tools/tickets.py      # references traceability module (already gone)
+src/loom/mcp/tools/__init__.py     # empty after above is deleted — remove too
+
+src/loom/core/types.py             # dead — has QueryGraph protocol with .query(cypher)
+
+src/loom/analysis/code/communities.py  # OLD FalkorDB Cypher version
+                                       # duplicate of src/loom/analysis/communities.py
+src/loom/analysis/code/coupling.py     # OLD FalkorDB Cypher version
+                                       # duplicate of src/loom/analysis/coupling.py
 ```
 
-**Remove from pyproject.toml:**
-```toml
-# DELETE:
-"tqdm>=4.66.0",    # only used by Jira/GitHub pagination progress bars
-```
+After deleting, clean up residual imports:
 
-**Remove from config.py:**
-```python
-# DELETE:
-LOOM_JIRA_URL
-LOOM_JIRA_EMAIL
-LOOM_JIRA_API_TOKEN
-validate_jira_config()
-```
+In `src/loom/core/edge.py`:
+- Remove `DEPENDS_ON` from EdgeType (only used by deleted github_issues.py)
+- Remove `LOOM_IMPLEMENTS`, `LOOM_VIOLATES`, `REALIZES`, `CLOSES`, `VERIFIED_BY`
+  if they appear — none are produced by any remaining pipeline
 
-**Why:** Jira and GitHub integrations are a separate product surface. They
-added 3 files of connector code, a git mining pipeline, ticket-to-code linker,
-5 MCP tools, and 3 config vars — none of which help the core call graph use case.
-Ship v0.2 without them. Add back as an optional plugin after Show HN.
+In `src/loom/core/__init__.py`:
+- Verify `ConfidenceTier` is still used somewhere before removing its export
 
----
-
-### 6. Remove the file watcher
-
-**Remove entirely:**
-```
-src/loom/watch/
-  watcher.py       # watch_repo(), uses watchfiles
-```
-
-**Remove from pyproject.toml:**
-```toml
-# DELETE:
-"watchfiles>=1.1.1",
-```
-
-**Remove from cli/ingest.py:** The `watch` command.
-
-**Replace with a git post-commit hook (3 lines):**
+Verify after deletion:
 ```bash
-#!/bin/sh
-# .git/hooks/post-commit
-loom sync \
-  --old-sha "$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)" \
-  --new-sha "$(git rev-parse HEAD)"
+python -c "import loom"
+python -c "from loom.mcp.server import build_server"
+python -c "from loom.ingest.pipeline import index_repo"
 ```
-
-Install via `loom setup --hook` which writes this file and `chmod +x`s it.
-This is exactly what code-review-graph does. No background process, no
-watchfiles dependency, no asyncio event loop sitting idle.
+All three should import without error.
 
 ---
 
-### 7. Simplify community detection
+## Bug fix — `src/loom/__init__.py`
 
-**Keep** `src/loom/analysis/code/communities.py` but remove the igraph/leidenalg
-dependency and replace with `networkx.algorithms.community`:
-
-```python
-# Remove from pyproject.toml:
-"igraph>=1.0.0",
-"leidenalg>=0.11.0",
-
-# Add:
-"networkx>=3.3",  # already needed for blast radius
-```
+The `return` statement sits before the `try/except` for winloop,
+so Windows users never get winloop installed. Fix:
 
 ```python
-# Replace leidenalg.find_partition() with:
-import networkx.algorithms.community as nx_comm
+def _install_fast_event_loop() -> None:
+    if sys.platform == "win32":
+        # Remove the bare `return` that was here
+        try:
+            import winloop  # type: ignore
+            winloop.install()
+        except ImportError:
+            pass
+        return  # ← return belongs here, after the try/except
 
-communities = nx_comm.louvain_communities(g_undirected, weight="weight")
+    try:
+        import uvloop  # type: ignore
+        uvloop.install()
+    except ImportError:
+        pass
 ```
-
-Louvain is NetworkX's built-in community detection. It's not identical to
-Leiden but produces comparable results for code graphs and removes two C
-extension dependencies.
-
-**If Leiden quality matters later:** Add `graspologic` as an optional dep
-(what graphify uses). Don't add it now.
 
 ---
 
-### 8. Simplify the MCP server
+## New feature — `store_understanding` MCP tool
 
-**Remove from `src/loom/mcp/server.py`:**
-- `check_drift` tool — drift detection removed
-- `get_impact` tool — ticket integration removed
-- `get_ticket` tool — ticket integration removed
-- `unimplemented` tool — ticket integration removed
-- `relink` tool — semantic linker removed
+This is the core feature that makes Loom an agent memory layer.
+When Claude Code reads and understands a function, it calls this tool.
+Loom writes the summary to SQLite. Next session, any agent searching
+gets the summary without re-reading the source file.
 
-**Keep:**
-- `search_code` — name search, rewrite to use SQLite LIKE
-- `get_callers` — one-hop CALLS, direct SQL
-- `get_blast_radius` — multi-hop CALLS, NetworkX BFS
-- `get_spec` — keep if Jira nodes still in schema (graceful empty result if none)
+### Step 1: Add `update_summary()` to `src/loom/core/graph.py`
 
-**Rewrite `search_code` without embeddings:**
+Add this method to the `LoomGraph` class:
+
+```python
+async def update_summary(self, node_id: str, summary: str) -> bool:
+    """Store an agent-generated summary for a node.
+
+    Args:
+        node_id: Exact node id (e.g. 'function:src/auth.py:validate_token').
+        summary: One-sentence description of what the function does and why.
+
+    Returns:
+        True if the node exists and was updated, False if node_id not found.
+    """
+    def _run() -> bool:
+        with self._lock:
+            conn = self._connect()
+            cur = conn.execute(
+                "UPDATE nodes SET summary = ?, updated_at = ? WHERE id = ?",
+                (summary.strip(), int(time.time()), node_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+    return await asyncio.to_thread(_run)
+```
+
+### Step 2: Add tools to `src/loom/mcp/server.py`
+
+Add both tools inside `build_server()`, alongside the existing tools:
+
 ```python
 @mcp.tool()
-async def search_code(query: str, limit: int = 10) -> list[dict]:
-    """Search for functions, classes, and methods by name."""
-    results = graph.search_by_name(query, limit=limit)
-    return [{"id": r.id, "name": r.name, "path": r.path, "kind": r.kind.value}
-            for r in results]
+async def store_understanding(node_id: str, summary: str) -> dict:
+    """Cache what you learned about a function so future agents skip re-reading it.
+
+    Call this after you have read and understood any function or class.
+    The summary is stored permanently in loom.db and returned on future searches.
+
+    Args:
+        node_id: The exact node id from search_code results.
+                 Example: 'function:src/auth.py:validate_token'
+        summary: One sentence — what does this do and WHY does it exist?
+                 Good: 'Validates JWT tokens and returns False if expired or malformed.'
+                 Bad:  'Handles authentication.' (too vague)
+                 Bad:  'Calls jwt.decode() then checks exp field.' (describes HOW not WHY)
+    """
+    nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+    s = _req_text(summary, field="summary", max_length=500)
+    ok = await graph.update_summary(nid, s)
+    return {"stored": ok, "node_id": nid}
+
+
+@mcp.tool()
+async def store_understanding_batch(updates: list[dict]) -> dict:
+    """Cache summaries for multiple functions in one call. Max 50 per call.
+
+    Args:
+        updates: List of {node_id: str, summary: str} dicts.
+    """
+    if len(updates) > 50:
+        updates = updates[:50]
+    stored = 0
+    for item in updates:
+        nid = str(item.get("node_id", "")).strip()
+        s = str(item.get("summary", "")).strip()
+        if nid and s:
+            ok = await graph.update_summary(nid, s)
+            if ok:
+                stored += 1
+    return {"stored": stored, "total": len(updates)}
 ```
 
 ---
 
-## pyproject.toml — before and after
+## New CLI command — `loom summaries`
 
-**Remove these dependencies:**
-```toml
-"falkordb>=1.6.0",
-"fastembed>=0.7.4",
-"sentence-transformers>=3.0.1",
-"infinity-emb[optimum]>=0.0.45",
-"diskcache>=5.6",
-"watchfiles>=1.1.1",
-"tqdm>=4.66.0",
-"igraph>=1.0.0",
-"leidenalg>=0.11.0",
-"uvloop ; sys_platform != 'win32'",   # only needed if running async server
-"winloop>=0.5.0; platform_system == 'Windows'",
-```
-
-**Add:**
-```toml
-"networkx>=3.3",
-"sqlite3",  # stdlib, no install needed — just document it
-```
-
-**Keep:**
-```toml
-"fastmcp>=3.0.2",
-"gitpython>=3.1.46",
-"pydantic>=2.12.5",
-"rich>=14.3.3",
-"tree-sitter>=0.25.2",
-"typer>=0.24.1",
-"python-dotenv>=1.0.0",
-"pathspec>=1.0.4",
-"pypdf>=5.1.0",
-"tree-sitter-python>=0.25.0",
-"tree-sitter-javascript>=0.25.0",
-"tree-sitter-typescript>=0.23.2",
-"tree-sitter-go>=0.25.0",
-"tree-sitter-java>=0.23.5",
-"tree-sitter-rust>=0.24.0",
-"tree-sitter-ruby>=0.23.1",
-"litellm>=1.82.0",  # keep if using LLM for summary generation
-```
-
----
-
-## Migration order (do not skip steps)
-
-**Step 1 — New LoomGraph (Day 1–2)**
-Write `src/loom/core/graph.py` with the SQLite + NetworkX implementation.
-Keep all method signatures identical to what `ingest/pipeline.py` currently calls
-(`bulk_create_nodes`, `bulk_create_edges`, `blast_radius`, `query`, `get_node`).
-Add a shim `async def query(self, cypher, params)` that raises `NotImplementedError`
-so remaining callers fail loudly, not silently.
-
-**Step 2 — Update ingest pipeline (Day 2–3)**
-Rewrite `ingest/pipeline.py` and `ingest/incremental.py` to call the new
-`LoomGraph` methods directly. Remove all Cypher query strings. Replace
-`_load_stored_file_hashes()` with `graph.get_content_hashes()`.
-Remove calls to `SemanticLinker`, `embed_nodes`, `extract_summaries` (or
-make summaries optional — they're nice to have, not required).
-
-**Step 3 — Update query layer (Day 3)**
-Rewrite `query/blast_radius.py` to call `graph.blast_radius()`.
-Rewrite `query/traceability.py` to use direct SQL via `graph._conn()`.
-Rewrite `query/node_lookup.py` to call `graph.get_nodes_by_name()`.
-
-**Step 4 — Update CLI (Day 3–4)**
-`cli/graph.py` — `blast_radius`, `calls`, `query`, `entrypoints` all rewrite
-to call the new graph methods. Remove `loom relink`, `loom watch`.
-Add `loom setup --hook` for post-commit hook installation.
-
-**Step 5 — Delete dead code (Day 4)**
-```
-src/loom/core/falkor/      ← delete directory
-src/loom/embed/            ← delete directory
-src/loom/linker/           ← delete directory
-src/loom/drift/            ← delete directory
-src/loom/watch/            ← delete directory
-src/loom/ingest/integrations/  ← delete directory
-src/loom/ingest/connectors/    ← delete directory
-src/loom/ingest/git_linker.py  ← delete file
-src/loom/ingest/git_miner.py   ← delete file
-src/loom/mcp/tools/tickets.py  ← delete file
-docker-compose.yml             ← delete file
-```
-
-**Step 6 — Verify (Day 5)**
-```bash
-pip install -e ".[dev]"          # should install without model downloads
-loom analyze .                   # analyze loom itself
-loom blast_radius parse_python   # should return callers
-loom serve                       # MCP server should start
-```
-
-Run `loom analyze` on 3 real repos and confirm:
-- No Docker required
-- No model download on first run
-- `~/.loom/loom.db` created after analyze
-- Blast radius returns correct callers
-
----
-
-## What does NOT change
-
-These files are the core of Loom and should not be touched during this migration:
-
-```
-src/loom/analysis/code/calls/    # CALLS edge extraction — keep entirely
-src/loom/analysis/code/extractor.py  # Static summary extraction — keep
-src/loom/analysis/code/parser.py     # keep
-src/loom/analysis/code/noise_filter.py  # keep
-src/loom/ingest/code/languages/  # All tree-sitter parsers — keep entirely
-src/loom/ingest/code/registry.py # keep
-src/loom/ingest/code/walker.py   # keep
-src/loom/ingest/differ.py        # keep — still useful for incremental
-src/loom/ingest/docs/            # keep — markdown/PDF parsing is useful
-src/loom/core/node.py            # keep — Node model unchanged
-src/loom/core/edge.py            # keep — Edge model, trim unused EdgeTypes
-src/loom/mcp/server.py           # keep and simplify (see above)
-src/loom/query/blast_radius.py   # keep logic, rewrite storage calls
-src/loom/cli/                    # keep and simplify
-```
-
----
-
-## EdgeType — trim unused values
-
-After removing Jira, GitHub, drift, and semantic linker, these EdgeTypes
-are no longer produced by any pipeline. Remove them from `core/edge.py`
-to keep the schema honest:
+Add to `src/loom/cli/graph.py` to let developers see what agents have learned:
 
 ```python
-# DELETE from EdgeType:
-LOOM_IMPLEMENTS   # semantic linker removed
-LOOM_VIOLATES     # drift detector removed
-REALIZES          # ticket linker removed
-CLOSES            # ticket linker removed
-VERIFIED_BY       # ticket linker removed
-DEPENDS_ON        # ticket connector removed
+@app.command()
+def summaries(
+    db: Path | None = typer.Option(None, "--db"),
+    limit: int = typer.Option(20, "--limit", "-n"),
+) -> None:
+    """Show functions with agent-written summaries (most recent first)."""
+    import asyncio
 
-# KEEP:
-CALLS             # core — call graph
-CONTAINS          # core — file contains function
-COUPLED_WITH      # keep — git coupling analysis
-EXTENDS           # keep — inheritance
-IMPORTS           # keep — import edges
-MEMBER_OF         # keep — community membership
-CHILD_OF          # keep — doc hierarchy
+    g = LoomGraph(db_path=db)
+
+    def _run():
+        with g._lock:
+            conn = g._connect()
+            return conn.execute(
+                "SELECT id, name, path, summary FROM nodes "
+                "WHERE summary IS NOT NULL AND kind NOT IN ('file', 'community') "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+
+    rows = asyncio.run(asyncio.to_thread(_run))
+    t = Table("name", "path", "summary")
+    for r in rows:
+        t.add_row(r["name"], r["path"], (r["summary"] or "")[:70])
+    console.print(t)
+```
+
+Export it from `src/loom/cli/__init__.py`:
+```python
+from loom.cli.graph import (
+    blast_radius, callers, callees, query, stats, summaries  # add summaries
+)
 ```
 
 ---
 
-## What the Show HN demo looks like after this
+## Agent instructions — add to CLAUDE.md at repo root
+
+This tells Claude Code how to use Loom tools in practice:
+
+```markdown
+## Using Loom (required workflow)
+
+Loom is a persistent symbol index for this codebase. It is faster than
+reading files and preserves understanding across sessions.
+
+**Before searching for any function:**
+1. Call `search_code("keyword")` first
+2. If the result has a `summary`, read that instead of the file
+3. Only read the actual source if you need the implementation details
+
+**After understanding a function:**
+Always call `store_understanding(node_id, summary)` with one sentence
+describing what the function does and WHY it exists.
+- Good: `"Validates JWT tokens, returns False if expired or signature invalid."`
+- Bad: `"Handles auth."` (too vague)
+- Bad: `"Calls jwt.decode()."` (describes HOW, not WHY)
+
+**For impact analysis:**
+- `get_blast_radius(node_id)` — what else breaks if this changes
+- `get_callers(node_id)` — who calls this function
+- `get_callees(node_id)` — what does this function call
+
+**Node ID format:** `kind:path:symbol`
+Example: `function:src/auth.py:validate_token`
+```
+
+---
+
+## What does NOT need to change
+
+Do not touch these files. They are working correctly:
+
+```
+src/loom/core/db.py              # SQLite schema + FTS5 — correct
+src/loom/core/graph.py           # LoomGraph — add update_summary() only
+src/loom/core/node.py            # Node model — correct
+src/loom/core/edge.py            # EdgeType — trim dead EdgeTypes after connectors deleted
+src/loom/core/content_hash.py    # SHA-256 helpers — correct
+
+src/loom/ingest/pipeline.py      # index_repo, _parse_file, resolve_calls — correct
+src/loom/ingest/incremental.py   # sync_paths — correct
+src/loom/ingest/utils.py         # sha256_of_file — correct
+src/loom/ingest/code/            # ALL tree-sitter parsers — do not touch
+src/loom/ingest/docs/            # Markdown/PDF parsing — keep
+
+src/loom/analysis/communities.py # Louvain + NetworkX — correct
+src/loom/analysis/coupling.py    # git co-change analysis — correct
+src/loom/analysis/dead_code.py   # dead code marking — correct
+src/loom/analysis/code/calls/    # CALLS edge extraction — do not touch
+src/loom/analysis/code/extractor.py  # static summary extraction — keep
+src/loom/analysis/code/parser.py     # parse_repo — keep
+src/loom/analysis/code/noise_filter.py # noise filtering — keep
+
+src/loom/cli/install.py          # loom install — handles 4 platforms + git hook
+src/loom/cli/export.py           # loom export HTML — keep
+src/loom/cli/graph.py            # add summaries command only
+src/loom/cli/ingest.py           # loom analyze, sync, serve — correct
+src/loom/cli/analysis.py         # loom communities, dead-code — correct
+
+src/loom/mcp/server.py           # add store_understanding tools only
+src/loom/query/blast_radius.py   # blast radius payload — correct
+src/loom/query/node_lookup.py    # resolve node by name — correct
+src/loom/query/search.py         # SearchResult wrapper — correct
+
+src/loom/config.py               # env vars — correct
+src/loom/devtools.py             # dep checker, test runner — keep
+```
+
+---
+
+## Steps — do in order, do not skip
+
+**Step 1 — Delete dead files (30 min)**
+Delete every file listed in "Dead code" above.
+Then run: `python -c "import loom"` — must not error.
+
+**Step 2 — Fix winloop bug (5 min)**
+Apply the fix in `src/loom/__init__.py`.
+
+**Step 3 — Add `update_summary()` to LoomGraph (15 min)**
+Add method to `src/loom/core/graph.py` exactly as specified above.
+
+**Step 4 — Add MCP tools (20 min)**
+Add `store_understanding` and `store_understanding_batch` to `src/loom/mcp/server.py`.
+
+**Step 5 — Add `loom summaries` CLI command (15 min)**
+Add to `src/loom/cli/graph.py`, export from `src/loom/cli/__init__.py`.
+
+**Step 6 — Update repo CLAUDE.md (10 min)**
+Add the agent workflow instructions to the repo's own `CLAUDE.md`.
+
+**Step 7 — Smoke test**
+```bash
+pip install -e ".[dev]"
+loom analyze .
+loom query "parse_python"
+loom summaries        # should show empty table (no summaries yet)
+loom serve            # MCP server starts, no errors
+```
+
+---
+
+## Show HN demo after this is done
 
 ```bash
-pip install loom-tool        # no model download, no Docker required
+pip install loom-tool           # no model download, no Docker
 
-git clone https://github.com/some/repo && cd repo
-loom analyze .               # builds ~/.loom/loom.db in ~10 seconds
+cd my-repo
+loom analyze .                  # ~10 seconds for 500-file repo
+loom install                    # configures Claude Code, Cursor, Codex, Windsurf
+                                # installs post-commit hook automatically
 
-loom blast_radius validate_token
-# → shows all callers transitively, ranked by depth
+# Claude Code session:
+# > search_code("validate token")  → instant, with cached summaries
+# > get_blast_radius("function:src/auth.py:validate_token")  → callers
+# > store_understanding(id, "Validates JWT, returns False if expired")  → cached
 
-loom calls --target parse_python --direction both
-# → callers and callees of parse_python
-
-loom query "authentication"
-# → functions matching the name
-
-# MCP integration
-loom serve
-# → starts MCP server, works with Claude Code immediately
+loom summaries                  # see everything agents have learned
+loom export                     # interactive HTML graph, opens in browser
 ```
 
-Zero infrastructure. Single SQLite file. Fast cold start.
-This is what code-review-graph ships and why it got traction.
+---
+
+## Coding conventions
+
+- Python 3.12, ruff for linting, mypy --strict for type checking
+- All SQLite operations are synchronous — always wrap in `asyncio.to_thread()`
+- `threading.RLock` (graph._lock) must wrap every SQLite call
+- No silent fallbacks — raise or log at WARNING minimum
+- Every public method has a docstring with Args/Returns
+- pytest + pytest-asyncio for all tests
+- Node IDs follow the pattern: `{kind}:{path}:{symbol}`
+  Example: `function:src/auth.py:validate_token`
 
 ---
 
-## Coding conventions (unchanged from existing codebase)
-
-- Python 3.12, `ruff` for linting, `mypy --strict` for types
-- `pydantic` v2 for all data models — no raw dict access
-- Async throughout the CLI commands (`asyncio.run()` at the entry point)
-- SQLite operations are sync (sqlite3 is not async) — wrap in `asyncio.to_thread`
-  if called from async context
-- Every public function has a docstring with Args/Returns
-- `pytest` for tests, `pytest-asyncio` for async tests
-- No silent fallbacks — raise clearly or log at WARNING minimum
-
----
-
-*Last updated: April 2026*
-*Context: Loom v0.1 shipped. This migration targets v0.2.*
+*Loom v0.2 — April 2026*

@@ -374,6 +374,22 @@ class LoomGraph:
                 return [_row_to_node(r) for r in rows]
         return await asyncio.to_thread(_run)
 
+    async def update_summary(self, node_id: str, summary: str) -> bool:
+        """Write agent-generated understanding to a node's summary field.
+
+        Returns True if a row was updated, False if node_id not found.
+        """
+        def _run() -> bool:
+            with self._lock:
+                conn = self._connect()
+                cur = conn.execute(
+                    "UPDATE nodes SET summary = ?, updated_at = ? WHERE id = ?",
+                    (summary.strip(), int(time.time()), node_id),
+                )
+                conn.commit()
+                return cur.rowcount > 0
+        return await asyncio.to_thread(_run)
+
     async def stats(self) -> dict[str, Any]:
         def _run() -> dict[str, Any]:
             with self._lock:
