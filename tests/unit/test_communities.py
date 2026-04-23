@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from loom.analysis.communities import compute_communities
-from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
+from loom.core.context import DB
+from loom.core.edge import Edge, EdgeType
+from loom.core.node import Node, NodeKind, NodeSource
+from loom.query import traversal
+from loom.store import edges as edge_store
+from loom.store import nodes as node_store
 
 
 def _func(name: str, path: str, line: int) -> Node:
@@ -24,76 +29,72 @@ def _func(name: str, path: str, line: int) -> Node:
 
 @pytest.mark.asyncio
 async def test_compute_communities_empty_graph_returns_zero(tmp_path: Path) -> None:
-    g = LoomGraph(db_path=tmp_path / "loom.db")
-    count = await compute_communities(g)
+    db = DB(path=tmp_path / "loom.db")
+    count = await compute_communities(db)
     assert count == 0
 
 
 @pytest.mark.asyncio
 async def test_compute_communities_sets_community_id_on_members(tmp_path: Path) -> None:
-    g = LoomGraph(db_path=tmp_path / "loom.db")
+    db = DB(path=tmp_path / "loom.db")
 
     nodes = [_func(f"f{i}", "src/a.py", i * 5) for i in range(4)]
-    await g.bulk_upsert_nodes(nodes)
+    await node_store.bulk_upsert_nodes(db, nodes)
 
-    # Dense ring of CALLS edges
     edges = [
         Edge(from_id=nodes[0].id, to_id=nodes[1].id, kind=EdgeType.CALLS),
         Edge(from_id=nodes[1].id, to_id=nodes[2].id, kind=EdgeType.CALLS),
         Edge(from_id=nodes[2].id, to_id=nodes[3].id, kind=EdgeType.CALLS),
         Edge(from_id=nodes[3].id, to_id=nodes[0].id, kind=EdgeType.CALLS),
     ]
-    await g.bulk_upsert_edges(edges)
+    await edge_store.bulk_upsert_edges(db, edges)
 
-    count = await compute_communities(g)
+    count = await compute_communities(db)
     assert count >= 1
 
-    # community_id should be set on all function nodes
     for node in nodes:
-        n = await g.get_node(node.id)
+        n = await node_store.get_node(db, node.id)
         assert n is not None
         assert n.community_id is not None
 
 
 @pytest.mark.asyncio
 async def test_compute_communities_creates_community_kind_nodes(tmp_path: Path) -> None:
-    g = LoomGraph(db_path=tmp_path / "loom.db")
+    db = DB(path=tmp_path / "loom.db")
 
     names = ["login", "logout", "validate"]
     nodes = [_func(f"auth_{n}", "src/a.py", i * 5) for i, n in enumerate(names)]
-    await g.bulk_upsert_nodes(nodes)
+    await node_store.bulk_upsert_nodes(db, nodes)
 
     edges = [
         Edge(from_id=nodes[0].id, to_id=nodes[1].id, kind=EdgeType.CALLS),
         Edge(from_id=nodes[1].id, to_id=nodes[2].id, kind=EdgeType.CALLS),
     ]
-    await g.bulk_upsert_edges(edges)
+    await edge_store.bulk_upsert_edges(db, edges)
 
-    await compute_communities(g)
+    await compute_communities(db)
 
-    stats = await g.stats()
-    assert stats["nodes_by_kind"].get("community", 0) >= 1
+    s = await traversal.stats(db)
+    assert s["nodes_by_kind"].get("community", 0) >= 1
 
 
 @pytest.mark.asyncio
 async def test_compute_communities_idempotent(tmp_path: Path) -> None:
-    g = LoomGraph(db_path=tmp_path / "loom.db")
+    db = DB(path=tmp_path / "loom.db")
 
     nodes = [_func(f"f{i}", "src/a.py", i * 5) for i in range(3)]
-    await g.bulk_upsert_nodes(nodes)
+    await node_store.bulk_upsert_nodes(db, nodes)
     edges = [
         Edge(from_id=nodes[0].id, to_id=nodes[1].id, kind=EdgeType.CALLS),
         Edge(from_id=nodes[1].id, to_id=nodes[2].id, kind=EdgeType.CALLS),
     ]
-    await g.bulk_upsert_edges(edges)
+    await edge_store.bulk_upsert_edges(db, edges)
 
-    count1 = await compute_communities(g)
-    count2 = await compute_communities(g)
+    count1 = await compute_communities(db)
+    count2 = await compute_communities(db)
 
-    # Second run should produce same number of communities (old ones cleared first)
     assert count1 == count2
 
-    stats = await g.stats()
-    # Should not accumulate duplicate community nodes
-    community_count = stats["nodes_by_kind"].get("community", 0)
+    s = await traversal.stats(db)
+    community_count = s["nodes_by_kind"].get("community", 0)
     assert community_count == count2

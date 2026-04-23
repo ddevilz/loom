@@ -4,24 +4,22 @@ from pathlib import Path
 
 import pytest
 
-from loom.core import LoomGraph
+from loom.core.context import DB
+from loom.query import traversal
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_schema_init_idempotent(tmp_path: Path) -> None:
-    g = LoomGraph(db_path=tmp_path / "loom.db")
+    db = DB(path=tmp_path / "loom.db")
 
-    # First connection initializes schema
-    stats1 = await g.stats()
+    stats1 = await traversal.stats(db)
     assert stats1["nodes"] == 0
     assert stats1["edges"] == 0
 
-    # Second call on same instance is a no-op (schema already exists)
-    stats2 = await g.stats()
+    stats2 = await traversal.stats(db)
     assert stats2 == stats1
 
-    # New instance on same file — schema already in place, should still work
-    g2 = LoomGraph(db_path=tmp_path / "loom.db")
-    stats3 = await g2.stats()
+    db2 = DB(path=tmp_path / "loom.db")
+    stats3 = await traversal.stats(db2)
     assert stats3["nodes"] == 0
