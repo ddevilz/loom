@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import logging
 import subprocess
 from concurrent.futures import ProcessPoolExecutor
@@ -7,10 +8,11 @@ from dataclasses import dataclass
 from multiprocessing import cpu_count
 from pathlib import Path
 
-from loom.core.graph import LoomGraph
+from loom.core.context import DB
 from loom.ingest.code.walker import walk_repo
 from loom.ingest.pipeline import _parse_file, resolve_calls
 from loom.ingest.utils import sha256_of_file
+from loom.store import nodes as node_store
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ def _git_diff_files(repo: Path, old: str, new: str) -> list[Path]:
 
 
 async def sync_paths(
-    graph: LoomGraph,
+    db: DB,
     repo_path: Path,
     *,
     old_sha: str | None = None,
@@ -66,14 +68,12 @@ async def sync_paths(
     changed: list[Path] = []
     for f in candidates:
         rel = f.relative_to(repo_path).as_posix()
-        stored = await graph.get_file_hash(rel)
+        stored = await node_store.get_file_hash(db, rel)
         if sha256_of_file(f) != stored:
             changed.append(f)
 
     if not changed:
         return SyncResult(0, 0, 0)
-
-    import functools
 
     parse_fn = functools.partial(_parse_file, repo_root=repo_path)
     if len(changed) >= 8:
@@ -103,7 +103,7 @@ async def sync_paths(
             by_path[src_path][1].append(e)
 
     for path, (fn, fe) in by_path.items():
-        await graph.replace_file(path, fn, fe)
+        await node_store.replace_file(db, path, fn, fe)
 
     logger.info(
         "sync_paths repo=%s changed=%d nodes=%d edges=%d",

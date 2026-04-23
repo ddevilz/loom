@@ -6,8 +6,7 @@ import typer
 
 from loom import __version__
 from loom.cli._app import app
-from loom.core.context import DB
-from loom.core.graph import DEFAULT_DB_PATH
+from loom.core.context import DB, DEFAULT_DB_PATH
 
 
 def _version_callback(value: bool) -> None:

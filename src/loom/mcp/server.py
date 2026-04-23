@@ -5,7 +5,7 @@ from pathlib import Path
 
 from loom.core.context import DB
 from loom.core.edge import EdgeType
-from loom.core.graph import DEFAULT_DB_PATH
+from loom.core.context import DEFAULT_DB_PATH
 from loom.query import traversal
 from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.search import search

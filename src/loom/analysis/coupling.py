@@ -9,8 +9,9 @@ from pathlib import Path
 
 import git
 
+from loom.core.context import DB
 from loom.core.edge import Edge, EdgeType
-from loom.core.graph import LoomGraph
+from loom.store import edges as edge_store
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def _file_node_id(rel_path: str) -> str:
 
 
 async def compute_coupling(
-    graph: LoomGraph,
+    db: DB,
     repo_path: Path,
     *,
     months: int = _DEFAULT_MONTHS,
@@ -39,7 +40,7 @@ async def compute_coupling(
     edges = await _analyze_coupling(repo_path, months=months, threshold=threshold)
     if not edges:
         return 0
-    await graph.bulk_upsert_edges(edges)
+    await edge_store.bulk_upsert_edges(db, edges)
     return len(edges)
 
 

@@ -196,3 +196,16 @@ async def replace_file(
                 raise
 
     await asyncio.to_thread(_run)
+
+
+def get_export_rows(db: DB) -> tuple[list[sqlite3.Row], list[sqlite3.Row]]:
+    """Return (node_rows, edge_rows) for HTML graph export. Synchronous — call inside to_thread."""
+    with db._lock:
+        conn = db.connect()
+        node_rows = conn.execute(
+            "SELECT id, kind, name, path, language, is_dead_code FROM nodes"
+        ).fetchall()
+        edge_rows = conn.execute(
+            "SELECT from_id, to_id, kind FROM edges"
+        ).fetchall()
+    return node_rows, edge_rows

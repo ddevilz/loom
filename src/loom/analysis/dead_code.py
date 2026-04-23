@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import asyncio
 
-from loom.core.graph import LoomGraph
+from loom.core.context import DB
 
 
-async def mark_dead_code(graph: LoomGraph) -> int:
+async def mark_dead_code(db: DB) -> int:
     """Mark function/method nodes with zero incoming CALLS as is_dead_code=1.
 
     Returns count of nodes marked as dead code.
     """
 
     def _run() -> int:
-        with graph._lock:
-            conn = graph._connect()
+        with db._lock:
+            conn = db.connect()
             conn.execute("BEGIN IMMEDIATE")
             try:
                 conn.execute("UPDATE nodes SET is_dead_code = 0")

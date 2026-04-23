@@ -7,6 +7,8 @@ from pathlib import Path
 
 from loom.core.db import connect, has_fts5, init_schema
 
+DEFAULT_DB_PATH: Path = Path.home() / ".loom" / "loom.db"
+
 
 @dataclass
 class DB:

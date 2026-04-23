@@ -4,13 +4,18 @@ from pathlib import Path
 
 import pytest
 
-from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
+from loom.core.context import DB
+from loom.core.edge import Edge, EdgeType
+from loom.core.node import Node, NodeKind, NodeSource
+from loom.query import traversal
+from loom.store import edges as edge_store
+from loom.store import nodes as node_store
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_graph_bulk_and_query_roundtrip(tmp_path: Path) -> None:
-    g = LoomGraph(db_path=tmp_path / "loom.db")
+    db = DB(path=tmp_path / "loom.db")
 
     nodes = [
         Node(
@@ -27,7 +32,7 @@ async def test_graph_bulk_and_query_roundtrip(tmp_path: Path) -> None:
         for i in range(10)
     ]
 
-    await g.bulk_upsert_nodes(nodes)
+    await node_store.bulk_upsert_nodes(db, nodes)
 
     edges = [
         Edge(
@@ -38,30 +43,28 @@ async def test_graph_bulk_and_query_roundtrip(tmp_path: Path) -> None:
         for i in range(5)
     ]
 
-    await g.bulk_upsert_edges(edges)
+    await edge_store.bulk_upsert_edges(db, edges)
 
-    stats = await g.stats()
-    assert stats["nodes"] == 10
-    assert stats["edges"] == 5
+    s = await traversal.stats(db)
+    assert s["nodes"] == 10
+    assert s["edges"] == 5
 
-    n0 = await g.get_node(nodes[0].id)
+    n0 = await node_store.get_node(db, nodes[0].id)
     assert n0 is not None
     assert n0.id == nodes[0].id
     assert n0.name == "f0"
 
-    # depth=2 neighbors from f0 via CALLS: f1 (depth 1) and f2 (depth 2)
-    neigh = await g.neighbors(nodes[0].id, depth=2, edge_types=[EdgeType.CALLS])
+    neigh = await traversal.neighbors(db, nodes[0].id, depth=2, edge_types=[EdgeType.CALLS])
     neigh_ids = {n.id for n in neigh}
     assert nodes[1].id in neigh_ids
     assert nodes[2].id in neigh_ids
-    # f6 is not reachable via CALLS from f0 within depth 2
     assert nodes[6].id not in neigh_ids
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_upsert_is_idempotent(tmp_path: Path) -> None:
-    g = LoomGraph(db_path=tmp_path / "loom.db")
+    db = DB(path=tmp_path / "loom.db")
 
     node = Node(
         id="function:src/mod.py:foo",
@@ -73,17 +76,17 @@ async def test_upsert_is_idempotent(tmp_path: Path) -> None:
         metadata={},
     )
 
-    await g.bulk_upsert_nodes([node])
-    await g.bulk_upsert_nodes([node])  # second upsert — no duplicate
+    await node_store.bulk_upsert_nodes(db, [node])
+    await node_store.bulk_upsert_nodes(db, [node])
 
-    stats = await g.stats()
-    assert stats["nodes"] == 1
+    s = await traversal.stats(db)
+    assert s["nodes"] == 1
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_replace_file_atomic(tmp_path: Path) -> None:
-    g = LoomGraph(db_path=tmp_path / "loom.db")
+    db = DB(path=tmp_path / "loom.db")
 
     old_node = Node(
         id="function:src/a.py:old_func",
@@ -94,7 +97,7 @@ async def test_replace_file_atomic(tmp_path: Path) -> None:
         language="python",
         metadata={},
     )
-    await g.bulk_upsert_nodes([old_node])
+    await node_store.bulk_upsert_nodes(db, [old_node])
 
     new_node = Node(
         id="function:src/a.py:new_func",
@@ -105,14 +108,14 @@ async def test_replace_file_atomic(tmp_path: Path) -> None:
         language="python",
         metadata={},
     )
-    await g.replace_file("src/a.py", [new_node], [])
+    await node_store.replace_file(db, "src/a.py", [new_node], [])
 
-    stats = await g.stats()
-    assert stats["nodes"] == 1  # old removed, new inserted
+    s = await traversal.stats(db)
+    assert s["nodes"] == 1
 
-    n = await g.get_node("function:src/a.py:new_func")
+    n = await node_store.get_node(db, "function:src/a.py:new_func")
     assert n is not None
     assert n.name == "new_func"
 
-    gone = await g.get_node("function:src/a.py:old_func")
+    gone = await node_store.get_node(db, "function:src/a.py:old_func")
     assert gone is None

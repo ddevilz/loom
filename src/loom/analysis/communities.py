@@ -7,10 +7,10 @@ import time
 import networkx as nx
 import networkx.algorithms.community as nx_comm
 
-from loom.core.graph import LoomGraph
+from loom.core.context import DB
 
 
-async def compute_communities(graph: LoomGraph) -> int:
+async def compute_communities(db: DB) -> int:
     """Run Louvain on CALLS+MEMBER_OF+IMPORTS subgraph.
 
     Persists community_id on every member node and materializes one
@@ -18,8 +18,8 @@ async def compute_communities(graph: LoomGraph) -> int:
     """
 
     def _run() -> int:
-        with graph._lock:
-            conn = graph._connect()
+        with db._lock:
+            conn = db.connect()
             edges = conn.execute(
                 "SELECT from_id, to_id FROM edges "
                 "WHERE kind IN ('calls','member_of','imports')"

@@ -8,7 +8,8 @@ import typer
 from rich.console import Console
 
 from loom.cli._app import app
-from loom.core.graph import LoomGraph
+from loom.core.context import DB, DEFAULT_DB_PATH
+from loom.store.nodes import get_export_rows
 
 console = Console()
 
@@ -39,10 +40,8 @@ _EDGE_COLOURS: dict[str, str] = {
 _DEFAULT_EDGE_COLOUR = "#888888"
 
 
-def _build_graph_data(g: LoomGraph) -> dict:
-    conn = g._connect()
-    node_rows = conn.execute("SELECT id, kind, name, path, language, is_dead_code FROM nodes").fetchall()
-    edge_rows = conn.execute("SELECT from_id, to_id, kind FROM edges").fetchall()
+def _build_graph_data(db: DB) -> dict:
+    node_rows, edge_rows = get_export_rows(db)
 
     nodes = []
     for r in node_rows:
@@ -460,9 +459,9 @@ def export_graph(
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open in browser after export"),
 ) -> None:
     """Export the code graph as a self-contained interactive HTML file."""
-    g = LoomGraph(db_path=db)
-    data = _build_graph_data(g)
-    html = _render_html(data, g.db_path)
+    db_obj = DB(path=db or DEFAULT_DB_PATH)
+    data = _build_graph_data(db_obj)
+    html = _render_html(data, Path(str(db_obj.path)))
     output.write_text(html, encoding="utf-8")
     console.print(
         f"[green]✓[/green] Exported {len(data['nodes'])} nodes, "
