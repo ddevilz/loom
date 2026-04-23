@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+<<<<<<< HEAD
 from loom.core.graph import LoomGraph
 
 
@@ -25,4 +26,115 @@ async def build_blast_radius_payload(
             }
             for n in nodes
         ],
+=======
+from typing import Any
+
+from loom.config import LOOM_BLAST_RADIUS_MAX_DEPTH
+from loom.core.falkor.edge_type_adapter import LOOM_IMPLEMENTS_REL
+from loom.core.types import QueryGraph
+
+
+def _slug(text: str) -> str:
+    normalized = "".join(ch.lower() if ch.isalnum() else "-" for ch in text)
+    parts = [part for part in normalized.split("-") if part]
+    return "-".join(parts)
+
+
+def format_doc_reference(path: str, name: str, kind: str) -> str:
+    basename = path.replace("\\", "/").split("/")[-1]
+    if kind == "document" or name == basename:
+        return basename
+    anchor = _slug(name)
+    return f"{basename}#{anchor}" if anchor else basename
+
+
+async def build_blast_radius_payload(
+    graph: QueryGraph,
+    *,
+    node_id: str,
+    depth: int = LOOM_BLAST_RADIUS_MAX_DEPTH,
+) -> dict[str, Any]:
+    # Cap depth to config max — MCP server also clamps, but enforce here too
+    depth = min(depth, LOOM_BLAST_RADIUS_MAX_DEPTH)
+    root_rows = await graph.query(
+        "MATCH (n:Node {id: $id}) "
+        "RETURN n.id AS id, n.name AS name, n.path AS path, n.kind AS kind "
+        "LIMIT 1",
+        {"id": node_id},
+    )
+    if not root_rows:
+        return {
+            "root": None,
+            "summary": {"total_nodes": 0, "hops": 0},
+            "callers": [],
+            "docs_at_risk": [],
+            "warnings": [],
+        }
+
+    nodes = await graph.blast_radius(node_id, depth=depth)
+    doc_rows = await graph.query(
+        f"""
+MATCH (n:Node {{id: $id}})-[r:{LOOM_IMPLEMENTS_REL}]->(d:Node)
+RETURN d.id AS id, d.name AS name, d.path AS path, d.kind AS kind,
+       r.link_reason AS link_reason
+ORDER BY d.path, d.name
+""",
+        {"id": node_id},
+    )
+
+    root = root_rows[0]
+    callers = [
+        {
+            "id": n.id,
+            "name": n.name,
+            "path": n.path,
+            "kind": n.kind.value,
+            "depth": n.depth or 0,
+            "parent_id": n.parent_id,
+            "edge_label": "CALLS",
+        }
+        for n in nodes
+    ]
+
+    docs_at_risk = []
+    warnings = []
+    for row in doc_rows:
+        doc_kind = str(row.get("kind") or "")
+        doc_name = str(row.get("name") or "")
+        doc_path = str(row.get("path") or "")
+        reason = row.get("link_reason")
+        if isinstance(reason, str) and reason.strip():
+            condition = reason.strip()
+        else:
+            condition = f"{root['name']}() signature changes"
+        doc_ref = format_doc_reference(doc_path, doc_name, doc_kind)
+        docs_at_risk.append(
+            {
+                "id": str(row.get("id") or ""),
+                "name": doc_name,
+                "path": doc_path,
+                "kind": doc_kind,
+                "edge_label": "IMPLEMENTS",
+                "doc_ref": doc_ref,
+                "suffix": " (doc at risk)",
+                "condition": condition,
+            }
+        )
+        warnings.append(f"{doc_ref} requires update if {condition}.")
+
+    return {
+        "root": {
+            "id": str(root["id"]),
+            "name": str(root["name"]),
+            "path": str(root["path"]),
+            "kind": str(root["kind"]),
+        },
+        "summary": {
+            "total_nodes": len(callers) + len(docs_at_risk),
+            "hops": max((n.depth or 0) for n in nodes) if nodes else 0,
+        },
+        "callers": callers,
+        "docs_at_risk": docs_at_risk,
+        "warnings": warnings,
+>>>>>>> main
     }

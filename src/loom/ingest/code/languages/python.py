@@ -3,9 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+<<<<<<< HEAD
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 from tree_sitter_language_pack import get_language as _get_ts_language
+=======
+from tree_sitter import Language, Parser
+from tree_sitter import Node as TSNode
+from tree_sitter_python import language as python_language
+>>>>>>> main
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
@@ -60,9 +66,12 @@ from loom.ingest.code.languages.constants import (
     TS_PY_FUNCTION_DEF,
     TS_PY_IDENTIFIER,
 )
+<<<<<<< HEAD
 
 _PY_LANGUAGE = _get_ts_language("python")
 
+=======
+>>>>>>> main
 
 def _qualname(ctx: _BaseContext, name: str) -> str:
     parts: list[str] = []
@@ -74,6 +83,19 @@ def _qualname(ctx: _BaseContext, name: str) -> str:
     return ".".join(parts)
 
 
+<<<<<<< HEAD
+=======
+def _qualname(ctx: _BaseContext, name: str) -> str:
+    parts: list[str] = []
+    if ctx.class_stack:
+        parts.append(".".join(ctx.class_stack))
+    if ctx.fn_stack:
+        parts.append(".".join(ctx.fn_stack))
+    parts.append(name)
+    return ".".join(parts)
+
+
+>>>>>>> main
 def _parent_id(ctx: _BaseContext, path: str) -> str | None:
     if ctx.fn_stack:
         if ctx.class_stack:
@@ -99,7 +121,14 @@ def _is_test_path(path: str) -> bool:
 def _is_async_function(src: bytes, n: TSNode) -> bool:
     """Check if a function is async."""
     # Check for 'async' keyword before 'def'
+<<<<<<< HEAD
     return any(child.type == "async" for child in n.children)
+=======
+    for child in n.children:
+        if child.type == "async":
+            return True
+    return False
+>>>>>>> main
 
 
 def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict[str, Any]:
@@ -238,7 +267,14 @@ def _extract_from_def(
         start_line, end_line = _lines(n)
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
         parent_id = _parent_id(ctx, path)
+<<<<<<< HEAD
         symbol = _qualname(ctx, name) if kind == NodeKind.METHOD or ctx.fn_stack else name
+=======
+        if kind == NodeKind.METHOD or ctx.fn_stack:
+            symbol = _qualname(ctx, name)
+        else:
+            symbol = name
+>>>>>>> main
         meta: dict[str, Any] = {}
         meta.update(_function_metadata(src, n, name=name))
         if decorators:

@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+<<<<<<< HEAD
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 from tree_sitter_language_pack import get_language as _get_ts_language
+=======
+from tree_sitter import Language, Parser
+from tree_sitter import Node as TSNode
+from tree_sitter_java import language as java_language
+>>>>>>> main
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
@@ -165,8 +171,12 @@ def _extract_from_def(
     out: list[Node],
     package: str = "",
 ) -> None:
+<<<<<<< HEAD
     # Java: class_declaration, interface_declaration, enum_declaration,
     #       annotation_type_declaration, record_declaration
+=======
+    # Java: class_declaration, interface_declaration, enum_declaration, annotation_type_declaration, record_declaration
+>>>>>>> main
     if n.type in {
         TS_JAVA_CLASS_DECL,
         TS_JAVA_INTERFACE_DECL,
