@@ -4,23 +4,23 @@ from pathlib import Path
 
 import pytest
 
-from loom.core import LoomGraph
+from loom.core.context import DB
 from loom.mcp.server import build_server
 
 
 def test_build_server_returns_instance_when_fastmcp_available(tmp_path: Path) -> None:
-    g = LoomGraph(db_path=tmp_path / "loom.db")
+    db = DB(path=tmp_path / "loom.db")
     try:
-        server = build_server(graph=g)
+        server = build_server(db=db)
     except RuntimeError:
         pytest.skip("fastmcp not installed")
     assert server is not None
 
 
-def test_build_server_uses_db_path_when_no_graph(tmp_path: Path) -> None:
-    db = tmp_path / "loom.db"
+def test_build_server_uses_db_path_when_no_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "loom.db"
     try:
-        server = build_server(db_path=db)
+        server = build_server(db_path=db_path)
     except RuntimeError:
         pytest.skip("fastmcp not installed")
     assert server is not None
@@ -43,13 +43,12 @@ async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
         "store_understanding",
         "store_understanding_batch",
     }
-    g = LoomGraph(db_path=tmp_path / "loom.db")
+    db = DB(path=tmp_path / "loom.db")
     try:
-        server = build_server(graph=g)
+        server = build_server(db=db)
     except RuntimeError:
         pytest.skip("fastmcp not installed")
 
-    # FastMCP.list_tools is async
     tool_list = await server.list_tools()
     tools = {t.name for t in tool_list}
     assert tools == expected
