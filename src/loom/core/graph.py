@@ -1,44 +1,23 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import sqlite3
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
-from loom.core.db import connect, has_fts5, init_schema
+from loom.core.context import DB
 from loom.core.edge import ConfidenceTier, Edge, EdgeType
 from loom.core.node import Node, NodeKind, NodeSource
+from loom.store import edges as _edge_store
+from loom.store import nodes as _node_store
+from loom.store.nodes import _row_to_node
 
 DEFAULT_DB_PATH = Path.home() / ".loom" / "loom.db"
 
 
-def _row_to_node(row: sqlite3.Row) -> Node:
-    metadata = json.loads(row["metadata"]) if row["metadata"] else {}
-    node = Node(
-        id=row["id"],
-        kind=NodeKind(row["kind"]),
-        source=NodeSource(row["source"]),
-        name=row["name"],
-        path=row["path"],
-        start_line=row["start_line"],
-        end_line=row["end_line"],
-        language=row["language"],
-        content_hash=row["content_hash"],
-        file_hash=row["file_hash"],
-        summary=row["summary"],
-        is_dead_code=bool(row["is_dead_code"]),
-        community_id=row["community_id"],
-        metadata=metadata,
-    )
-    if "_depth" in row.keys():  # noqa: SIM118 — sqlite3.Row needs .keys()
-        node.depth = row["_depth"]
-    return node
-
-
 def _row_to_edge(row: sqlite3.Row) -> Edge:
+    import json
     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
     return Edge(
         from_id=row["from_id"],
@@ -56,170 +35,37 @@ class LoomGraph:
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
         self._fts5: bool | None = None
+        self._db = DB(path=self.db_path)
+        self._db._lock = self._lock
 
     def _connect(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = connect(self.db_path)
-            init_schema(self._conn)
-            self._fts5 = has_fts5(self._conn)
-        return self._conn
+        conn = self._db.connect()
+        self._conn = self._db._conn
+        self._fts5 = self._db._fts5
+        return conn
 
     async def bulk_upsert_nodes(self, nodes: list[Node]) -> None:
-        if not nodes:
-            return
-        def _run() -> None:
-            with self._lock:
-                conn = self._connect()
-                now = int(time.time())
-                rows = [
-                    (
-                        n.id, n.kind.value, n.source.value, n.name, n.path,
-                        n.start_line, n.end_line, n.language, n.content_hash,
-                        n.file_hash, n.summary, int(n.is_dead_code), n.community_id,
-                        json.dumps(n.metadata, default=str), now,
-                    )
-                    for n in nodes
-                ]
-                conn.executemany(
-                    """INSERT INTO nodes (id, kind, source, name, path, start_line,
-                         end_line, language, content_hash, file_hash, summary,
-                         is_dead_code, community_id, metadata, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                       ON CONFLICT(id) DO UPDATE SET
-                         kind=excluded.kind, source=excluded.source, name=excluded.name,
-                         path=excluded.path, start_line=excluded.start_line,
-                         end_line=excluded.end_line, language=excluded.language,
-                         content_hash=excluded.content_hash, file_hash=excluded.file_hash,
-                         summary=excluded.summary, is_dead_code=excluded.is_dead_code,
-                         community_id=excluded.community_id, metadata=excluded.metadata,
-                         updated_at=excluded.updated_at""",
-                    rows,
-                )
-                conn.commit()
-        await asyncio.to_thread(_run)
+        await _node_store.bulk_upsert_nodes(self._db, nodes)
 
     async def bulk_upsert_edges(self, edges: list[Edge]) -> None:
-        if not edges:
-            return
-        def _run() -> None:
-            with self._lock:
-                conn = self._connect()
-                rows = [
-                    (
-                        e.from_id, e.to_id, e.kind.value, e.confidence,
-                        e.confidence_tier.value, json.dumps(e.metadata, default=str),
-                    )
-                    for e in edges
-                ]
-                conn.executemany(
-                    """INSERT OR REPLACE INTO edges
-                         (from_id, to_id, kind, confidence, confidence_tier, metadata)
-                       VALUES (?,?,?,?,?,?)""",
-                    rows,
-                )
-                conn.commit()
-        await asyncio.to_thread(_run)
+        await _edge_store.bulk_upsert_edges(self._db, edges)
 
     async def replace_file(
         self, path: str, nodes: list[Node], edges: list[Edge]
     ) -> None:
-        """Atomic per-file replace — single BEGIN IMMEDIATE transaction covers
-        DELETE + INSERT nodes + INSERT edges. Crash between delete and insert
-        rolls back cleanly; old rows remain until full write succeeds.
-        """
-        now = int(time.time())
-        node_rows = [
-            (
-                n.id, n.kind.value, n.source.value, n.name, n.path,
-                n.start_line, n.end_line, n.language, n.content_hash,
-                n.file_hash, n.summary, int(n.is_dead_code), n.community_id,
-                json.dumps(n.metadata, default=str), now,
-            )
-            for n in nodes
-        ]
-        edge_rows = [
-            (
-                e.from_id, e.to_id, e.kind.value, e.confidence,
-                e.confidence_tier.value, json.dumps(e.metadata, default=str),
-            )
-            for e in edges
-        ]
-        def _run() -> None:
-            with self._lock:
-                conn = self._connect()
-                conn.execute("BEGIN IMMEDIATE")
-                try:
-                    # Explicitly remove edges whose from_id belongs to this
-                    # file (no FK cascade since cross-file edges are valid).
-                    conn.execute(
-                        "DELETE FROM edges WHERE from_id IN "
-                        "(SELECT id FROM nodes WHERE path = ?)",
-                        (path,),
-                    )
-                    conn.execute("DELETE FROM nodes WHERE path = ?", (path,))
-                    if node_rows:
-                        conn.executemany(
-                            """INSERT OR REPLACE INTO nodes
-                                 (id, kind, source, name, path,
-                                  start_line, end_line, language, content_hash,
-                                  file_hash, summary, is_dead_code, community_id,
-                                  metadata, updated_at)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                            node_rows,
-                        )
-                    if edge_rows:
-                        conn.executemany(
-                            """INSERT OR REPLACE INTO edges
-                                 (from_id, to_id, kind, confidence,
-                                  confidence_tier, metadata)
-                               VALUES (?,?,?,?,?,?)""",
-                            edge_rows,
-                        )
-                    conn.commit()
-                except Exception:
-                    conn.rollback()
-                    raise
-        await asyncio.to_thread(_run)
+        await _node_store.replace_file(self._db, path, nodes, edges)
 
     async def get_node(self, node_id: str) -> Node | None:
-        def _run() -> Node | None:
-            with self._lock:
-                conn = self._connect()
-                row = conn.execute(
-                    "SELECT * FROM nodes WHERE id = ?", (node_id,)
-                ).fetchone()
-                return _row_to_node(row) if row else None
-        return await asyncio.to_thread(_run)
+        return await _node_store.get_node(self._db, node_id)
 
     async def get_nodes_by_name(self, name: str, limit: int = 10) -> list[Node]:
-        def _run() -> list[Node]:
-            with self._lock:
-                conn = self._connect()
-                rows = conn.execute(
-                    "SELECT * FROM nodes WHERE name = ? LIMIT ?", (name, limit)
-                ).fetchall()
-                return [_row_to_node(r) for r in rows]
-        return await asyncio.to_thread(_run)
+        return await _node_store.get_nodes_by_name(self._db, name, limit)
 
     async def get_content_hashes(self) -> dict[str, str]:
-        def _run() -> dict[str, str]:
-            with self._lock:
-                conn = self._connect()
-                rows = conn.execute(
-                    "SELECT path, file_hash FROM nodes WHERE file_hash IS NOT NULL"
-                ).fetchall()
-                return {r["path"]: r["file_hash"] for r in rows}
-        return await asyncio.to_thread(_run)
+        return await _node_store.get_content_hashes(self._db)
 
     async def get_file_hash(self, path: str) -> str | None:
-        def _run() -> str | None:
-            with self._lock:
-                conn = self._connect()
-                row = conn.execute(
-                    "SELECT file_hash FROM nodes WHERE path = ? LIMIT 1", (path,)
-                ).fetchone()
-                return row["file_hash"] if row else None
-        return await asyncio.to_thread(_run)
+        return await _node_store.get_file_hash(self._db, path)
 
     async def blast_radius(self, node_id: str, depth: int = 3) -> list[Node]:
         def _run() -> list[Node]:
