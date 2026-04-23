@@ -28,7 +28,7 @@ def test_build_server_uses_db_path_when_no_graph(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
-    """All 10 tools should be registered."""
+    """All 12 tools should be registered."""
     expected = {
         "search_code",
         "get_node",
@@ -40,6 +40,8 @@ async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
         "shortest_path",
         "graph_stats",
         "god_nodes",
+        "store_understanding",
+        "store_understanding_batch",
     }
     g = LoomGraph(db_path=tmp_path / "loom.db")
     try:

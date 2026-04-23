@@ -51,6 +51,7 @@ from loom.cli.graph import (  # noqa: E402, F401
     callers,
     query,
     stats,
+    summaries,
 )
 from loom.cli.ingest import analyze, serve, sync  # noqa: E402, F401
 from loom.cli.install import install  # noqa: E402, F401
@@ -70,4 +71,5 @@ __all__ = [
     "dead_code",
     "install",
     "export_graph",
+    "summaries",
 ]

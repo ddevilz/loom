@@ -152,4 +152,51 @@ def build_server(
             for n, deg in pairs
         ]
 
+    @mcp.tool()
+    async def store_understanding_batch(updates: list[dict]) -> dict:
+        """Cache summaries for multiple nodes in one call. Max 50 per call.
+
+        Args:
+            updates: List of {"node_id": str, "summary": str} dicts.
+
+        Returns:
+            {"stored": N, "total": M} — N rows updated out of M submitted.
+        """
+        batch = updates[:50]
+        stored = 0
+        for item in batch:
+            nid = str(item.get("node_id", "")).strip()
+            s = str(item.get("summary", "")).strip()
+            if nid and s:
+                ok = await graph.update_summary(nid, s)
+                if ok:
+                    stored += 1
+        return {"stored": stored, "total": len(batch)}
+
+    @mcp.tool()
+    async def store_understanding(node_id: str, summary: str) -> dict:
+        """Persist agent-generated understanding of a node back into the graph.
+
+        Use this after reading a function or class to record what it does —
+        the summary becomes searchable and visible to future agents and in
+        `loom export` visualisations.
+
+        Args:
+            node_id: Exact node ID (e.g. "function:src/auth.py:validate_user").
+                     Use search_code first if you only know the name.
+            summary: Plain-English description of what this node does, its
+                     role in the system, known edge cases, or anything useful
+                     for future reasoning. Max 4000 chars.
+
+        Returns:
+            {"ok": true, "node_id": "..."} on success.
+            {"ok": false, "error": "node not found"} if id unknown.
+        """
+        nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+        s = _req_text(summary, field="summary", max_length=4000)
+        updated = await graph.update_summary(nid, s)
+        if not updated:
+            return {"ok": False, "error": "node not found"}
+        return {"ok": True, "node_id": nid}
+
     return mcp
