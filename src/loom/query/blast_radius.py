@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from loom.core.graph import LoomGraph
+from loom.core.context import DB
+from loom.query.traversal import blast_radius as _blast_radius
 
 
 async def build_blast_radius_payload(
-    graph: LoomGraph,
+    db: DB,
     *,
     node_id: str,
     depth: int = 3,
 ) -> dict[str, object]:
-    """Return blast-radius payload for the given node."""
-    nodes = await graph.blast_radius(node_id, depth=depth)
+    nodes = await _blast_radius(db, node_id, depth=depth)
     return {
         "node_id": node_id,
         "depth": depth,
