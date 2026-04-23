@@ -5,33 +5,12 @@ from pathlib import Path
 import pytest
 
 from loom.core import Edge, EdgeType, LoomGraph, Node, NodeKind, NodeSource
-<<<<<<< HEAD
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_graph_bulk_and_query_roundtrip(tmp_path: Path) -> None:
     g = LoomGraph(db_path=tmp_path / "loom.db")
-=======
-from loom.core.falkor import cypher
-
-
-def _falkordb_reachable(host: str = "127.0.0.1", port: int = 6379) -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=1.0):
-            return True
-    except OSError:
-        return False
-
-
-@pytest.mark.integration
-async def test_graph_bulk_and_query_roundtrip():
-    if not _falkordb_reachable():
-        pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
-
-    g = LoomGraph(graph_name="loom_pytest")
-    await g.query(cypher.CLEAR_GRAPH)
->>>>>>> main
 
     nodes = [
         Node(
@@ -61,17 +40,9 @@ async def test_graph_bulk_and_query_roundtrip():
 
     await g.bulk_upsert_edges(edges)
 
-<<<<<<< HEAD
     stats = await g.stats()
     assert stats["nodes"] == 10
     assert stats["edges"] == 5
-=======
-    labeled = await g.query("MATCH (n:Function) RETURN count(n) AS c")
-    assert labeled[0]["c"] == 10
-
-    count_rows = await g.query(cypher.COUNT_NODES)
-    assert count_rows[0]["c"] == 10
->>>>>>> main
 
     n0 = await g.get_node(nodes[0].id)
     assert n0 is not None

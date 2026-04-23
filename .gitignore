@@ -5,8 +5,5 @@ __pycache__/
 .mypy_cache
 .pytest_cache
 .ruff_cache
-<<<<<<< HEAD
 .claude/
 docs/superpowers/
-=======
->>>>>>> main

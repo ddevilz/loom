@@ -6,11 +6,7 @@ Demonstrates: functions, type hints, decorators, lambda expressions
 import time
 from collections.abc import Callable
 from functools import wraps
-<<<<<<< HEAD
 from typing import Any, TypeVar
-=======
-from typing import Any, Generic, TypeVar
->>>>>>> main
 
 T = TypeVar("T")
 

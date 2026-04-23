@@ -2,15 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-<<<<<<< HEAD
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 from tree_sitter_language_pack import get_language as _get_ts_language
-=======
-from tree_sitter import Language, Parser
-from tree_sitter import Node as TSNode
-from tree_sitter_rust import language as rust_language
->>>>>>> main
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
@@ -34,11 +28,7 @@ from loom.ingest.code.languages.constants import (
     TS_RUST_TRAIT_ITEM,
 )
 
-<<<<<<< HEAD
 _RUST_LANGUAGE = _get_ts_language("rust")
-=======
-_RUST_LANGUAGE = Language(rust_language())
->>>>>>> main
 
 
 def _extract_from_def(

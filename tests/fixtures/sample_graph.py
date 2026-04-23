@@ -64,47 +64,7 @@ def build_sample_graph():
     for s, t in calls:
         edges.append(Edge(from_id=fid[s], to_id=fid[t], kind=EdgeType.CALLS))
 
-<<<<<<< HEAD
     # Structural edge
-=======
-    # A few non-calls structural edges
-    edges.extend(
-        [
-            Edge(from_id=fid["x"], to_id=fid["validate_user"], kind=EdgeType.IMPORTS),
-            Edge(
-                from_id=fid["validate_user"],
-                to_id=fid["hash_pw"],
-                kind=EdgeType.USES_TYPE,
-            ),
-        ]
-    )
-
-    # Cross-domain links (use LOOM_* edges)
-    edges.extend(
-        [
-            Edge(
-                from_id=fid["validate_user"],
-                to_id="doc:spec.pdf:1.0",
-                kind=EdgeType.LOOM_IMPLEMENTS,
-                confidence=0.8,
-                link_method="embed_match",
-                link_reason="validate_user mentioned in spec section 1.0",
-                metadata={"score": 0.8},
-            ),
-            Edge(
-                from_id=fid["parse_token"],
-                to_id="doc:spec.pdf:2.0",
-                kind=EdgeType.LOOM_VIOLATES,
-                confidence=0.6,
-                link_method="embed_match",
-                link_reason="embedding similarity",
-                metadata={"score": 0.6},
-            ),
-        ]
-    )
-
-    # Structural cross-domain IMPLEMENTS edge (Function -> Section) to satisfy the acceptance Cypher query.
->>>>>>> main
     edges.append(
         Edge(from_id=fid["x"], to_id=fid["validate_user"], kind=EdgeType.IMPORTS)
     )
@@ -131,13 +91,7 @@ def build_searchable_sample_graph():
                 )
             )
         else:
-<<<<<<< HEAD
             nodes.append(node.model_copy(update={"summary": node.name}))
-=======
-            nodes.append(
-                node.model_copy(update={"summary": node.name, "embedding": [0.0, 1.0]})
-            )
->>>>>>> main
 
     return {
         "nodes": nodes,

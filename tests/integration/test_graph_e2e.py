@@ -6,12 +6,7 @@ from pathlib import Path
 
 import pytest
 
-<<<<<<< HEAD
 from loom.core import LoomGraph, Node, NodeKind, NodeSource
-=======
-from loom.core import LoomGraph
-from loom.core.falkor import cypher
->>>>>>> main
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -19,18 +14,9 @@ from fixtures.sample_graph import build_sample_graph
 
 
 @pytest.mark.integration
-<<<<<<< HEAD
 @pytest.mark.asyncio
 async def test_graph_e2e_foundation(tmp_path: Path) -> None:
     g = LoomGraph(db_path=tmp_path / "loom.db")
-=======
-async def test_graph_e2e_foundation():
-    if not _falkordb_reachable():
-        pytest.skip("FalkorDB not reachable on 127.0.0.1:6379")
-
-    g = LoomGraph(graph_name="loom_pytest_e2e")
-    await g.query(cypher.CLEAR_GRAPH)
->>>>>>> main
 
     fixture = build_sample_graph()
     nodes = fixture["nodes"]
@@ -40,14 +26,8 @@ async def test_graph_e2e_foundation():
     await g.bulk_upsert_nodes(nodes)
     await g.bulk_upsert_edges(edges)
 
-<<<<<<< HEAD
     stats = await g.stats()
     assert stats["nodes"] == 15
-=======
-    # 15 function nodes + 2 doc sections
-    count = (await g.query(cypher.COUNT_NODES))[0]["c"]
-    assert count == 17
->>>>>>> main
 
     # Blast radius from x: who calls x transitively?
     # x calls a,b,c; a calls d,e; b calls f,g; c calls h; h→i→j; d→k
@@ -68,18 +48,10 @@ async def test_graph_e2e_foundation():
     assert {"a", "b", "c"}.issubset(callee_names)
     assert {"d", "e", "f", "g", "h"}.issubset(callee_names)
 
-<<<<<<< HEAD
     # get_node round-trip
     node = await g.get_node(fid["validate_user"])
     assert node is not None
     assert node.name == "validate_user"
-=======
-    # Performance: bulk insert 100 nodes under 1 second
-    await g.query(cypher.CLEAR_GRAPH)
-    fixture2 = build_sample_graph()
-    await g.bulk_create_nodes(fixture2["nodes"])
-    await g.bulk_create_edges(fixture2["edges"])
->>>>>>> main
 
     # Neighbors of validate_user at depth=2 should include parse_token, hash_pw, k
     neigh = await g.neighbors(fid["validate_user"], depth=2)
