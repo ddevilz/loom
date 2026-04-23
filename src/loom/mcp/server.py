@@ -3,24 +3,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from loom.core import LoomGraph
-from loom.core.falkor.mappers import deserialize_metadata_value
-from loom.ingest.git_linker import link_commits_to_tickets
-from loom.ingest.utils import (
-    get_code_nodes_for_linking,
-    get_doc_nodes_for_linking,
-)
-from loom.linker.linker import SemanticLinker
+from loom.core.edge import EdgeType
+from loom.core.graph import LoomGraph
 from loom.query.blast_radius import build_blast_radius_payload
-from loom.query.traceability import (
-    ast_drift_rows_for_node,
-    callers_of_node,
-    impact_of_ticket,
-    ticket_rows_by_id,
-    tickets_for_function,
-    unimplemented_tickets,
-)
-from loom.search.searcher import search
+from loom.query.search import search
 
 logger = logging.getLogger(__name__)
 
@@ -29,295 +15,141 @@ try:
 except ImportError:  # pragma: no cover
     FastMCP = None  # type: ignore
 
-_MAX_QUERY_LENGTH = 1000
-_MAX_IDENTIFIER_LENGTH = 512
+_MAX_QUERY = 1000
+_MAX_ID = 512
 
 
-def _row_to_ast_drift(row: dict[str, object]) -> dict[str, object] | None:
-    node_id = row.get("node_id")
-    if not isinstance(node_id, str):
-        return None
-    reasons = row.get("reasons")
-    if isinstance(reasons, list):
-        normalized_reasons = [reason for reason in reasons if isinstance(reason, str)]
-    else:
-        normalized_reasons = []
-    if not normalized_reasons:
-        metadata = deserialize_metadata_value(row.get("metadata"))
-        if isinstance(metadata, dict):
-            metadata_reasons = metadata.get("reasons")
-            if isinstance(metadata_reasons, list):
-                normalized_reasons = [
-                    reason for reason in metadata_reasons if isinstance(reason, str)
-                ]
-    if not normalized_reasons:
-        link_reason = row.get("link_reason")
-        if isinstance(link_reason, str) and link_reason:
-            normalized_reasons = [
-                part.strip() for part in link_reason.split(";") if part.strip()
-            ]
-    return {"node_id": node_id, "reasons": normalized_reasons}
+def _clamp_limit(n: int) -> int:
+    return max(1, min(n, 100))
 
 
-def _require_non_empty_text(value: str, *, field_name: str, max_length: int) -> str:
-    normalized = value.strip()
-    if not normalized:
-        raise ValueError(f"{field_name} must be non-empty")
-    if len(normalized) > max_length:
-        raise ValueError(f"{field_name} must be <= {max_length} characters")
-    return normalized
+def _clamp_depth(d: int) -> int:
+    return max(1, min(d, 10))
 
 
-def _format_caller_row(row: dict[str, object]) -> dict[str, object] | None:
-    node_id = row.get("id")
-    name = row.get("name")
-    path = row.get("path")
-    if (
-        not isinstance(node_id, str)
-        or not isinstance(name, str)
-        or not isinstance(path, str)
-    ):
-        return None
-    confidence = row.get("confidence")
-    return {
-        "id": node_id,
-        "name": name,
-        "path": path,
-        "confidence": float(confidence)
-        if isinstance(confidence, (int, float))
-        else 0.0,
-    }
+def _req_text(value: str, *, field: str, max_length: int) -> str:
+    v = value.strip()
+    if not v:
+        raise ValueError(f"{field} must be non-empty")
+    if len(v) > max_length:
+        raise ValueError(f"{field} must be <= {max_length} characters")
+    return v
 
 
-def build_server(graph_name: str = "loom", *, graph: LoomGraph | None = None):
+def build_server(
+    db_path: Path | None = None,
+    *,
+    graph: LoomGraph | None = None,
+) -> FastMCP:
+    """Build and return the FastMCP server with all 10 tools registered."""
     if FastMCP is None:
-        raise RuntimeError("fastmcp is not available")
-
+        raise RuntimeError("fastmcp not installed — run: uv add fastmcp")
     mcp = FastMCP("loom")
     if graph is None:
-        graph = LoomGraph(graph_name=graph_name)
-
-    def _clamp_limit(limit: int) -> int:
-        return max(1, min(limit, 100))
-
-    def _clamp_depth(depth: int) -> int:
-        return max(1, min(depth, 10))
+        graph = LoomGraph(db_path=db_path)
 
     @mcp.tool()
-    async def search_code(query: str, limit: int = 10) -> list[dict[str, object]]:
-        """Search for code and documentation nodes using semantic similarity.
-
-        Uses nomic-embed-text vector search combined with name-match fallback.
-        Returns nodes ranked by relevance score. Use this to find functions,
-        classes, or doc sections related to a concept before calling other tools.
-
-        Args:
-            query: Natural-language description of what you're looking for.
-            limit: Maximum results to return (1–100, default 10).
-        """
-        query = _require_non_empty_text(
-            query, field_name="query", max_length=_MAX_QUERY_LENGTH
-        )
-        results = await search(query, graph, limit=_clamp_limit(limit))
+    async def search_code(query: str, limit: int = 10) -> list[dict]:
+        """Search nodes by name/summary/path via FTS5 or LIKE."""
+        q = _req_text(query, field="query", max_length=_MAX_QUERY)
+        results = await search(q, graph, limit=_clamp_limit(limit))
         return [
             {
                 "id": r.node.id,
                 "name": r.node.name,
                 "path": r.node.path,
+                "kind": r.node.kind.value,
                 "score": r.score,
             }
             for r in results
         ]
 
     @mcp.tool()
-    async def get_callers(node_id: str) -> list[dict[str, object]]:
-        """Return all functions/methods that directly call the given node.
-
-        Traverses one hop of incoming CALLS edges. Each result includes the
-        caller's id, name, file path, and confidence score of the edge.
-        Use get_blast_radius for the full transitive caller tree.
-
-        Args:
-            node_id: The exact node id (e.g. py::src/loom/query/blast_radius.py::build_blast_radius_payload).
-        """
-        node_id = _require_non_empty_text(
-            node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
-        )
-        rows = await callers_of_node(node_id, graph)
-        return [
-            formatted
-            for row in rows
-            if (formatted := _format_caller_row(row)) is not None
-        ]
-
-    @mcp.tool()
-    async def get_spec(node_id: str) -> list[dict[str, object]]:
-        """Return Jira tickets linked to a code node via LOOM_IMPLEMENTS edges.
-
-        Shows which tickets this function/class is implementing. Useful for
-        checking whether a symbol is covered by a spec or requirement.
-
-        Args:
-            node_id: The exact node id of the code symbol to look up.
-        """
-        node_id = _require_non_empty_text(
-            node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
-        )
-        nodes = await tickets_for_function(node_id, graph)
-        return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
-
-    @mcp.tool()
-    async def check_drift(node_id: str) -> dict[str, object]:
-        """Check whether a code node has drifted from its linked documentation.
-
-        Returns AST-level drift records from LOOM_VIOLATES edges — cases where
-        the indexed snapshot of a function no longer matches the spec it was
-        linked to. Returns an empty ast_drift list when there is no recorded drift.
-
-        Args:
-            node_id: The exact node id of the code symbol to inspect.
-        """
-        node_id = _require_non_empty_text(
-            node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
-        )
-        drift_rows = await ast_drift_rows_for_node(node_id, graph)
-        ast_drift = [
-            report
-            for row in drift_rows
-            if row.get("link_method") == "ast_diff"
-            and (report := _row_to_ast_drift(row)) is not None
-        ]
-
-        return {"ast_drift": ast_drift}
-
-    @mcp.tool()
-    async def get_blast_radius(node_id: str, depth: int = 3) -> dict[str, object]:
-        """Return nodes that would be affected if node_id changes.
-
-        Walks incoming CALLS edges transitively (callers of callers) so the
-        result is the true blast radius: every node that depends on this one.
-        Results are ranked by Personalized PageRank on the CALLS subgraph.
-        """
-        node_id = _require_non_empty_text(
-            node_id, field_name="node_id", max_length=_MAX_IDENTIFIER_LENGTH
-        )
-        return await build_blast_radius_payload(
-            graph,
-            node_id=node_id,
-            depth=_clamp_depth(depth),
-        )
-
-    @mcp.tool()
-    async def get_impact(ticket_id: str) -> list[dict[str, object]]:
-        """Return code nodes linked to a Jira ticket via LOOM_IMPLEMENTS edges.
-
-        The inverse of get_spec: given a ticket, returns the functions/classes
-        that implement it. Useful for understanding the code impact of a ticket
-        or for validating that a ticket is fully implemented.
-
-        Args:
-            ticket_id: Jira ticket key (e.g. LOOM-42) or full node id.
-        """
-        ticket_id = _require_non_empty_text(
-            ticket_id, field_name="ticket_id", max_length=_MAX_IDENTIFIER_LENGTH
-        )
-        nodes = await impact_of_ticket(ticket_id, graph)
-        return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
-
-    @mcp.tool()
-    async def get_ticket(ticket_id: str) -> list[dict[str, object]]:
-        """Fetch raw Jira ticket data from the graph by ticket key or node id.
-
-        Returns the ticket's id, name, summary, path, and metadata as stored
-        in FalkorDB. Use this to read ticket details (title, description) before
-        reasoning about code-to-spec alignment.
-
-        Args:
-            ticket_id: Jira ticket key (e.g. LOOM-42) or exact node id.
-        """
-        ticket_id = _require_non_empty_text(
-            ticket_id, field_name="ticket_id", max_length=_MAX_IDENTIFIER_LENGTH
-        )
-        return await ticket_rows_by_id(ticket_id, graph)
-
-    @mcp.tool()
-    async def unimplemented() -> list[dict[str, object]]:
-        """Return Jira tickets that have no linked code nodes (unimplemented tickets).
-
-        A ticket is unimplemented when it has no LOOM_IMPLEMENTS edges pointing
-        to it from any code symbol. Useful for finding spec gaps: requirements
-        that exist in Jira but are not yet reflected in the codebase.
-        """
-        nodes = await unimplemented_tickets(graph)
-        return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
-
-    @mcp.tool()
-    async def relink(
-        repo_path: str | None = None,
-        embedding_threshold: float = 0.85,
-    ) -> dict[str, object]:
-        """Re-run the semantic linker and git-commit linker without re-indexing.
-
-        Fetches all code nodes and markdown doc nodes already in the graph and
-        re-creates LOOM_IMPLEMENTS edges. Does two passes:
-          1. Embedding similarity (code ↔ markdown docs).
-          2. Git-commit linking (code ↔ Jira tickets via commit messages).
-
-        If repo_path is not provided, the repo path stored during the last
-        `loom index` run is recovered from the graph (_LoomMeta node).
-
-        Args:
-            repo_path: Root of the git repo. Inferred from graph if omitted.
-            embedding_threshold: Minimum cosine similarity for IMPLEMENTS edge (default 0.85).
-        """
-        # Resolve repo_path — fall back to _LoomMeta stored during last index run
-        resolved_repo: Path | None = None
-        if repo_path:
-            resolved_repo = Path(repo_path)
-        else:
-            meta_rows = await graph.query(
-                "MATCH (m:_LoomMeta {key: 'repo_path'}) RETURN m.value AS value",
-                {},
-            )
-            if meta_rows:
-                stored = meta_rows[0].get("value")
-                if isinstance(stored, str) and stored:
-                    resolved_repo = Path(stored)
-                    logger.info("relink: recovered repo_path from graph: %s", stored)
-            if resolved_repo is None:
-                logger.warning(
-                    "relink: no repo_path provided and none stored in graph — "
-                    "git-based linking will be skipped"
-                )
-
-        code_nodes = await get_code_nodes_for_linking(graph)
-        all_doc_nodes = await get_doc_nodes_for_linking(graph)
-        # Only link markdown doc nodes — Jira ticket linking is handled by git_linker
-        doc_nodes = [n for n in all_doc_nodes if not (n.path or "").startswith("jira://")]
-
-        embed_edges_created = 0
-        if code_nodes and doc_nodes:
-            linker = SemanticLinker(
-                embedding_threshold=max(0.0, min(1.0, embedding_threshold)),
-            )
-            embed_edges = await linker.link(code_nodes, doc_nodes, graph)
-            embed_edges_created = len(embed_edges)
-
-        git_edges_created = 0
-        if resolved_repo is not None:
-            git_edges = await link_commits_to_tickets(resolved_repo, graph)
-            git_edges_created = len(git_edges)
-
-        total = embed_edges_created + git_edges_created
-        result: dict[str, object] = {
-            "edges_created": total,
-            "embed_edges_created": embed_edges_created,
-            "git_edges_created": git_edges_created,
-            "code_nodes": len(code_nodes),
-            "doc_nodes": len(doc_nodes),
+    async def get_node(node_id: str) -> dict | None:
+        """Return a single node by id."""
+        nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+        n = await graph.get_node(nid)
+        if n is None:
+            return None
+        return {
+            "id": n.id,
+            "name": n.name,
+            "path": n.path,
+            "kind": n.kind.value,
+            "language": n.language,
+            "summary": n.summary,
+            "start_line": n.start_line,
+            "end_line": n.end_line,
         }
-        if not code_nodes and not doc_nodes and resolved_repo is None:
-            result["message"] = "Nothing to link — index code and docs first."
-        return result
+
+    @mcp.tool()
+    async def get_callers(node_id: str) -> list[dict]:
+        """One-hop incoming CALLS — functions that call this node."""
+        nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+        nodes = await graph.neighbors(
+            nid, depth=1, edge_types=[EdgeType.CALLS], direction="in"
+        )
+        return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
+
+    @mcp.tool()
+    async def get_callees(node_id: str) -> list[dict]:
+        """One-hop outgoing CALLS — functions this node calls."""
+        nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+        nodes = await graph.neighbors(
+            nid, depth=1, edge_types=[EdgeType.CALLS], direction="out"
+        )
+        return [{"id": n.id, "name": n.name, "path": n.path} for n in nodes]
+
+    @mcp.tool()
+    async def get_blast_radius(node_id: str, depth: int = 3) -> dict:
+        """Transitive callers via SQLite recursive CTE (who calls this, transitively)."""
+        nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+        return await build_blast_radius_payload(
+            graph, node_id=nid, depth=_clamp_depth(depth)
+        )
+
+    @mcp.tool()
+    async def get_neighbors(node_id: str, depth: int = 1) -> list[dict]:
+        """Generic neighbor traversal across all edge kinds, both directions."""
+        nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+        nodes = await graph.neighbors(nid, depth=_clamp_depth(depth))
+        return [
+            {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value}
+            for n in nodes
+        ]
+
+    @mcp.tool()
+    async def get_community(community_id: str) -> list[dict]:
+        """Return all member nodes of a community cluster."""
+        cid = _req_text(community_id, field="community_id", max_length=_MAX_ID)
+        nodes = await graph.community_members(cid)
+        return [
+            {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value}
+            for n in nodes
+        ]
+
+    @mcp.tool()
+    async def shortest_path(from_id: str, to_id: str) -> list[dict] | None:
+        """Shortest directed path on CALLS subgraph, from_id → to_id."""
+        fid = _req_text(from_id, field="from_id", max_length=_MAX_ID)
+        tid = _req_text(to_id, field="to_id", max_length=_MAX_ID)
+        path = await graph.shortest_path(fid, tid)
+        if path is None:
+            return None
+        return [{"id": n.id, "name": n.name, "path": n.path} for n in path]
+
+    @mcp.tool()
+    async def graph_stats() -> dict:
+        """Node/edge counts broken down by kind."""
+        return await graph.stats()
+
+    @mcp.tool()
+    async def god_nodes(limit: int = 20) -> list[dict]:
+        """Highest in-degree on CALLS subgraph (most-called functions)."""
+        pairs = await graph.god_nodes(_clamp_limit(limit))
+        return [
+            {"id": n.id, "name": n.name, "path": n.path, "in_degree": deg}
+            for n, deg in pairs
+        ]
 
     return mcp

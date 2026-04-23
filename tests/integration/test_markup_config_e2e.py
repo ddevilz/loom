@@ -239,21 +239,21 @@ def test_css_file_parsing():
         --primary-color: #007bff;
         --secondary-color: #6c757d;
     }
-    
+
     .container {
         max-width: 1200px;
     }
-    
+
     #header {
         background-color: var(--primary-color);
     }
-    
+
     @media (max-width: 768px) {
         .container {
             max-width: 100%;
         }
     }
-    
+
     @keyframes fadeIn {
         from { opacity: 0; }
         to { opacity: 1; }

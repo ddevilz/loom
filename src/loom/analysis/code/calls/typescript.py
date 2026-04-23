@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
-from tree_sitter_typescript import language_tsx, language_typescript
+from tree_sitter import Parser
+from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
-from loom.core import Edge, EdgeOrigin, EdgeType, Node, NodeKind
+from loom.core import Edge, EdgeType, Node, NodeKind
 
-_TS_LANGUAGE = Language(language_typescript())
-_TSX_LANGUAGE = Language(language_tsx())
+_TS_LANGUAGE = _get_ts_language("typescript")
+_TSX_LANGUAGE = _get_ts_language("tsx")
 
 _TS_CALL = "call_expression"
 _TS_IDENTIFIER = "identifier"
@@ -124,7 +124,6 @@ def trace_calls_for_ts_file(path: str, nodes: list[Node]) -> list[Edge]:
                 from_id=caller.id,
                 to_id=callee_node.id if callee_node else f"unresolved:{callee_name}",
                 kind=EdgeType.CALLS,
-                origin=EdgeOrigin.COMPUTED,
                 confidence=confidence,
                 metadata=metadata,
             )

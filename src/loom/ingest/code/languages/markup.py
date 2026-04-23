@@ -97,6 +97,8 @@ from loom.ingest.code.languages.constants import (
     YAML_KEY_VERSION,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:
     """Extract metadata from HTML files: title, forms, script tags, template variables."""
