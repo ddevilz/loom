@@ -82,11 +82,61 @@ async def update_summary(db: DB, node_id: str, summary: str) -> bool:
         with db._lock:
             conn = db.connect()
             cur = conn.execute(
-                "UPDATE nodes SET summary = ?, updated_at = ? WHERE id = ?",
+                """UPDATE nodes
+                      SET summary = ?,
+                          summary_hash = content_hash,
+                          updated_at = ?
+                    WHERE id = ?""",
                 (summary.strip(), int(time.time()), node_id),
             )
             conn.commit()
             return cur.rowcount > 0
+    return await asyncio.to_thread(_run)
+
+
+async def mark_nodes_deleted(db: DB, path: str) -> int:
+    """Soft-delete all active nodes for a file path.
+
+    Args:
+        db: Database context.
+        path: Relative file path (e.g. 'src/auth.py').
+
+    Returns:
+        Number of nodes marked deleted.
+    """
+    def _run() -> int:
+        with db._lock:
+            conn = db.connect()
+            cur = conn.execute(
+                "UPDATE nodes SET deleted_at = ? WHERE path = ? AND deleted_at IS NULL",
+                (int(time.time()), path),
+            )
+            conn.commit()
+            return cur.rowcount
+    return await asyncio.to_thread(_run)
+
+
+async def prune_tombstones(db: DB, *, older_than_days: int = 30) -> int:
+    """Permanently delete soft-deleted nodes older than N days.
+
+    Args:
+        db: Database context.
+        older_than_days: Age threshold in days.
+
+    Returns:
+        Number of nodes permanently deleted.
+    """
+    cutoff = int(time.time()) - (older_than_days * 86400)
+
+    def _run() -> int:
+        with db._lock:
+            conn = db.connect()
+            cur = conn.execute(
+                "DELETE FROM nodes WHERE deleted_at IS NOT NULL AND deleted_at < ?",
+                (cutoff,),
+            )
+            conn.commit()
+            return cur.rowcount
     return await asyncio.to_thread(_run)
 
 
@@ -131,9 +181,19 @@ async def bulk_upsert_nodes(db: DB, nodes: list[Node]) -> None:
                      path=excluded.path, start_line=excluded.start_line,
                      end_line=excluded.end_line, language=excluded.language,
                      content_hash=excluded.content_hash, file_hash=excluded.file_hash,
-                     summary=excluded.summary, is_dead_code=excluded.is_dead_code,
+                     summary=CASE
+                         WHEN excluded.summary IS NOT NULL AND nodes.summary IS NULL
+                         THEN excluded.summary
+                         ELSE nodes.summary
+                     END,
+                     is_dead_code=excluded.is_dead_code,
                      community_id=excluded.community_id, metadata=excluded.metadata,
-                     updated_at=excluded.updated_at""",
+                     updated_at=CASE
+                         WHEN excluded.content_hash IS NOT NULL
+                              AND excluded.content_hash != COALESCE(nodes.content_hash, '')
+                         THEN excluded.updated_at
+                         ELSE nodes.updated_at
+                     END""",
                 rows,
             )
             conn.commit()

@@ -43,15 +43,18 @@ CREATE TABLE IF NOT EXISTS nodes (
     content_hash    TEXT,
     file_hash       TEXT,
     summary         TEXT,
+    summary_hash    TEXT,
     is_dead_code    INTEGER NOT NULL DEFAULT 0,
     community_id    TEXT,
     metadata        TEXT NOT NULL DEFAULT '{}',
-    updated_at      INTEGER NOT NULL
+    updated_at      INTEGER NOT NULL,
+    deleted_at      INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
 CREATE INDEX IF NOT EXISTS idx_nodes_path ON nodes(path);
 CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
 CREATE INDEX IF NOT EXISTS idx_nodes_lang ON nodes(language);
+CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at);
 
 CREATE TABLE IF NOT EXISTS edges (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,6 +76,14 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id          TEXT PRIMARY KEY,
+    agent_id    TEXT NOT NULL DEFAULT 'default',
+    started_at  INTEGER NOT NULL,
+    metadata    TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id, started_at DESC);
 """
 
 _DDL_FTS5 = """
@@ -98,8 +109,31 @@ END;
 """
 
 
+def _add_column_if_missing(
+    conn: sqlite3.Connection, table: str, col: str, typedef: str
+) -> None:
+    """Add a column to an existing table if it doesn't already exist.
+
+    SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS.
+    Uses PRAGMA table_info as workaround.
+
+    Args:
+        conn: SQLite connection.
+        table: Table name.
+        col: Column name to add.
+        typedef: Column type + constraints (e.g. 'TEXT', 'INTEGER DEFAULT 0').
+    """
+    cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+    if col not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}")
+        conn.commit()
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(_DDL_CORE)
     if has_fts5(conn):
         conn.executescript(_DDL_FTS5)
     conn.commit()
+    # Migrations for existing databases (idempotent)
+    _add_column_if_missing(conn, "nodes", "summary_hash", "TEXT")
+    _add_column_if_missing(conn, "nodes", "deleted_at", "INTEGER")

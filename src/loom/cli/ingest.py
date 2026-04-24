@@ -57,3 +57,22 @@ def serve(ctx: typer.Context) -> None:
     db = ctx.obj["db"]
     mcp = build_server(db=db)
     mcp.run()
+
+
+@app.command()
+def context(
+    ctx: typer.Context,
+    module: str | None = typer.Option(None, "--module", "-m", help="Zoom into one module"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> None:
+    """Print compressed codebase overview for agent session startup (~200 tokens)."""
+    import json as _json
+    from loom.query.primer import build_primer
+
+    db = ctx.obj["db"]
+    result = asyncio.run(build_primer(db, module=module, as_json=json_output))
+
+    if json_output:
+        console.print(_json.dumps(result, indent=2, default=str))
+    else:
+        console.print(result)
