@@ -12,6 +12,7 @@ from loom.analysis.code.calls.python import (
     trace_calls_for_file_with_global_symbols,
 )
 from loom.analysis.communities import compute_communities
+from loom.analysis.code.extractor import extract_summary
 from loom.analysis.coupling import compute_coupling
 from loom.analysis.dead_code import mark_dead_code
 from loom.core.context import DB
@@ -22,6 +23,8 @@ from loom.ingest.code.registry import get_registry
 from loom.ingest.code.walker import walk_repo
 from loom.ingest.utils import sha256_of_file
 from loom.store import nodes as node_store
+from loom.store.nodes import mark_nodes_deleted, prune_tombstones
+from loom.store.sessions import prune_sessions
 from loom.analysis.code.parser import parse_code
 
 logger = logging.getLogger(__name__)
@@ -267,6 +270,40 @@ async def index_repo(
     except Exception as exc:
         logger.warning("mark_dead_code failed: %s", exc)
 
+    # Fill auto-summaries for nodes that have none (never overwrites agent summaries)
+    try:
+        await _fill_auto_summaries(db)
+    except Exception as exc:
+        logger.warning("auto_summaries failed: %s", exc)
+
+    # Soft-delete files that no longer exist on disk
+    try:
+        current_rel_paths: set[str] = {
+            f.relative_to(repo_path).as_posix() for f in all_files
+        }
+        def _get_indexed_paths() -> list[str]:
+            with db._lock:
+                conn = db.connect()
+                return [
+                    r["path"] for r in conn.execute(
+                        "SELECT DISTINCT path FROM nodes WHERE kind = 'file' AND deleted_at IS NULL"
+                    ).fetchall()
+                ]
+        indexed_paths = await asyncio.to_thread(_get_indexed_paths)
+        for ipath in indexed_paths:
+            if ipath not in current_rel_paths:
+                await mark_nodes_deleted(db, ipath)
+                logger.info("soft-deleted removed file: %s", ipath)
+        await prune_tombstones(db)
+    except Exception as exc:
+        logger.warning("deleted_file_detection failed: %s", exc)
+
+    # Prune old sessions (keep last 20 per agent)
+    try:
+        await prune_sessions(db, keep=20)
+    except Exception as exc:
+        logger.warning("prune_sessions failed: %s", exc)
+
     return IndexResult(
         repo_path=repo_path,
         files_parsed=len(changed),
@@ -275,3 +312,66 @@ async def index_repo(
         edges_written=len(edges_all),
         errors=errors,
     )
+
+
+async def _fill_auto_summaries(db: DB) -> int:
+    """Fill summary for nodes that have none, using static metadata extraction.
+
+    Only fills NULL summaries — never overwrites agent-written summaries.
+
+    Args:
+        db: Database context.
+
+    Returns:
+        Number of nodes updated.
+    """
+    import json as _json
+
+    def _get_null_summary_nodes() -> list[tuple]:
+        with db._lock:
+            conn = db.connect()
+            return conn.execute(
+                "SELECT id, kind, name, path, language, metadata "
+                "FROM nodes WHERE summary IS NULL AND kind NOT IN ('file', 'community') "
+                "AND deleted_at IS NULL"
+            ).fetchall()
+
+    rows = await asyncio.to_thread(_get_null_summary_nodes)
+    if not rows:
+        return 0
+
+    from loom.core.node import Node as _Node, NodeKind as _NK, NodeSource as _NS
+
+    updates: list[tuple[str, str]] = []
+    for row in rows:
+        try:
+            metadata = _json.loads(row["metadata"]) if row["metadata"] else {}
+            n = _Node(
+                id=row["id"],
+                kind=_NK(row["kind"]),
+                source=_NS.CODE,
+                name=row["name"],
+                path=row["path"],
+                language=row["language"],
+                metadata=metadata,
+            )
+            auto = extract_summary(n)
+            if auto and auto.strip():
+                updates.append((auto, row["id"]))
+        except Exception:
+            continue
+
+    if not updates:
+        return 0
+
+    def _write(items: list[tuple[str, str]]) -> int:
+        with db._lock:
+            conn = db.connect()
+            conn.executemany(
+                "UPDATE nodes SET summary = ? WHERE id = ? AND summary IS NULL",
+                items,
+            )
+            conn.commit()
+            return len(items)
+
+    return await asyncio.to_thread(_write, updates)

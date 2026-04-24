@@ -368,3 +368,365 @@ loom export                     # interactive HTML graph, opens in browser
 ---
 
 *Loom v0.2 — April 2026*
+
+---
+
+## v0.3 Superpowers — Context Layer (Design)
+
+**Goal:** Eliminate file reads. Agent reasons from Loom data alone.
+**Metric:** 8× token savings on first use → 90× on session 2+.
+**Principle:** Zero new LLM cost. All data from tree-sitter + agent summaries.
+
+### Priority Order
+
+1. **Enrich `search_code`** — lowest effort, highest immediate impact
+2. **`get_context` MCP tool** — context packets, single-call reasoning
+3. **Auto-summaries on analyze** — baseline coverage from day zero
+4. **`loom context` CLI / MCP resource** — session primer
+5. **Delta context** — session tracking, v0.4
+
+---
+
+### Feature 1: Enrich `search_code` (P0 — do first)
+
+**Problem:** `search_code` returns `{id, name, path, kind, score}`. Strips summary.
+Agent must call `get_node` separately to see summary. Wastes a round-trip.
+
+**Fix:** Include `summary` and `signature` from metadata in search results:
+
+```python
+# In server.py search_code tool
+return [
+    {
+        "id": r.node.id,
+        "name": r.node.name,
+        "path": r.node.path,
+        "kind": r.node.kind.value,
+        "score": r.score,
+        "summary": r.node.summary,                           # ADD
+        "signature": r.node.metadata.get("signature"),       # ADD
+        "line": r.node.start_line,                           # ADD
+    }
+    for r in results
+]
+```
+
+**Why `signature` is free:** Python/TS/Java parsers already store
+`metadata.signature` during `loom analyze`. No schema change needed.
+
+**Impact:** Agent gets summary + signature in search results.
+If summary exists, agent skips file read entirely. 8× multiplier.
+
+---
+
+### Feature 2: `get_context` MCP tool (P0 — context packets)
+
+**Problem:** To reason about a function, agent needs:
+1. What it does (summary)
+2. What it looks like (signature)
+3. Who calls it (callers)
+4. What it calls (callees)
+
+Currently 4 separate MCP tool calls. Should be 1.
+
+**Design:** Single SQL query with edge JOINs:
+
+```python
+@mcp.tool()
+async def get_context(node_id: str) -> dict | None:
+    """Everything an agent needs to reason about a function — one call.
+
+    Returns summary, signature, callers, callees, and community.
+    If the summary exists, you do NOT need to read the source file.
+    """
+    # 1. Get node
+    # 2. Get callers (edges WHERE to_id = node_id AND kind = 'calls')
+    # 3. Get callees (edges WHERE from_id = node_id AND kind = 'calls')
+    # All in one _run() with db._lock
+```
+
+**Return shape (~80 tokens):**
+
+```json
+{
+    "id": "function:src/auth.py:validate_token",
+    "name": "validate_token",
+    "path": "src/auth.py",
+    "line": 42,
+    "signature": "validate_token(token: str, secret: str) -> bool",
+    "summary": "Validates JWT tokens, returns False if expired or malformed.",
+    "callers": [{"name": "login_handler", "path": "src/routes.py"}],
+    "callees": [{"name": "decode_jwt", "path": "src/crypto.py"}],
+    "community_id": "auth-cluster",
+    "is_stale": false
+}
+```
+
+**Staleness detection:** Compare `content_hash` at summary-write time vs current.
+Add `summary_hash TEXT` column to `nodes` — stores content_hash when summary was
+written. If `content_hash != summary_hash`, mark `is_stale: true`. Agent knows
+to re-read source and update summary.
+
+**Schema change needed:**
+
+```sql
+ALTER TABLE nodes ADD COLUMN summary_hash TEXT;
+-- Set when store_understanding writes a summary
+-- Compared against content_hash to detect staleness
+```
+
+**Cap callers/callees at 10 each** in response. Mention `"callers_total": 47`
+if truncated so agent knows more exist.
+
+---
+
+### Feature 3: Auto-summaries on `loom analyze` (P1)
+
+**Problem:** Without agent-written summaries, search results have no summary.
+Agent must read file. The cold-start problem.
+
+**Solution:** `extract_summary()` already exists in `analysis/code/extractor.py`.
+It builds structured text from metadata (params, return type, docstring) — zero LLM.
+But it's never called during the analyze pipeline.
+
+**Fix:** Call `extract_summaries()` in `index_repo()` before storing nodes.
+Only for nodes that don't already have an agent-written summary.
+
+```python
+# In ingest/pipeline.py index_repo()
+from loom.analysis.code.extractor import extract_summaries
+
+# After parsing, before storing:
+nodes = await extract_summaries(nodes)  # fills summary from metadata
+# This preserves agent summaries (they're already set)
+```
+
+**Wait — check `extract_summaries` logic:**
+```python
+def extract_summaries(nodes):
+    return [
+        n if n.summary else n.model_copy(update={"summary": extract_summary(n)})
+        for n in nodes
+    ]
+```
+
+Only fills if `n.summary` is None. Agent summaries preserved. Safe.
+
+**BUT** — there's a problem. `bulk_upsert_nodes` does `ON CONFLICT DO UPDATE SET
+summary=excluded.summary`. If re-analyzing overwrites agent summaries with
+auto-generated ones, that's data loss.
+
+**Fix:** Change upsert to preserve existing non-null summaries:
+
+```sql
+ON CONFLICT(id) DO UPDATE SET
+    summary = CASE
+        WHEN excluded.summary IS NOT NULL AND nodes.summary IS NULL
+        THEN excluded.summary
+        WHEN excluded.summary IS NOT NULL AND nodes.summary_hash IS NOT NULL
+             AND nodes.content_hash != excluded.content_hash
+        THEN excluded.summary  -- source changed, auto-summary is fresher
+        ELSE nodes.summary     -- keep agent summary
+    END,
+```
+
+Actually simpler approach: **don't pass auto-summaries through upsert at all.**
+Run `extract_summaries` as a post-pass UPDATE only on nodes with NULL summary.
+Keeps upsert logic clean.
+
+```python
+# After bulk_upsert_nodes:
+await _fill_auto_summaries(db)  # UPDATE nodes SET summary = ... WHERE summary IS NULL
+```
+
+**Impact:** Every function has a baseline summary from day zero.
+Agent-written summaries override. Auto-summaries are better than nothing.
+Coverage goes from 0% → ~80% immediately after first `loom analyze`.
+
+---
+
+### Feature 4: Session Primer — `loom context` (P1)
+
+**Problem:** Every Claude Code session starts with 3,000-10,000 tokens exploring
+the codebase. Re-reading CLAUDE.md, grepping to orient, re-discovering structure.
+
+**Solution:** 200-token compressed primer. Two delivery mechanisms:
+
+**CLI: `loom context`**
+
+```bash
+$ loom context
+Repo: loom (Python, 47 files, 312 functions, 8 modules)
+Modules: core(78fn) ingest(45fn) mcp(12fn) query(23fn) cli(15fn) analysis(18fn)
+Entry points: build_server(), index_repo(), main()
+Hot functions: search(42 callers), _row_to_node(38), connect(29)
+Summary coverage: 267/312 (86%) — 23 agent-written, 244 auto-generated
+Last analyzed: 2026-04-24 08:30
+```
+
+**MCP resource: `loom://primer`**
+
+```python
+@mcp.resource("loom://primer")
+async def primer() -> str:
+    """Compressed codebase overview. Load at session start."""
+```
+
+Claude Code / Cursor can auto-load MCP resources. Zero-effort onboarding.
+
+**Data sources — all existing:**
+- `graph_stats()` → node/edge counts by kind
+- `god_nodes(5)` → most-called functions (entry points proxy)
+- `SELECT COUNT(*) FROM nodes WHERE summary IS NOT NULL` → coverage
+- `SELECT DISTINCT path FROM nodes` → module clustering (group by first path segment)
+
+**No new tables. No schema changes. Pure view over existing data.**
+
+---
+
+### Feature 5: Delta Context (P2 — v0.4)
+
+**Problem:** Re-reading unchanged functions wastes tokens.
+If agent worked on auth.py yesterday and nothing changed, skip it.
+
+**Revised design (simpler than original brainstorm):**
+
+**Don't track individual node reads. Track session timestamps.**
+
+```sql
+CREATE TABLE sessions (
+    id          TEXT PRIMARY KEY,
+    agent_id    TEXT NOT NULL DEFAULT 'default',
+    started_at  INTEGER NOT NULL,
+    ended_at    INTEGER,
+    node_count  INTEGER DEFAULT 0,     -- how many nodes existed
+    summary_count INTEGER DEFAULT 0    -- how many had summaries
+);
+```
+
+**How it works:**
+
+1. `start_session(agent_id)` → records timestamp, returns session_id
+2. Agent works normally (search, get_context, store_understanding)
+3. Next session: `get_delta(agent_id)` →
+
+```python
+@mcp.tool()
+async def get_delta(agent_id: str = "default") -> dict:
+    """What changed since your last session. Start here."""
+    # Find last session for this agent
+    # SELECT * FROM nodes WHERE updated_at > last_session.started_at
+    # Return context packets for changed nodes only
+```
+
+**Why this is simpler:**
+- No `session_reads` table (was write-heavy per query)
+- Uses existing `nodes.updated_at` — already maintained
+- `content_hash` changes detect source modifications
+- `updated_at` changes detect summary updates
+- One query: `WHERE updated_at > ?`
+
+**Return shape:**
+
+```json
+{
+    "since": "2026-04-23T14:30:00",
+    "changed": [/* context packets for modified nodes */],
+    "new": [/* context packets for new nodes */],
+    "deleted_ids": ["function:src/old.py:removed_fn"],
+    "unchanged": 287,
+    "summary": "3 functions changed in src/auth.py, 1 new file src/billing.py"
+}
+```
+
+**Cleanup:** Keep last 20 sessions per agent. Prune on `loom analyze`.
+
+**Impact:** Session 2+ agent gets ~400 tokens instead of ~8,000.
+Only reads what actually changed. 90× multiplier when 80%+ is cached.
+
+---
+
+### Schema Changes Summary (v0.3)
+
+```sql
+-- Only one new column
+ALTER TABLE nodes ADD COLUMN summary_hash TEXT;
+
+-- Only one new table (can defer to v0.4)
+CREATE TABLE IF NOT EXISTS sessions (
+    id          TEXT PRIMARY KEY,
+    agent_id    TEXT NOT NULL DEFAULT 'default',
+    started_at  INTEGER NOT NULL,
+    ended_at    INTEGER,
+    node_count  INTEGER DEFAULT 0,
+    summary_count INTEGER DEFAULT 0
+);
+```
+
+Update `src/loom/core/db.py` DDL to include both.
+
+---
+
+### New MCP Tools Summary (v0.3)
+
+| Tool | Purpose | Priority |
+|------|---------|----------|
+| `get_context(node_id)` | Context packet — summary + sig + callers + callees | P0 |
+| `start_session(agent_id)` | Begin session tracking | P2 (v0.4) |
+| `get_delta(agent_id)` | Changed nodes since last session | P2 (v0.4) |
+
+**Existing tools to modify:**
+- `search_code` — add `summary`, `signature`, `line` to response
+- `store_understanding` — set `summary_hash = content_hash` when writing
+
+---
+
+### New CLI Commands Summary
+
+| Command | Purpose | Priority |
+|---------|---------|----------|
+| `loom context` | Session primer (200-token codebase overview) | P1 |
+
+---
+
+### Implementation Order
+
+```
+v0.3.0 — Context Packets (ship for Show HN)
+  1. Enrich search_code with summary + signature + line
+  2. Add get_context MCP tool
+  3. Wire extract_summaries into analyze pipeline
+  4. Add loom context CLI command
+  5. Add summary_hash column + staleness detection
+  6. Add loom://primer MCP resource
+
+v0.4.0 — Delta Context
+  7. Add sessions table
+  8. Add start_session / get_delta MCP tools
+  9. Prune old sessions on loom analyze
+```
+
+---
+
+### Defensibility
+
+1. **store_understanding flywheel** — every session makes Loom smarter.
+   No other tool has write-back. Sourcegraph/ctags/LSP are read-only.
+2. **Auto-summaries as floor** — 80% coverage from day zero.
+   Agent summaries raise quality. Both layers compound.
+3. **Delta context is lock-in** — switching tools means re-reading everything.
+   Loom remembers what you know.
+4. **Zero LLM cost** — competitors (Aider repo map, Cursor indexing) burn tokens.
+   Loom piggybacks on work agent already does.
+
+---
+
+### Risks and Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Stale summaries mislead agent | `summary_hash` vs `content_hash` → `is_stale` flag |
+| Auto-summaries low quality | They're structured metadata dumps, not prose. Better than nothing. Agent overwrites with better ones |
+| Callers/callees query slow for hot functions | Cap at 10, return total count. Single SQL with LIMIT |
+| Agent ignores store_understanding | CLAUDE.md instructions + eventually auto-prompt in MCP tool descriptions |
+| Upsert overwrites agent summaries | Post-pass UPDATE for auto-summaries, not in upsert path |
