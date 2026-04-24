@@ -1,6 +1,6 @@
 [project]
 name = "loom-tool"
-version = "0.2.0"
+version = "0.3.0"
 description = "A code intelligence platform that turns repositories, docs, and tickets into one searchable graph."
 readme = "README.md"
 authors = [
@@ -25,6 +25,7 @@ dependencies = [
 
 [project.scripts]
 loom = "loom.cli:main"
+loom-mcp = "loom.mcp.run:run_stdio"
 loom-test = "loom.devtools:run_tests"
 loom-check-deps = "loom.devtools:check_deps"
 
