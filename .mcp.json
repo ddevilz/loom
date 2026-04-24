@@ -1,11 +1,10 @@
 {
   "mcpServers": {
     "loom": {
-      "command": "/Users/devashish/Desktop/loom/.venv/bin/loom",
-      "args": ["serve", "--graph-name", "loom_repo"],
+      "command": "uvx",
+      "args": ["loom-tool"],
       "env": {
-        "LOOM_DB_HOST": "localhost",
-        "LOOM_DB_PORT": "6379"
+        "LOOM_DB_PATH": "~/.loom/loom.db"
       }
     }
   }
