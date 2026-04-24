@@ -1,412 +1,214 @@
-# Loom: Architecture & Codebase Guide
+# Loom: Architecture Guide
 
-This document explains what the Loom project is trying to achieve, and how the main packages/modules fit together.
-
-It is intentionally **high-level** (module and subsystem oriented) rather than a complete function-by-function reference.
+High-level module overview. Not a function reference — for that, run `loom analyze .` on this repo and use `search_code`.
 
 ---
 
 ## System overview
 
-Loom is a graph-backed code intelligence system.
+Loom is a persistent symbol index backed by SQLite. It ingests source code via tree-sitter, stores nodes and edges, and exposes them through a CLI and MCP server.
 
-It ingests:
+```
+flowchart:
 
-- source repositories
-- technical documentation
-- external knowledge sources such as Jira
+Repository → Repo Walker → Language Parsers → Nodes + Edges
+                                                    ↓
+                                           SQLite (loom.db)
+                                                    ↓
+                     ┌──────────────────────────────┘
+                     ↓                    ↓
+                  CLI                 MCP Server
+          (query, analyze, etc.)   (search_code, get_context, etc.)
+```
 
-It then turns those inputs into a shared graph that can be:
+No Docker. No external services. No embedding model.
 
-- queried semantically
-- traversed structurally
-- enriched incrementally
-- exposed to editors and agents through MCP
+---
 
-### High-level architecture flow
+## Package layout
 
-```mermaid
-flowchart LR
-    subgraph INPUT["Input Sources"]
-        REPO["Repository"]
-        DOCS["Docs"]
-        EXT["Jira"]
-    end
-
-    subgraph INGEST["Ingestion"]
-        WALK["Repo Walker"]
-        PARSE["Language Parsers"]
-        DOCPARSE["Doc / Integration Parsers"]
-        INCR["Incremental Sync"]
-        WATCH["Watch Mode"]
-    end
-
-    subgraph ENRICH["Enrichment"]
-        CALLS["Call Tracing"]
-        SUMM["Summaries"]
-        EMBED["Embeddings"]
-        LINK["Semantic Linking"]
-        DRIFT["AST Drift Detection"]
-        COMMUNITY["Communities"]
-        COUPLING["Git Coupling"]
-    end
-
-    subgraph CORE["Core Graph Layer"]
-        MODELS["Node / Edge Models"]
-        GRAPH["LoomGraph API"]
-        REPOS["Repositories / Mappers / Cypher"]
-    end
-
-    subgraph STORAGE["Storage"]
-        FALKOR[("FalkorDB\nGraph + Vector Index")]
-    end
-
-    subgraph OUTPUT["Interfaces"]
-        SEARCH["Semantic Search"]
-        TRACE["Traceability Queries"]
-        CLI["CLI"]
-        MCP["MCP Server"]
-    end
-
-    REPO --> WALK
-    REPO --> INCR
-    REPO --> WATCH
-    DOCS --> DOCPARSE
-    EXT --> DOCPARSE
-
-    WALK --> PARSE
-    INCR --> PARSE
-    WATCH --> INCR
-
-    PARSE --> MODELS
-    DOCPARSE --> MODELS
-    PARSE --> CALLS
-    PARSE --> SUMM
-    DOCPARSE --> SUMM
-
-    SUMM --> EMBED
-    MODELS --> GRAPH
-    CALLS --> GRAPH
-    EMBED --> GRAPH
-    GRAPH --> FALKOR
-    REPOS --> FALKOR
-
-    FALKOR --> LINK
-    FALKOR --> DRIFT
-    FALKOR --> COMMUNITY
-    FALKOR --> COUPLING
-    LINK --> GRAPH
-    DRIFT --> GRAPH
-    COMMUNITY --> GRAPH
-    COUPLING --> GRAPH
-
-    FALKOR --> SEARCH
-    FALKOR --> TRACE
-    SEARCH --> CLI
-    TRACE --> CLI
-    SEARCH --> MCP
-    TRACE --> MCP
+```
+src/loom/
+├── core/
+│   ├── db.py           # SQLite schema, init_schema(), _add_column_if_missing()
+│   ├── node.py         # Node model (Pydantic), NodeKind, NodeSource
+│   ├── edge.py         # Edge model, EdgeType enum
+│   ├── context.py      # DB class (connection pool + RLock), DEFAULT_DB_PATH
+│   └── content_hash.py # SHA-256 helpers
+│
+├── ingest/
+│   ├── pipeline.py     # index_repo() — full analyze pass
+│   ├── incremental.py  # sync_paths() — SHA-256-driven incremental sync
+│   ├── utils.py        # sha256_of_file()
+│   └── code/
+│       ├── walker.py        # walk_repo() — gitignore-aware file discovery
+│       ├── registry.py      # LanguageRegistry (ext → parser)
+│       └── languages/       # one module per language: python.py, typescript.py, etc.
+│
+├── analysis/
+│   ├── communities.py       # Louvain community detection (NetworkX)
+│   ├── coupling.py          # git co-change analysis → COUPLED_WITH edges
+│   ├── dead_code.py         # mark functions with no incoming CALLS
+│   └── code/
+│       ├── parser.py        # parse_code(), parse_repo()
+│       ├── extractor.py     # extract_summary() — static summary from metadata
+│       ├── noise_filter.py  # filter trivial nodes
+│       └── calls/           # CALLS edge extraction per language
+│
+├── query/
+│   ├── search.py            # search() — FTS5 + LIKE fallback
+│   ├── traversal.py         # neighbors(), shortest_path(), stats(), god_nodes()
+│   ├── blast_radius.py      # build_blast_radius_payload() — recursive CTE
+│   ├── context.py           # get_context_packet() — full context in one DB round-trip
+│   ├── primer.py            # build_primer() — ~200-token session overview
+│   ├── delta.py             # get_delta_payload() — changed nodes since timestamp
+│   └── node_lookup.py       # resolve node by name
+│
+├── store/
+│   ├── nodes.py             # bulk_upsert_nodes(), get_node(), update_summary(),
+│   │                        # mark_nodes_deleted(), prune_tombstones(), get_content_hashes()
+│   └── sessions.py          # create_session(), get_session(), prune_sessions()
+│
+├── mcp/
+│   ├── server.py            # build_server() — FastMCP, 15 tools + 1 resource
+│   └── run.py               # run_stdio() — standalone entry point for uvx
+│
+└── cli/
+    ├── _app.py              # shared typer app + callback (DB init)
+    ├── ingest.py            # analyze, sync, serve, context
+    ├── graph.py             # query, blast-radius, callers, callees, stats, summaries
+    ├── analysis.py          # communities, dead-code
+    ├── install.py           # loom install — MCP config + git hook + skill file
+    └── export.py            # HTML graph export
 ```
 
 ---
 
-## Project goal (what we’re trying to achieve)
-
-Loom is a code, document, and traceability intelligence system.
-
-At a high level, Loom:
-
-- Walks a repository (gitignore-aware, safe directory traversal)
-- Parses supported files into a uniform internal representation (`Node` objects)
-- Extracts relationships between nodes (`Edge` objects), e.g. call graphs
-- Ingests documents and external systems into the same graph model
-- Stores and queries these nodes/edges in a graph database (FalkorDB)
-- Enables downstream analysis (communities, coupling, traversal, search, drift, traceability)
-
-The design aim is to:
-
-- Support **multi-language parsing** (tree-sitter based for code languages)
-- Treat non-code “markup/config” files as **first-class FILE nodes**
-- Keep IDs stable and deterministic so graphs are reproducible
-- Be resilient (skip unsupported files, tolerate parse errors)
-- Support both **full indexing** and **incremental updates**
-- Make the graph usable both for humans and for agent tooling
-
----
-
-## Main subsystems
-
-At a system level, Loom is organized into a few major subsystems:
-
-- **Core graph model**
-  - `Node`, `Edge`, enums, ID conventions, and graph-facing APIs
-
-- **Persistence layer**
-  - FalkorDB gateway, repositories, Cypher helpers, schema initialization, vector index setup
-
-- **Ingestion layer**
-  - repository walking, code parsing, document ingestion, Jira ingestion, incremental sync, watch mode
-
-- **Analysis and enrichment**
-  - call tracing, static summaries, embeddings, semantic linking, community detection, coupling, AST drift detection
-
-- **Interfaces**
-  - CLI commands and FastMCP tools
-
-These are intentionally separated so parsing, persistence, enrichment, and querying can evolve independently while still sharing one graph model.
-
----
-
-## Key concepts / data model
+## Data model
 
 ### `Node` (`loom.core.node`)
-A `Node` is the canonical unit of information for both:
 
-- Code symbols (functions/classes/methods/etc.)
-- File-level “document” objects (FILE nodes)
-- Document structure (doc/section/chapter/etc.)
+Every symbol and file is a `Node`.
 
-Important fields:
+Key fields:
+- `id` — `{kind}:{path}:{symbol}`, e.g. `function:src/auth.py:validate_token`
+- `kind` — `NodeKind` enum: FILE, FUNCTION, METHOD, CLASS, INTERFACE, ENUM, TYPE, COMMUNITY
+- `source` — CODE (tree-sitter extracted)
+- `name`, `path`, `language`
+- `start_line`, `end_line`
+- `metadata` — JSON dict: `{signature, params, return_type, decorators, framework_hint, ...}`
+- `summary` — agent-written or auto-generated text
+- `summary_hash` — `content_hash` at time summary was written (staleness detection)
+- `content_hash` — SHA-256 of source line range (not whole file)
+- `file_hash` — SHA-256 of whole file (used by incremental sync)
+- `deleted_at` — soft-delete timestamp (set when file removed)
+- `updated_at` — bumped only on `content_hash` change (not every upsert)
 
-- `id`: globally unique identifier
-- `kind`: enum (`NodeKind`) such as `FUNCTION`, `CLASS`, `FILE`, etc.
-- `source`: `CODE` vs `DOC`
-- `name`, `path`: human-friendly identifiers
-- `start_line`, `end_line`, `language`: code-only metadata
-- `metadata`: extensible dictionary for extracted facts (framework hints, Rails DSL, etc.)
+### `Edge` (`loom.core.edge`)
 
-ID conventions:
+Links two nodes.
 
-- Code nodes: `<kind.value>:<path>:<symbol>`
-  - Produced by `Node.make_code_id(kind, path, symbol)`
-- Doc nodes: `doc:<doc_path>:<section_ref>`
-  - Produced by `Node.make_doc_id(doc_path, section_ref)`
+Key fields:
+- `from_id`, `to_id` — node IDs
+- `kind` — `EdgeType`: CALLS, CONTAINS, MEMBER_OF, COUPLED_WITH
+- `confidence` — float (1.0 for tree-sitter extracted, lower for heuristic)
 
-### `Edge` + `EdgeType` (`loom.core.edge`)
-An `Edge` links two nodes.
+### Schema (`loom.core.db`)
 
-Typical examples:
+```sql
+nodes  (id, kind, name, path, language, source, summary, summary_hash,
+        content_hash, file_hash, start_line, end_line, metadata,
+        deleted_at, updated_at, created_at)
+edges  (id, from_id, to_id, kind, confidence, metadata)
+sessions (id, agent_id, started_at, node_count, summary_count)
+```
 
-- `CALLS`: function A calls function B
-- additional edge types exist for structural, traceability, and enrichment relationships
+FTS5 virtual table `nodes_fts` indexes `name || summary || path` for full-text search.
 
-Edges can carry:
-
-- `confidence`: float that can encode heuristic strength
-- `metadata`: e.g. `{unresolved: true, ambiguous: true}`
-
-### Graph storage (`loom.core.graph` + `loom.core.falkor.*`)
-Graph persistence is via FalkorDB.
-
-- Nodes are stored as `(:Node { ...props... })` plus an additional per-kind label, e.g. `(:Function)`
-- Edges are stored as relationships between nodes
-- Schema initialization creates property indexes and a vector index on `Node.embedding` for similarity search
-
-The graph acts as the system of record for:
-
-- structural relationships
-- semantic links
-- traceability edges
-- embeddings
-- graph analysis outputs such as communities and coupling
+New columns added via `_add_column_if_missing()` (SQLite lacks `ADD COLUMN IF NOT EXISTS`).
 
 ---
 
-## Parsing pipeline (end-to-end)
+## Indexing pipeline (`index_repo`)
 
-The core “ingest code” pipeline is in `loom.analysis.code.parser`:
-
-1. **`parse_repo(root)`**
-   - If `root` is a file → delegates to `parse_code(root)`
-   - If `root` is a directory:
-     - Calls `walk_repo(root)` to discover files (gitignore-aware)
-     - For each discovered file, calls `parse_code(file)`
-     - Aggregates and returns a single flat list of `Node`s
-
-2. **`walk_repo(root)`** (`loom.ingest.code.walker`)
-   - Uses root-level `.gitignore` via `pathspec`
-   - Skips default directories (`DEFAULT_SKIP_DIRS`), hidden directories, and symlinked directories
-   - Groups results by language
-   - Special-cases `.env*` files by **filename prefix** because suffix-based extension logic can be misleading
-
-3. **`parse_code(path)`** (`loom.analysis.code.parser`)
-   - Converts `path` to a `Path` and determines the extension
-   - Special-cases `.env*` by forcing the logical extension to `.env`
-   - Uses `LanguageRegistry` to decide whether to skip and which parser to call
-
-4. **Language parsers** (`loom.ingest.code.languages.*`)
-   - Code languages typically use tree-sitter to extract functions/classes/etc.
-   - Markup/config parsers create a `FILE` node with metadata rather than symbol extraction
-
-This parsing pipeline is only one part of ingestion. Full indexing also includes summarization, embedding, semantic linking, graph enrichment, and persistence.
+1. `walk_repo()` discovers all files (gitignore-aware)
+2. SHA-256 hash check against existing `nodes` — skip unchanged files
+3. Changed files parsed in parallel (`ProcessPoolExecutor` if ≥8 files)
+4. `_parse_file()` per file:
+   - create FILE node
+   - parse symbols via language registry
+   - remap node IDs from abs path → rel path
+   - extract CONTAINS edges (file → top-level symbols)
+   - extract CALLS edges via language-specific call tracer
+5. `resolve_calls()` — global Python symbol map for cross-file CALLS
+6. `node_store.replace_file()` — atomic replace per file (delete old + bulk upsert)
+7. `compute_communities()` — Louvain on CALLS graph
+8. `compute_coupling()` — git co-change → COUPLED_WITH edges
+9. `mark_dead_code()` — flag functions with no incoming CALLS
+10. `_fill_auto_summaries()` — UPDATE nodes SET summary WHERE summary IS NULL
+11. Deleted file detection — soft-delete nodes for files no longer on disk
+12. `prune_tombstones()` — hard-delete soft-deleted nodes older than 30 days
+13. `prune_sessions()` — keep last 20 per agent
 
 ---
 
-## Full indexing lifecycle
+## Incremental sync (`sync_paths`)
 
-The main full-index workflow lives in `loom.ingest.pipeline.index_repo()`.
+SHA-256 driven. No git required.
 
-At a high level it:
-
-1. discovers repository files
-2. parses changed or new files
-3. creates file and symbol nodes
-4. extracts call relationships where supported
-5. summarizes nodes
-6. generates embeddings
-7. persists graph state
-8. ingests docs and optional Jira nodes
-9. performs semantic linking between code and docs
-
-Expensive graph enrichment is intentionally split out of `analyze`:
-
-- `loom enrich` runs community detection
-- `loom enrich` runs git coupling analysis
-
-This means Loom is not just a parser. It is an ingest-and-enrich pipeline that builds a usable graph for search, traceability, and agents.
+1. Walk repo, compute SHA-256 per file
+2. Compare against stored `file_hash` in nodes
+3. Re-parse only changed/added files
+4. `mark_nodes_deleted()` for removed files
+5. Same post-processing as `index_repo` (communities, coupling, etc.)
 
 ---
 
-## Incremental update lifecycle
+## MCP server (`build_server`)
 
-Incremental updates are handled primarily by `loom.ingest.incremental.sync_commits()` and `loom.watch.watcher.watch_repo()`.
+Built with FastMCP. 15 tools, 1 resource.
 
-Key behaviors:
+All tools are async, use `asyncio.to_thread()` for SQLite, single `db._lock` per operation.
 
-- git-diff-based changed file detection
-- node-level diffing based on content hashes
-- invalidation of stale computed edges on file change or delete
-- preservation and stale marking of human-linked relationships
-- rename-aware migration of human edges where possible
-- AST drift detection for changed code nodes
-- watch-mode reindexing on local filesystem change
+**Context packets** (`get_context`) execute one `_run()` block under one lock:
+1. fetch node
+2. callers (same-file first, top 10 by in-degree)
+3. callees (same-file first, top 10)
+4. staleness: `summary_hash != content_hash`
+5. community membership
 
-The architecture intentionally supports both:
-
-- **batch rebuilds** with `analyze`
-- **incremental graph maintenance** with `sync` and `watch`
+**Delta** (`get_delta`) uses `sessions.started_at` as the timestamp cutoff.
+Only bumping `updated_at` on real content changes prevents false positives.
 
 ---
 
-## `parse_repo()`
+## Summary system
 
-`parse_repo(root, exclude_tests=False)` lives in `loom.analysis.code.parser`.
+Two tiers, never conflict:
 
-### `parse_repo(root, exclude_tests=False)`
- This is the **authoritative** repo parser.
+**Auto-summaries** (floor):
+- `extract_summary(node)` in `analysis/code/extractor.py`
+- Builds structured text from metadata: signature, params, return type, decorators
+- Applied as `UPDATE nodes SET summary = ? WHERE id = ? AND summary IS NULL`
+- Never overwrites agent summaries
 
-What it does:
-
-- Uses `walk_repo()` for discovery (gitignore-aware, symlink-safe)
-- Delegates each file to `parse_code()` which delegates to the language registry
-- Returns a flat `list[Node]`
-- Logs how many files were parsed and how many nodes were produced
-
-When to use it:
-
-- **Always use this** for repo-level parsing.
+**Agent summaries** (ceiling):
+- Written via `store_understanding` MCP tool
+- Sets `summary_hash = content_hash` at write time
+- `summary_stale = True` when `content_hash` later changes
+- Preserved through re-analyze (upsert preserves non-null summary)
 
 ---
 
-## LanguageRegistry (extension → parser mapping)
+## Tech stack
 
-Module: `loom.ingest.code.registry`
-
-Responsibilities:
-
-- Maintain `extension -> parser` mapping
-- Decide which files/dirs to skip
-
-Key behaviors:
-
-- `should_skip_dir(dirname)`:
-  - skips hidden dirs and configured skip dirs
-- `should_skip_file(extension)`:
-  - skips known unparseable extensions
-  - skips extensions not registered
-- `_register_defaults(reg)`:
-  - registers code languages (py/ts/js/go/java/rust/ruby)
-  - registers markup/config languages (html/xml/json/css/yaml/properties/toml/ini/env)
-
----
-
-## Call graph extraction (Python)
-
-Module: `loom.analysis.code.calls`
-
-Responsibilities:
-
-- Parse a Python file with tree-sitter
-- Extract call sites from function bodies
-- Resolve call targets against known symbols
-- Create `EdgeType.CALLS` edges
-
-Important details:
-
-- `_extract_call_name()` assigns a name + confidence based on how direct the call is:
-  - `foo()` is high confidence
-  - `obj.foo()` is slightly lower
-  - computed calls (dynamic) become unresolved
-- `trace_calls()` accepts `all_symbols: dict[str, list[Node]]` to avoid collisions when multiple methods share the same name
-- Ambiguity resolution heuristics:
-  - Prefer same-file candidates
-  - Prefer `FUNCTION` over `METHOD` if it yields a single match
-  - Otherwise mark unresolved/ambiguous
-
----
-
-## Graph API and repositories
-
-### `LoomGraph` (`loom.core.graph`)
-High-level async API around FalkorDB:
-
-- Initializes schema
-- Provides node/edge CRUD + bulk insert
-- Provides traversal (`neighbors`)
-- Provides `delete()` to clear graph contents (used for test isolation)
-
-### Falkor gateway + repositories (`loom.core.falkor.*`)
-
-- `gateway.py`: low-level DB connection and query execution
-- `schema.py`: index creation, vector index creation, and idempotency handling
-- `repositories.py`:
-  - `NodeRepository`: upsert/get/delete/bulk_upsert
-  - `EdgeRepository`: upsert + **chunked** bulk_upsert to avoid OOM/timeouts
-  - `TraversalRepository`: neighbor traversal in steps
-- `queries.py`: centralized cypher templates
-
----
-
-## Development utilities
-
-Module: `loom.devtools`
-
-- `check_deps()`: verify declared dependencies are installed
-- `run_tests()`: runs tests via `unittest` discovery
-
-Note: In this repo, tests are primarily run with `pytest` (via `uv run pytest ...`).
-
----
-
-## Where to start (entrypoints)
-
-- CLI entrypoint: `loom.cli:main`
-- Primary parsing APIs:
-  - `loom.analysis.code.parser.parse_repo()`
-  - `loom.analysis.code.parser.parse_code()`
-- Primary indexing APIs:
-  - `loom.ingest.pipeline.index_repo()`
-  - `loom.ingest.incremental.sync_commits()`
-- Graph API:
-  - `loom.core.graph.LoomGraph`
-- MCP entrypoint:
-  - `loom.mcp.server.build_server()`
-
----
-
-## Glossary
-
-- **Ingest**: discover + parse files into `Node`s
-- **Analysis**: compute relationships/communities/embeddings over those nodes
-- **FalkorDB**: graph database used for persistence and traversal
-- **tree-sitter**: incremental parser used for multi-language AST extraction
+| Layer | Technology |
+|-------|-----------|
+| Parsing | tree-sitter + tree-sitter-language-pack |
+| Storage | SQLite WAL mode, FTS5 |
+| Communities | NetworkX + python-louvain |
+| MCP | FastMCP |
+| CLI | Typer + Rich |
+| Models | Pydantic v2 |
+| Async | asyncio + asyncio.to_thread() |
+| Python | 3.12+ |

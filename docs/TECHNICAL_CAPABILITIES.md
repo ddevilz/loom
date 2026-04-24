@@ -1,224 +1,213 @@
 # Technical Capabilities
 
-This document contains implementation-oriented details (parsers, metadata, edges) that are intentionally kept out of the product-oriented README.
+Implementation details: parsers, metadata, edges, query internals.
+
+---
 
 ## Code parsing
 
-Loom parses source files into nodes (symbols) with file/line locations and metadata.
+Loom parses source files into `Node` objects with file/line locations and metadata using tree-sitter.
 
-## Parsing levels
+### Parsing levels
 
-Loom’s extraction is intentionally described in levels so it’s clear *how deep* parsing goes.
+| Level | What | Notes |
+|-------|------|-------|
+| **L0** | File recognition | Create FILE node for markup/config |
+| **L1** | Symbol extraction | Functions, methods, classes, interfaces, enums, types |
+| **L2** | Metadata extraction | Signatures, params, return types, decorators, annotations |
+| **L3** | Static call edges | CALLS edges from function/method bodies |
 
-- **Level 0: File recognition**
-  - Identify supported extensions and create a FILE node (for markup/config parsers).
-- **Level 1: Symbol extraction**
-  - Classes, functions, methods, interfaces, enums, type aliases (language-dependent).
-- **Level 2: Metadata extraction**
-  - Language-specific metadata attached to nodes (e.g., Java annotations/modifiers, Python decorators/async).
-- **Level 3: Call edges (static)**
-  - `calls` edges from function/method bodies when resolvable.
-- **Level 4: Dynamic dispatch (planned)**
-  - Candidate resolution for virtual/interface calls with uncertainty.
+### Language support
 
-### Levels implemented (tested)
+| Language | L1 Symbols | L2 Metadata | L3 CALLS |
+|----------|------------|-------------|----------|
+| Python | ✅ | ✅ | ✅ |
+| TypeScript | ✅ | ✅ | ✅ |
+| TSX | ✅ | ✅ | ✅ |
+| JavaScript | ✅ | ✅ | ✅ |
+| JSX | ✅ | ✅ | ✅ |
+| Java | ✅ | ✅ | ✅ |
+| Go | ✅ | ✅ | ❌ |
+| Rust | ✅ | ✅ | ❌ |
+| Ruby | ✅ | ✅ | ❌ |
 
-| Language | L1 Symbols | L2 Metadata | L3 Static calls | L4 Dynamic dispatch |
-|----------|------------|------------|-----------------|---------------------|
-| Java | ✅ | ✅ | ✅ | 🚧 |
-| TypeScript | ✅ | ✅ | ✅ | 🚧 |
-| JavaScript | ✅ | ✅ | ✅ | 🚧 |
-| Python | ✅ | ✅ | ✅ | 🚧 |
-| Go | ✅ | ✅ | ❌ | ❌ |
-| Rust | ✅ | ✅ | ❌ | ❌ |
-| Ruby | ✅ | ✅ | ❌ | ❌ |
+### Markup/config (FILE nodes only)
 
-### Supported languages (tested)
+| Format | Metadata extracted |
+|--------|--------------------|
+| JSON | top-level keys, type hint |
+| YAML | top-level keys, type hint |
+| TOML | project name/version, dependencies |
+| INI | sections, key counts |
+| Properties | keys, counts, sensitive key detection |
+| .env | var names, sensitive key detection |
+| HTML | title, forms, scripts, template hints |
+| CSS | classes, ids, media queries, CSS vars |
 
-| Language | Classes | Functions | Methods | Interfaces | Enums | Types |
-|----------|---------|-----------|---------|------------|-------|-------|
-| Java | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| TypeScript | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| JavaScript | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Python | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Go | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Rust | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Ruby | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+---
 
-### Parser fixtures / E2E stats (integration tests)
+## Call graph extraction
 
-| Fixture | Nodes | Notes |
-|--------:|------:|------|
-| Java Spring Boot | 73 | Annotations/modifiers/inheritance tested in integration fixtures |
-| Vue TSX (TypeScript) | 24+ | async, enums/interfaces/types tested |
-| Python Flask | 72 | decorators and async tested |
+### Python
 
-## Call graph resolution
+- tree-sitter call site extraction from function/method bodies
+- `_extract_call_name()` assigns confidence by directness:
+  - `foo()` → high confidence
+  - `obj.foo()` → slightly lower
+  - computed calls → unresolved
+- `trace_calls()` uses `all_symbols: dict[str, list[Node]]` to avoid name collisions
+- Ambiguity resolution: prefer same-file, prefer FUNCTION over METHOD for single match
+- `resolve_calls()` builds a global symbol map across all files for cross-file CALLS
 
-Currently supported:
+### TypeScript / JavaScript
 
-- Direct function calls
-- Method invocations
-- Constructor calls
+- function, arrow-function, and method call extraction
+- cross-file resolution heuristic
 
-Implemented call tracing backends:
+### Java
 
-- **Python**
-  - tree-sitter-based call extraction with same-file and symbol-name heuristics
-- **TypeScript / JavaScript**
-  - function, arrow-function, and method call extraction
-- **Java**
-  - method and constructor invocation extraction
+- method invocation and constructor call extraction
 
-Current limitations:
+**Limitations:**
+- cross-file resolution is heuristic, not full type-flow
+- dynamic dispatch not modeled (virtual/interface calls not resolved to candidates)
+- unresolved/ambiguous calls preserved with `confidence < 1.0`
 
-- cross-file target resolution remains heuristic rather than full type-flow analysis
-- dynamic dispatch is not fully modeled
-- unresolved or ambiguous calls are intentionally preserved as lower-certainty outcomes
+---
 
-### Dynamic dispatch (planned)
+## Incremental sync
 
-Goal: resolve virtual/interface calls to candidate targets and represent uncertainty.
+Driven by SHA-256, not git.
 
-- Phase 1: type-based candidates (Java/TypeScript)
-- Phase 2: flow-based narrowing
+`bulk_upsert_nodes` only bumps `updated_at` when `content_hash` changes:
+```sql
+updated_at = CASE
+    WHEN excluded.content_hash IS NOT NULL
+         AND excluded.content_hash != COALESCE(nodes.content_hash, '')
+    THEN excluded.updated_at
+    ELSE nodes.updated_at
+END
+```
 
-Representation:
-- CALLS edges annotated with resolution metadata, or UNRESOLVED_CALL when no safe target.
+This prevents false positives in delta context (re-analyzing identical files doesn't mark nodes as changed).
 
-## Configuration + markup parsing (tested)
+---
 
-Loom extracts lightweight metadata from common non-code files:
+## Summary system
 
-| File type | Examples | Extracts |
-|----------|----------|----------|
-| Properties | `application.properties` | keys, counts, spring profile hints, sensitive keys |
-| Env | `.env.example` | var names/count, sensitive keys |
-| TOML | `pyproject.toml` | project name/version, dependencies (best-effort) |
-| INI | `.ini`, `.conf` | sections, key counts |
-| HTML | `.html` | title, forms, scripts, stylesheets, template hints |
-| CSS | `.css` | classes, ids, media query count, css variables |
-| JSON | `package.json`, `tsconfig.json` | top-level keys, type hints |
-| YAML | `docker-compose.yml` | top-level keys, type hints |
-| Markdown | `.md` | hierarchical document, chapter, section, subsection, and paragraph extraction |
-| PDF | `.pdf` | page-based section extraction |
+### Auto-summaries
 
-## Document and external knowledge ingestion
+`extract_summary(node)` in `analysis/code/extractor.py` builds structured text from metadata:
+- signature with param types
+- return type
+- decorators / annotations
+- framework hints
 
-Loom can ingest non-code knowledge into the same graph model used for code.
+Applied as post-pass `UPDATE WHERE summary IS NULL` — never overwrites agent summaries.
 
-### Document sources
+Runs automatically in `index_repo()`. Coverage ~80% on first analyze.
 
-- **Markdown**
-  - hierarchical document, chapter, section, subsection, and paragraph extraction
-- **PDF**
-  - page-based section extraction
+### Agent summaries
 
-### External systems
+Written via `store_understanding` MCP tool:
+```sql
+UPDATE nodes SET summary = ?, summary_hash = content_hash, updated_at = ? WHERE id = ?
+```
 
-- **Jira**
-  - issue ingestion into doc-style graph nodes with ticket metadata
-  - traceability linking during indexing
+`summary_hash` stores the `content_hash` at write time. If source changes later:
+- `content_hash` diverges from `summary_hash`
+- `get_context` returns `summary_stale: true`
+- Agent re-reads source and calls `store_understanding` again
 
-## Search and traceability
+Agent summaries are preserved through re-analyze (upsert logic: `ELSE nodes.summary`).
 
-### Semantic search
+---
 
-Loom search combines:
+## Search (FTS5)
 
-- query embeddings
-- FalkorDB vector search
-- brute-force similarity fallback when vector index is unavailable
-- graph expansion over `CALLS` and `LOOM_IMPLEMENTS`
+`nodes_fts` is an FTS5 virtual table indexing `name || summary || path`.
 
-### Traceability queries
+`search()` in `query/search.py`:
+1. Try FTS5 query
+2. Fall back to LIKE if FTS5 raises an error (malformed query)
+3. Wrap results in `SearchResult(node, score)`
 
-Built-in query workflows include:
+`search_code` MCP tool returns: `id, name, path, kind, line, score, summary, signature`.
 
-- unimplemented tickets
-- untraced functions
-- impact of a ticket
-- tickets for a function
-- sprint code coverage
+---
 
-## Incremental and live update capabilities
+## Context packets
 
-### Git-based incremental sync
+`get_context_packet()` in `query/context.py` executes one DB round-trip under one lock:
 
-Loom supports commit-to-commit sync with:
+1. Fetch node by ID
+2. If function/method:
+   - callers: `SELECT n.* FROM edges e JOIN nodes n ON n.id = e.from_id WHERE e.to_id = ? AND e.kind = 'calls'` — same-file first, by in-degree, LIMIT 10
+   - callees: same pattern for `e.from_id = ?`
+   - staleness: `summary_hash IS NOT NULL AND summary_hash != content_hash`
+3. If class/file:
+   - members via CONTAINS edges
+4. Community: `SELECT to_id FROM edges WHERE from_id = ? AND kind = 'member_of'`
 
-- changed-file detection from git diff
-- node-level diffing based on content hashes
-- rename-aware human-edge migration
-- stale-edge invalidation
-- AST drift detection that can emit `LOOM_VIOLATES` edges
+Returns ~80 tokens. Replaces 4 separate MCP tool calls.
 
-### Watch mode
+---
 
-Watch mode supports:
+## Session primer
 
-- filesystem monitoring with debounce
-- invalidation of stale file-scoped edges
-- preservation of human-linked nodes when files are removed
-- reindexing of changed files into the active graph
+`build_primer()` in `query/primer.py`:
+- pure SQL aggregation, no LLM, no file reads
+- groups functions by module (derived from path segments, skipping `src/lib/loom/app/pkg`)
+- detects entry points by name pattern (`main`, `handle_*`, `*_handler`, framework routes)
+- `god_nodes` via `COUNT(edges WHERE kind='calls' AND to_id=n.id)`
+- coverage: `COUNT WHERE metadata LIKE '%"signature"%'` and `COUNT WHERE summary IS NOT NULL`
+- `module=` drill-down: top functions in one module, sorted by caller count
 
-## Graph enrichment
+Output: ~200 tokens. MCP resource `loom://primer` for auto-load at session start.
 
-### Summaries
+---
 
-Loom uses static summary extraction:
+## Delta context
 
-- parser-derived static summaries
-- docstrings and signatures
+`get_delta_payload()` in `query/delta.py`:
+- `WHERE updated_at > since_ts AND deleted_at IS NULL AND kind NOT IN ('file', 'community')`
+- if `changed + deleted > 100`: summary mode with top changed paths
+- if within limit: full context packets for each changed node
+- deleted nodes: `{id, path, change_type: "deleted"}`
 
-### Embeddings
+Used by `get_delta` MCP tool which looks up `sessions.started_at` for the agent's last session.
 
-- local embedding generation through `fastembed`
-- embedding persistence on graph nodes
-- dimension validation against configured schema
+---
 
-### Communities
+## Community detection
 
-Run via `loom enrich`.
+`compute_communities()` in `analysis/communities.py`:
+- builds NetworkX graph from CALLS edges
+- runs Louvain community detection
+- creates COMMUNITY nodes and MEMBER_OF edges
+- runs automatically in `index_repo()`
 
-- Leiden community detection over the code graph
-- creation of `COMMUNITY` nodes and `MEMBER_OF` edges
+---
 
-### Coupling
+## Git coupling
 
-Run via `loom enrich`.
+`compute_coupling()` in `analysis/coupling.py`:
+- reads git log for co-changed files
+- creates COUPLED_WITH edges between files that change together
+- runs automatically in `index_repo()`
 
-- git co-change analysis to create `COUPLED_WITH` file relationships
-
-### Semantic linker
-
-The linker supports a tiered pipeline:
-
-1. name/token matching
-2. embedding similarity
-3. optional LLM judgment
-
-Optional reranking can refine embedding-based candidate selection.
-
-## MCP and CLI surface
-
-Loom is available through:
-
-- **Typer CLI**
-  - `analyze`, `enrich`, `query`, `trace`, `calls`, `entrypoints`, `watch`, `sync`, `serve`
-- **FastMCP server**
-  - `search_code`, `get_callers`, `get_spec`, `check_drift`, `get_impact`, `get_ticket`, `unimplemented`
-
-`check_drift` currently reports AST drift only.
+---
 
 ## Tech stack
 
-- Graph DB: FalkorDB
-- Parsing: tree-sitter (+ per-language grammars)
-- Embeddings: fastembed
-- Communities: igraph + leidenalg
-- File watching: watchfiles
-- MCP: fastmcp
-- Validation/data models: pydantic
-- CLI: typer + rich
-- LLM provider abstraction: LiteLLM
+| Layer | Technology |
+|-------|-----------|
+| Storage | SQLite WAL mode, FTS5 |
+| Parsing | tree-sitter + tree-sitter-language-pack |
+| Communities | NetworkX + python-louvain |
+| MCP | FastMCP |
+| CLI | Typer + Rich |
+| Models | Pydantic v2 |
+| Async | asyncio.to_thread() for all SQLite ops |
+| Concurrency | threading.RLock per DB instance |
+| Python | 3.12+ |

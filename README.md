@@ -1,315 +1,197 @@
 # Loom
 
-> A code intelligence platform that turns repositories, docs, and ticket data into one graph you can search, trace, and serve to agents.
-
-Loom ingests source code, technical docs, and optional Jira-style work items into a shared graph stored in FalkorDB. It extracts code structure, builds call relationships, links code to documentation semantically, and exposes the resulting graph through a CLI and MCP server.
+> A persistent symbol index for AI coding agents. Agents find functions instantly. Agents write summaries as they work. The cache gets richer every session — zero LLM cost from Loom's side.
 
 ## What Loom is
 
-Loom is built for teams that want more than grep, static tags, or disconnected docs. It answers questions like:
+Loom indexes your codebase into a local SQLite database using tree-sitter. It extracts functions, classes, methods, and call relationships across all languages. Agents query it to skip file exploration and read only what they need. When an agent understands a function, it writes a summary back — the next agent gets it for free.
 
-- **Where is this requirement implemented?**
-- **Which functions call this API?**
-- **What changed between two commits, structurally and semantically?**
-- **Which code nodes have no traceability to tickets or specs?**
-- **What should an agent know about this repo before making a change?**
+**Core loop:**
 
-Loom works by treating code symbols, files, docs, sections, communities, and relationships as graph entities instead of isolated text blobs.
-
-## What problem it solves
-
-In most codebases:
-
-- **Code and docs drift apart**
-- **Call relationships are hard to inspect at repo scale**
-- **Requirements and implementation links are tribal knowledge**
-- **Incremental updates silently lose context in weak indexing systems**
-- **AI tools lack a durable, queryable model of the repo**
-
-Loom gives you a persistent graph model of your system so those relationships can be searched, queried, traversed, and served to tooling.
-
-## Core product capabilities
-
-- **Repository indexing**
-  - parses source files into graph nodes and edges
-  - persists graph state in FalkorDB
-
-- **Multi-language code understanding**
-  - supports Python, TypeScript, TSX, JavaScript, JSX, Java, Go, Rust, Ruby, and multiple markup/config formats
-
-- **Call graph extraction**
-  - builds `CALLS` relationships for supported languages
-
-- **Jira and traceability workflows**
-  - links code to Jira tickets
-  - supports queries like unimplemented tickets, impact, and coverage
-
-- **Semantic linking**
-  - links code to Jira tickets with name matching, embedding similarity, and optional LLM fallback
-
-- **Incremental sync and watch mode**
-  - updates graph state from git diffs and filesystem changes
-
-- **Semantic search**
-  - supports query-time search over embeddings plus graph expansion
-
-- **MCP server**
-  - exposes Loom as a tool server for Windsurf, Claude Code, and other MCP clients
-
-## How Loom models a codebase
-
-Loom stores a graph where nodes can represent:
-
-- **Files**
-- **Functions**
-- **Methods**
-- **Classes / interfaces / enums / types**
-- **Communities**
-
-And edges can represent relationships like:
-
-- **`CALLS`**
-- **`MEMBER_OF`**
-- **`LOOM_IMPLEMENTS`**
-- **`LOOM_SPECIFIES`**
-- **`LOOM_VIOLATES`**
-- **`COUPLED_WITH`**
-
-Example:
-
-```text
-validate_user()  --CALLS---------> hash_password()
-validate_user()  --LOOM_IMPLEMENTS---> PROJ-42: Input Validation
-validate_user()  --MEMBER_OF----> community:auth
+```
+loom analyze .              # tree-sitter indexes all symbols → ~/.loom/loom.db
+search_code("login")        # instant: {name, path, line, summary, signature}
+get_context(node_id)        # full picture: summary + callers + callees, one call
+store_understanding(id, s)  # cache what you learned → returned on future searches
 ```
 
-## Product workflow
+No Docker. No embeddings. No LLM calls from Loom. Pure tree-sitter + SQLite.
 
-Typical workflow:
+## Why it matters
 
-1. **Analyze a repository** into a named graph
-2. **Enrich** the graph with communities and coupling when needed
-3. **Query** the graph semantically
-4. **Trace** missing or impacted implementation links
-5. **Inspect** callers, callees, and entrypoints
-6. **Serve** the graph over MCP to an editor or agent
-7. **Watch** the repo or **sync** specific git revisions incrementally
+Every Claude Code / Cursor / Codex session starts by re-exploring the codebase: reading CLAUDE.md, grepping for functions, re-discovering structure. Loom eliminates that.
+
+- **First session:** 8× token savings — summaries replace file reads
+- **Session 2+:** 90×+ savings — delta context shows only what changed
+- **Compounding:** every agent run makes Loom smarter for the next
 
 ## Installation
 
-### Requirements
-
-- **Python** 3.12+
-- **uv** for environment and command execution
-- **Docker** for FalkorDB
-
-### Setup
-
 ```bash
-uv sync
+pip install loom-tool
+# or with uv:
+uv add loom-tool
 ```
 
-Start FalkorDB:
-
-```bash
-docker run -d -p 6379:6379 --name loom-db falkordb/falkordb
-```
-
-Or, if your repo includes a compose setup:
-
-```bash
-docker compose up -d
-```
-
-### Configuration
-
-Loom is configured through environment variables.
-
-Common values:
-
-```bash
-LOOM_DB_HOST=localhost
-LOOM_DB_PORT=6379
-LOOM_LLM_MODEL=gpt-4o-mini
-LOOM_LLM_API_KEY=...
-LOOM_JIRA_URL=https://your-domain.atlassian.net
-LOOM_JIRA_EMAIL=you@example.com
-LOOM_JIRA_API_TOKEN=...
-```
-
-Windows event loop handling is automatic.
+Requirements: Python 3.12+. No Docker. No external services.
 
 ## Quick start
 
-Verify the CLI:
-
 ```bash
-uv run loom --dev
+cd my-repo
+loom analyze .      # index the repo (~10s for 500 files)
+loom install        # configure Claude Code, Cursor, Windsurf, Codex + git hook
+loom serve          # start MCP stdio server
 ```
 
-Index a repository:
-
-```bash
-uv run loom analyze . --graph-name myrepo --exclude-tests
-```
-
-Run expensive graph enrichment on an existing graph:
-
-```bash
-uv run loom enrich --graph-name myrepo
-```
-
-Search the graph:
-
-```bash
-uv run loom query "how is auth validated" --graph-name myrepo
-```
-
-Inspect untraced functions:
-
-```bash
-uv run loom trace untraced --graph-name myrepo
-```
-
-Inspect blast radius for a symbol:
-
-```bash
-uv run loom blast_radius --node validate_user --graph-name myrepo --depth 3
-```
-
-Start the MCP server:
-
-```bash
-uv run loom serve --graph-name myrepo
-```
+After `loom install`, MCP clients connect automatically. Claude Code sessions get the `loom://primer` resource loaded at startup.
 
 ## CLI reference
 
-| Command | Purpose | Example |
-|---|---|---|
-| `loom analyze <path>` | Index a repository and print counts, deltas, and errors. This is the main ingest path. | `uv run loom analyze . --graph-name myrepo --exclude-tests --force` |
-| `loom tickets` | Show Jira tickets stored in the graph; use `--connected` to show ticket-to-code connections. | `uv run loom tickets --connected --graph-name myrepo --limit 20` |
-| `loom enrich` | Run expensive enrichment passes like community detection and git coupling on an already-indexed graph. | `uv run loom enrich --graph-name myrepo --coupling-months 6` |
-| `loom relink` | Re-run the semantic linker on all graph nodes without re-indexing files. Useful after importing new Jira tickets or adjusting thresholds. | `uv run loom relink --graph-name myrepo --embedding-threshold 0.8` |
-| `loom query <text>` | Search indexed nodes semantically using embeddings and graph expansion. | `uv run loom query "how does login work" --graph-name myrepo --limit 10` |
-| `loom trace <mode> [target]` | Run traceability workflows like unimplemented, untraced, impact, tickets, and coverage. | `uv run loom trace impact PROJ-123 --graph-name myrepo` |
-| `loom calls` | Inspect `CALLS` relationships for a target node or dump a slice of the call graph. | `uv run loom calls --target App --direction both --graph-name myrepo` |
-| `loom blast_radius` | Show transitive callers of a node as a dependency tree and flag linked docs at risk. | `uv run loom blast_radius --node validate_user --graph-name myrepo --depth 3` |
-| `loom entrypoints` | Show likely entrypoints, call roots, and relationship counts. | `uv run loom entrypoints --graph-name myrepo --limit 30` |
-| `loom watch` | Watch the filesystem and incrementally update the graph. | `uv run loom watch . --graph-name myrepo --debounce 500` |
-| `loom sync` | Sync changes between two git SHAs into the graph. | `uv run loom sync --old-sha abc --new-sha def --graph-name myrepo --repo-path .` |
-| `loom serve` | Start the MCP server over stdio. | `uv run loom serve --graph-name myrepo` |
-| `loom setup` | Add loom's binary directory to your shell PATH. Run once after install. | `uv run loom setup` |
-| `loom --version` | Print the installed version. | `uv run loom --version` |
-| `loom --dev` | Verify the package imports correctly. | `uv run loom --dev` |
+| Command | Purpose |
+|---------|---------|
+| `loom analyze <path>` | Index or refresh the graph for a repo |
+| `loom sync [--old-sha] [--new-sha]` | Incremental sync of changed files via SHA-256 |
+| `loom context [-m module]` | Print ~200-token session primer (modules, hot functions, coverage) |
+| `loom serve` | Start MCP stdio server |
+| `loom install [--platform]` | Configure MCP for all detected AI tools + git hook |
+| `loom query <text>` | FTS5 / name search across nodes |
+| `loom blast-radius <target>` | Show transitive callers of a function |
+| `loom callers <target>` | Direct callers (one-hop incoming CALLS) |
+| `loom callees <target>` | Functions this target calls (one-hop outgoing CALLS) |
+| `loom communities` | Run Louvain community detection |
+| `loom dead-code` | Mark functions with no incoming CALLS |
+| `loom summaries [-n N]` | Show agent-written summaries, most recent first |
+| `loom stats` | Node/edge counts by kind |
+| `loom export` | Self-contained interactive HTML graph |
 
-Example `blast_radius` output:
+## MCP tools
 
-```text
-Blast radius: 5 nodes across 4 hops
+Agents use these tools directly when Loom is connected via MCP:
 
-link (semantic_linker.py)
-└─ SemanticLinker (semantic_linker.py)    ← CALLS
-   └─ ingest_repository (pipeline.py)    ← CALLS
-      └─ Registry (registry.py)    ← CALLS
-         └─ LoomServer (server.py)    ← CALLS
+| Tool | Purpose |
+|------|---------|
+| `search_code(query, limit)` | FTS5 search — returns summary + signature when cached |
+| `get_node(node_id)` | Single node by id |
+| `get_context(node_id)` | Full context packet: summary, signature, callers, callees, staleness |
+| `get_callers(node_id)` | One-hop incoming CALLS |
+| `get_callees(node_id)` | One-hop outgoing CALLS |
+| `get_blast_radius(node_id, depth)` | Transitive callers via recursive CTE |
+| `get_neighbors(node_id, depth)` | All edges, both directions |
+| `get_community(community_id)` | All members of a community cluster |
+| `shortest_path(from_id, to_id)` | Shortest directed path on CALLS subgraph |
+| `graph_stats()` | Node/edge counts by kind |
+| `god_nodes(limit)` | Most-called functions (highest in-degree) |
+| `store_understanding(node_id, summary)` | Cache agent-generated summary permanently |
+| `store_understanding_batch(updates)` | Batch version, max 50 per call |
+| `start_session(agent_id)` | Register session start, returns session_id |
+| `get_delta(previous_session_id)` | What changed since last session (changed + deleted nodes) |
+
+**MCP resource:**
+
+| Resource | Purpose |
+|----------|---------|
+| `loom://primer` | ~200-token codebase overview — load at session start |
+
+## Node ID format
+
+`{kind}:{relative-path}:{symbol}`
+
+```
+function:src/auth.py:validate_token
+method:src/models/user.py:User.save
+class:src/models/user.py:User
+file:src/auth.py
 ```
 
-## MCP integration
+## Agent workflow
 
-Loom exposes an MCP server so agents can query the graph directly.
+```
+# Session start
+resource = read("loom://primer")         # orient: modules, hot functions, coverage
+start_session(agent_id="claude-code")    # store returned session_id
 
-A ready-to-use MCP config is included at `.mcp.json` in the repository root. Copy and adjust the `graph-name` and environment variables to match your setup.
+# Or if returning:
+get_delta(previous_session_id="<id>")   # only what changed since last time
 
-Once connected, MCP clients can use Loom tools such as:
+# Finding code
+results = search_code("validate token") # summary + signature included
+# If results[0].summary → read summary, skip file
 
-| Tool | Description |
-|---|---|
-| `search_code` | Semantic search over code and doc nodes using nomic-embed-text. |
-| `get_callers` | Return all functions that directly call a given node (one hop of incoming `CALLS` edges). |
-| `get_spec` | Return Jira tickets linked to a code node via `LOOM_IMPLEMENTS` edges. |
-| `check_drift` | Return AST drift records from `LOOM_VIOLATES` edges for a given node. |
-| `get_blast_radius` | BFS over incoming `CALLS` edges to find all nodes that depend on a given node. |
-| `get_impact` | Return code nodes linked to a Jira ticket (inverse of `get_spec`). |
-| `get_ticket` | Fetch raw Jira ticket data from the graph by ticket key or node id. |
-| `unimplemented` | Return Jira tickets with no linked code nodes (spec gaps). |
-| `relink` | Re-run the semantic linker on all graph nodes without re-indexing files. |
+# Before reading any file
+ctx = get_context("function:src/auth.py:validate_token")
+# Returns callers, callees, summary, staleness — often enough to reason without reading
 
-`get_blast_radius` returns a structured payload with:
+# After understanding a function
+store_understanding(
+    node_id="function:src/auth.py:validate_token",
+    summary="Validates JWT tokens, returns False if expired or signature invalid."
+)
+```
 
-- **`root`**
-- **`summary`** with `total_nodes` and `hops`
-- **`callers`** with `depth`, `parent_id`, and `edge_label`
-- **`docs_at_risk`** with doc references and update conditions
-- **`warnings`** ready for display
+## Session delta — how it works
 
-## Architecture overview
+```
+Session 1:                     Session 2:
+  start_session()                get_delta(previous_session_id)
+  [work on auth.py]              → {changed: [2 fns], deleted: [], unchanged: 310}
+  session_id stored              Only read the 2 changed functions. Skip the rest.
+```
 
-```text
+Delta uses `updated_at` on nodes — only bumped when `content_hash` changes. Safe against false positives from re-analyzing identical files.
+
+## Supported languages
+
+Code extraction (functions, methods, classes, calls): Python, TypeScript, TSX, JavaScript, JSX, Java, Go, Rust, Ruby
+
+Indexed as file nodes: HTML, CSS, JSON, YAML, TOML, XML, INI, .env, .properties
+
+## How summaries work
+
+**Auto-summaries:** `loom analyze` fills summaries from static metadata (params, return type, decorators) via tree-sitter. Coverage goes from 0% → ~80% on first analyze. No LLM.
+
+**Agent summaries:** `store_understanding` stores a summary permanently with a `summary_hash` (snapshot of `content_hash` at write time). If source changes later, `summary_stale: true` appears in `get_context` — agent knows to re-read and update.
+
+**Priority:** Agent summaries are never overwritten by auto-summaries. Re-analyzing the same file preserves agent work.
+
+## Schema
+
+Two core tables in `~/.loom/loom.db`:
+
+```sql
+nodes  -- id, kind, name, path, language, summary, summary_hash,
+          content_hash, start_line, end_line, metadata, deleted_at, updated_at
+edges  -- from_id, to_id, kind, confidence
+```
+
+FTS5 virtual table `nodes_fts` indexes name + summary + path for full-text search.
+
+Sessions table tracks agent session timestamps for delta context.
+
+## Architecture
+
+```
 src/loom/
-├── core/                 # Node/edge models, graph facade, FalkorDB access
-├── ingest/               # repo parsing, Jira ingestion, incremental sync
-├── analysis/             # calls, communities, coupling, static summary extraction
-├── embed/                # embeddings and similarity helpers
-├── linker/               # semantic linking between code and docs
-├── search/               # query-time search over graph state
-├── drift/                # AST drift detection
-├── watch/                # filesystem-driven incremental updates
-└── mcp/                  # MCP server integration
+├── core/          # Node/Edge models, DB context, schema (db.py)
+├── ingest/        # index_repo, sync_paths, tree-sitter parsers per language
+├── analysis/      # communities (Louvain), coupling (git co-change), dead code
+├── query/         # search, blast_radius, context packets, primer, delta
+├── store/         # nodes CRUD, sessions, FTS5 sync
+├── mcp/           # FastMCP server (server.py), standalone entry point (run.py)
+└── cli/           # typer commands
 ```
-
-For deeper technical details, see:
-
-- `docs/ARCHITECTURE.md`
-- `docs/TECHNICAL_CAPABILITIES.md`
-- `docs/USAGE.md`
 
 ## Development
-
-Clone and set up:
 
 ```bash
 git clone https://github.com/ddevilz/loom
 cd loom
 uv sync
-```
-
-Run tests:
-
-```bash
 uv run pytest
-```
-
-Run static checks:
-
-```bash
 uv run ruff check .
 uv run mypy src/
 ```
 
-## Current state of the product
-
-Loom already provides:
-
-- **Graph-backed repository indexing**
-- **Incremental sync correctness paths**
-- **Watch mode**
-- **Semantic search**
-- **Traceability queries**
-- **MCP serving**
-- **Local document and Jira ingestion hooks**
-- **On-demand enrichment with `loom enrich`**
-
-The project is actively evolving in areas like ranking, semantic linking quality, and operational workflows around the graph.
-
-## Documentation
-
-- `README.md` for product overview
-- `docs/USAGE.md` for day-to-day usage
-- `docs/ARCHITECTURE.md` for system design
-- `docs/TECHNICAL_CAPABILITIES.md` for feature details
-- `docs/MANUAL_INTERVENTION_ERRORS.md` for operational troubleshooting
-
 ## License
 
-MIT — use it, extend it, and build on top of it.
+MIT

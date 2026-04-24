@@ -1,355 +1,227 @@
 # Loom Usage Guide
 
-This guide explains how to install, run, query, serve, and maintain Loom in day-to-day use.
-
-## What Loom does
-
-Loom builds a graph of your repository, your documents, and optionally your ticketing data. You can then:
-
-- search the graph semantically
-- inspect callers and callees
-- trace code to tickets or documents
-- monitor a repo continuously with watch mode
-- expose the graph to editors and agents over MCP
+Day-to-day usage: install, index, query, serve, maintain.
 
 ## Prerequisites
 
-Before using Loom, make sure you have:
-
 - Python 3.12+
-- `uv`
-- Docker
-- FalkorDB running locally or reachable over the configured host/port
+- `uv` (recommended) or `pip`
+- No Docker, no external services
 
-Install dependencies:
-
-```bash
-uv sync
-```
-
-Start FalkorDB:
+## Install
 
 ```bash
-docker run -d -p 6379:6379 --name loom-db falkordb/falkordb
-```
-
-## Environment configuration
-
-Common environment variables:
-
-```bash
-LOOM_DB_HOST=localhost
-LOOM_DB_PORT=6379
-LOOM_LLM_MODEL=gpt-4o-mini
-LOOM_LLM_API_KEY=...
-LOOM_JIRA_URL=https://your-domain.atlassian.net
-LOOM_JIRA_EMAIL=you@example.com
-LOOM_JIRA_API_TOKEN=...
-```
-
-Use LLM settings only if you want LLM-backed semantic workflows.
-
-## Basic health check
-
-Verify the CLI imports correctly:
-
-```bash
-uv run loom --dev
+pip install loom-tool
+# or:
+uv add loom-tool
 ```
 
 ## Index a repository
 
-The main entrypoint is `loom analyze`.
-
-Analyze the current repository:
-
 ```bash
-uv run loom analyze . --graph-name myrepo --exclude-tests
+cd my-repo
+loom analyze .
 ```
 
-Force a rebuild of the repo-scoped graph state:
+What `loom analyze` does:
+- walks repo (gitignore-aware)
+- parses changed/new files with tree-sitter
+- stores nodes + edges in `~/.loom/loom.db`
+- computes communities (Louvain) and coupling (git co-change)
+- marks dead code (no incoming CALLS)
+- fills auto-summaries for nodes with no summary
+- soft-deletes nodes for files removed from disk
+- prunes old sessions (keeps last 20 per agent)
+
+Only changed files are re-parsed (SHA-256 comparison). Fast on subsequent runs.
+
+Use `--db` to override the database path:
 
 ```bash
-uv run loom analyze . --graph-name myrepo --exclude-tests --force
+loom --db ./project.db analyze .
 ```
 
-Analyze a specific repo path:
+## Auto-configure AI tools
 
 ```bash
-uv run loom analyze F:\my-repo --graph-name myrepo --exclude-tests
+loom install
 ```
 
- What `analyze` does:
- 
- - walks the repository
- - parses supported files
- - creates file and symbol nodes
- - extracts structural edges such as `CALLS`
- - computes summaries and embeddings
- - links code to docs when available
- - writes all graph state into FalkorDB
+Detects installed AI tools (Claude Code, Cursor, Windsurf, Codex) and writes MCP config for each. Installs git post-commit hook for incremental sync. Writes `~/.claude/skills/loom.md` so Claude Code agents get workflow instructions automatically.
 
-What `analyze` does not do anymore:
+Target a specific platform:
+```bash
+loom install --platform claude-code
+```
 
-- it does **not** run community detection by default
-- it does **not** run git coupling analysis by default
-
-Use `loom enrich` for those expensive passes after indexing.
-
-## Enrich an indexed graph
-
-Use `loom enrich` to run expensive graph enrichment on an already-indexed graph.
+## Start the MCP server
 
 ```bash
-uv run loom enrich --graph-name myrepo
+loom serve
 ```
 
-Communities only:
+Runs in stdio mode. MCP clients connect via the config written by `loom install`. The `loom://primer` resource is available at session start.
+
+Standalone (for `claude mcp add`):
+```bash
+uvx loom-tool     # runs loom-mcp entry point directly
+```
+
+## Session primer
 
 ```bash
-uv run loom enrich --graph-name myrepo --no-coupling
+loom context
 ```
 
-Coupling only:
+Prints ~200-token overview: languages, file count, function count, modules by function count, hot functions, summary coverage, last analyzed time.
+
+Drill into one module:
+```bash
+loom context --module auth
+```
+
+JSON output for scripting:
+```bash
+loom context --json
+```
+
+## Search
 
 ```bash
-uv run loom enrich --graph-name myrepo --no-communities --coupling-months 3
+loom query "validate token"
 ```
 
-## Analyze with docs
+Uses FTS5 full-text search on name + summary + path. Returns node IDs, paths, kinds, and summaries.
 
-If you have a docs folder:
+## Call graph
 
 ```bash
-uv run loom analyze . --docs ./docs --graph-name myrepo --exclude-tests
+loom callers "validate_token"
+loom callees "validate_token"
+loom blast-radius "validate_token" --depth 3
 ```
 
-This lets Loom ingest both code and document nodes into the same graph.
+Targets can be plain names or full node IDs (`function:src/auth.py:validate_token`).
 
-## Analyze with Jira
-
-If you want Jira-backed traceability during indexing:
+## Statistics
 
 ```bash
-uv run loom analyze . \
-  --graph-name myrepo \
-  --jira-project PROJ \
-  --jira-url https://your-domain.atlassian.net \
-  --jira-email you@example.com \
-  --jira-token <token>
+loom stats
 ```
 
-## Query the graph
+Node and edge counts by kind. Useful for verifying index state.
 
-Use `loom query` for semantic search.
+## Summaries
 
 ```bash
-uv run loom query "how is authentication validated" --graph-name myrepo
+loom summaries
+loom summaries --limit 50
 ```
 
-Limit results:
+Shows agent-written summaries, most recently updated first. Empty table means no agent has stored understanding yet — auto-summaries exist but are not shown here.
+
+## Communities and dead code
 
 ```bash
-uv run loom query "entrypoint for API server startup" --graph-name myrepo --limit 5
+loom communities    # run Louvain community detection
+loom dead-code      # mark functions with no incoming CALLS
 ```
 
-This search uses embeddings and graph expansion, so the results are more semantic than a plain text grep.
+Both run automatically as part of `loom analyze`. Use these to re-run on demand.
 
-## Traceability commands
-
-Use `loom trace` for traceability workflows.
-
-### Unimplemented tickets
+## Incremental sync
 
 ```bash
-uv run loom trace unimplemented --graph-name myrepo
+loom sync --old-sha abc123 --new-sha def456
 ```
 
-### Untraced functions
+SHA-256 driven. Re-parses only changed files between two git SHAs. The git post-commit hook installed by `loom install` calls this automatically on every commit.
+
+## HTML export
 
 ```bash
-uv run loom trace untraced --graph-name myrepo
+loom export
+loom export --output graph.html
 ```
 
-### Impact of a ticket
+Generates self-contained interactive HTML graph. Opens in browser.
 
-```bash
-uv run loom trace impact PROJ-123 --graph-name myrepo
-```
+## MCP config (manual)
 
-### Tickets linked to a function
+If `loom install` doesn't cover your tool, add manually:
 
-```bash
-uv run loom trace tickets function:F:/repo/src/app.py:handler --graph-name myrepo
-```
-
-### Sprint coverage
-
-```bash
-uv run loom trace coverage sprint-42 --graph-name myrepo
-```
-
-## Inspect call relationships
-
-Use `loom calls` to inspect call graph relationships.
-
-### Dump a sample of all call edges
-
-```bash
-uv run loom calls --direction dump --graph-name myrepo --limit 20
-```
-
-### Show both callers and callees for a function id
-
-```bash
-uv run loom calls --target function:F:/repo/src/app.py:handler --direction both --graph-name myrepo
-```
-
-### Resolve by plain name
-
-```bash
-uv run loom calls --target handler --kind function --direction both --graph-name myrepo
-```
-
-## Find likely entrypoints
-
-Use `loom entrypoints` to inspect high-signal root nodes.
-
-```bash
-uv run loom entrypoints --graph-name myrepo --limit 30
-```
-
-This command combines:
-
-- name-based entrypoint heuristics
-- call roots with no incoming `CALLS`
-- relationship distribution summaries
-
-## Incremental sync between commits
-
-Use `loom sync` when you want to apply only the changes between two SHAs.
-
-```bash
-uv run loom sync \
-  --old-sha <old_sha> \
-  --new-sha <new_sha> \
-  --graph-name myrepo \
-  --repo-path .
-```
-
-This is useful for commit-to-commit updates, CI workflows, or validating incremental correctness.
-
-## Watch mode
-
-Use `loom watch` to continuously monitor a repository and reindex on file changes.
-
-```bash
-uv run loom watch . --graph-name myrepo --debounce 500
-```
-
-Important behavior:
-
-- watch mode is mostly silent after startup
-- it waits for filesystem changes
-- silence does not mean it is stuck
-
-If you want to validate it manually:
-
-1. start `loom watch`
-2. create or edit a small file in the repo
-3. query Loom for the new symbol or file
-4. delete the file and confirm the symbol can no longer be resolved
-
-## Serve Loom over MCP
-
-Use `loom serve` to expose Loom to MCP-capable clients.
-
-```bash
-uv run loom serve --graph-name myrepo
-```
-
-Loom uses stdio transport for MCP serving.
-
-### Example Windsurf MCP config
-
+**Claude Code / Cursor / Windsurf** (`~/.claude/mcp.json` etc.):
 ```json
 {
   "mcpServers": {
     "loom": {
-      "command": "uv",
-      "args": ["run", "loom", "serve", "--graph-name", "myrepo"],
-      "cwd": "F:\\loom"
+      "command": "uvx",
+      "args": ["loom-tool"]
     }
   }
 }
 ```
 
- Once connected, the MCP client can use Loom tools such as:
- 
- - `search_code`
- - `get_callers`
- - `get_spec`
- - `check_drift` (AST drift only)
- - `get_impact`
- - `get_ticket`
- - `unimplemented`
+**With custom DB path:**
+```json
+{
+  "mcpServers": {
+    "loom": {
+      "command": "uvx",
+      "args": ["loom-tool"],
+      "env": {
+        "LOOM_DB_PATH": "/path/to/project.db"
+      }
+    }
+  }
+}
+```
+
+## Environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `LOOM_DB_PATH` | `~/.loom/loom.db` | SQLite database path |
 
 ## Typical workflows
 
-### Workflow: first-time setup
- 
- 1. start FalkorDB
- 2. run `uv sync`
- 3. run `uv run loom analyze <repo> --graph-name <name>`
- 4. optionally run `uv run loom enrich --graph-name <name>`
- 5. verify with `loom query` or `loom entrypoints`
+### First-time setup
+```bash
+pip install loom-tool
+cd my-repo
+loom analyze .
+loom install
+loom context    # verify indexing worked
+```
 
- ### Workflow: ongoing local development
- 
- 1. run `loom analyze` once for a baseline graph
- 2. optionally run `loom enrich` when you want communities/coupling
- 3. run `loom watch` during local development
- 4. use `loom query`, `loom calls`, and `loom trace` while working
+### Ongoing development
+Post-commit hook fires automatically after every `git commit`. Nothing else needed.
 
-### Workflow: agent integration
+Manual refresh after large changes:
+```bash
+loom analyze .
+```
 
-1. index the repository
-2. start `loom serve`
-3. connect the MCP client
-4. use MCP tools to query the graph from the editor or agent
-
-### Workflow: incremental verification
-
-1. analyze the repository into a graph
-2. pick two git SHAs
-3. run `loom sync --old-sha ... --new-sha ...`
-4. verify counts and outputs
+### Agent integration (Claude Code)
+1. `loom install` writes MCP config
+2. Start a new Claude Code session
+3. Agent calls `start_session()` → gets `session_id`
+4. Agent uses `search_code`, `get_context`, `store_understanding`
+5. Next session: `get_delta(previous_session_id)` → only changed nodes
 
 ## Troubleshooting
 
-### `watch` looks stuck
+### `loom serve` looks stuck
+Expected. MCP server stays running and waits for stdio requests from the MCP client.
 
-This is usually expected. Watch mode is quiet after startup and only reacts to file changes.
+### `loom analyze` shows 0 files changed
+All files match their stored SHA-256. Run is complete — nothing changed since last analyze.
 
-### `serve` looks stuck
+### `search_code` returns no results
+Run `loom analyze .` first. If the DB exists but is empty, verify the repo path is correct.
 
-This is also expected. MCP servers stay running and wait for stdio requests.
+### Summary coverage low
+Coverage fills over time as agents call `store_understanding`. Auto-summaries provide ~80% baseline immediately after `loom analyze`.
 
-### `trace` returns no ticket data
-
-Your graph may not contain Jira/doc nodes yet. Run `analyze` with docs or Jira inputs first.
-
-### `query` returns fallback-style results
-
-This can happen if the vector index is unavailable. Search may still work via brute-force fallback, but it will be slower.
-
-### `calls --target <id>` returns no edges
-
-That may mean the node exists but has no callers/callees, not necessarily that the node is missing. If you want resolution validation, use plain-name lookup with `--kind`.
-
-## Related docs
-
-- `README.md`
-- `docs/ARCHITECTURE.md`
-- `docs/TECHNICAL_CAPABILITIES.md`
-- `docs/MANUAL_INTERVENTION_ERRORS.md`
+### Node ID not found in `get_context`
+IDs are relative-path-based. Use `search_code` to find the correct ID first.
