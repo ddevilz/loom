@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-from loom.core import Node, NodeKind, NodeSource
+from loom.core import Node, NodeKind
 
 
 def extract_summary(node: Node) -> str:
-    """
-    Extract a structured text summary from a node using only static metadata.
-    No LLM calls, no network requests.
+    """Extract a structured text summary from a node using only static metadata.
 
-    For code nodes: produces structured format with kind, name, params, returns, etc.
-    For doc nodes: returns node.summary or node.name unchanged.
-    For file nodes: returns simple file description.
+    No LLM calls, no network requests. Produces structured text from
+    kind/name/params/return_type/docstring fields in node.metadata.
     """
-    # Doc nodes pass through unchanged
-    if node.source == NodeSource.DOC:
-        return node.summary or node.name
-
     # File nodes
     if node.kind == NodeKind.FILE:
         return f"file: {node.name}\npath: {node.path}"
