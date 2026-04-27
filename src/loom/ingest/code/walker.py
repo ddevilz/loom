@@ -10,11 +10,23 @@ from loom.ingest.code.registry import get_registry
 
 
 def _load_gitignore(root: Path) -> PathSpec:
-    gi = root / ".gitignore"
-    if not gi.exists():
-        return PathSpec.from_lines("gitignore", [])
-
-    lines = gi.read_text(encoding="utf-8", errors="replace").splitlines()
+    lines: list[str] = []
+    for gi in root.rglob(".gitignore"):
+        try:
+            rel_dir = gi.parent.relative_to(root).as_posix()
+            prefix = "" if rel_dir == "." else rel_dir + "/"
+            for line in gi.read_text(encoding="utf-8", errors="replace").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    lines.append(line)
+                    continue
+                # Anchor sub-directory patterns to their directory
+                if not stripped.startswith("/") and prefix:
+                    lines.append(prefix + stripped)
+                else:
+                    lines.append(line)
+        except OSError:
+            continue
     return PathSpec.from_lines("gitignore", lines)
 
 

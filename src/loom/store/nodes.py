@@ -23,6 +23,7 @@ def row_to_node(row: sqlite3.Row) -> Node:
         language=row["language"],
         content_hash=row["content_hash"],
         file_hash=row["file_hash"],
+        file_mtime=row["file_mtime"] if "file_mtime" in row.keys() else None,
         summary=row["summary"],
         is_dead_code=bool(row["is_dead_code"]),
         community_id=row["community_id"],
@@ -55,14 +56,16 @@ async def get_nodes_by_name(db: DB, name: str, limit: int = 10) -> list[Node]:
     return await asyncio.to_thread(_run)
 
 
-async def get_content_hashes(db: DB) -> dict[str, str]:
-    def _run() -> dict[str, str]:
+async def get_content_hashes(db: DB) -> dict[str, tuple[str, float | None]]:
+    """Return {rel_path: (file_hash, file_mtime)} for all indexed files."""
+    def _run() -> dict[str, tuple[str, float | None]]:
         with db._lock:
             conn = db.connect()
             rows = conn.execute(
-                "SELECT path, file_hash FROM nodes WHERE file_hash IS NOT NULL"
+                "SELECT path, file_hash, file_mtime FROM nodes "
+                "WHERE kind = 'file' AND file_hash IS NOT NULL AND deleted_at IS NULL"
             ).fetchall()
-            return {r["path"]: r["file_hash"] for r in rows}
+            return {r["path"]: (r["file_hash"], r["file_mtime"]) for r in rows}
     return await asyncio.to_thread(_run)
 
 
@@ -165,22 +168,23 @@ async def bulk_upsert_nodes(db: DB, nodes: list[Node]) -> None:
                 (
                     n.id, n.kind.value, n.source.value, n.name, n.path,
                     n.start_line, n.end_line, n.language, n.content_hash,
-                    n.file_hash, n.summary, int(n.is_dead_code), n.community_id,
-                    json.dumps(n.metadata, default=str), now,
+                    n.file_hash, n.file_mtime, n.summary, int(n.is_dead_code),
+                    n.community_id, json.dumps(n.metadata, default=str), now,
                 )
                 for n in nodes
             ]
             conn.executemany(
                 """INSERT INTO nodes
                      (id, kind, source, name, path, start_line, end_line,
-                      language, content_hash, file_hash, summary, is_dead_code,
-                      community_id, metadata, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      language, content_hash, file_hash, file_mtime, summary,
+                      is_dead_code, community_id, metadata, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET
                      kind=excluded.kind, source=excluded.source, name=excluded.name,
                      path=excluded.path, start_line=excluded.start_line,
                      end_line=excluded.end_line, language=excluded.language,
                      content_hash=excluded.content_hash, file_hash=excluded.file_hash,
+                     file_mtime=excluded.file_mtime,
                      summary=CASE
                          WHEN excluded.summary IS NOT NULL AND nodes.summary IS NULL
                          THEN excluded.summary
@@ -209,8 +213,8 @@ async def replace_file(
         (
             n.id, n.kind.value, n.source.value, n.name, n.path,
             n.start_line, n.end_line, n.language, n.content_hash,
-            n.file_hash, n.summary, int(n.is_dead_code), n.community_id,
-            json.dumps(n.metadata, default=str), now,
+            n.file_hash, n.file_mtime, n.summary, int(n.is_dead_code),
+            n.community_id, json.dumps(n.metadata, default=str), now,
         )
         for n in nodes
     ]
@@ -247,9 +251,9 @@ async def replace_file(
                     conn.executemany(
                         """INSERT OR REPLACE INTO nodes
                              (id, kind, source, name, path, start_line, end_line,
-                              language, content_hash, file_hash, summary,
+                              language, content_hash, file_hash, file_mtime, summary,
                               is_dead_code, community_id, metadata, updated_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         node_rows,
                     )
                 if edge_rows:

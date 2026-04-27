@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     language        TEXT,
     content_hash    TEXT,
     file_hash       TEXT,
+    file_mtime      REAL,
     summary         TEXT,
     summary_hash    TEXT,
     is_dead_code    INTEGER NOT NULL DEFAULT 0,
@@ -78,6 +79,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     metadata    TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 _DDL_FTS5 = """
@@ -131,6 +137,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     # Migrations for existing databases (idempotent)
     _add_column_if_missing(conn, "nodes", "summary_hash", "TEXT")
     _add_column_if_missing(conn, "nodes", "deleted_at", "INTEGER")
+    _add_column_if_missing(conn, "nodes", "file_mtime", "REAL")
     # Index on deleted_at must be created after the column migration
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at)"

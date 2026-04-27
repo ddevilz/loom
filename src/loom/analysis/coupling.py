@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from itertools import combinations
@@ -19,11 +20,30 @@ _GIT_SINCE_FORMAT = "%Y-%m-%d %H:%M:%S"
 _MAX_FILES_PER_COMMIT = 50
 _DEFAULT_MONTHS = 6
 _DEFAULT_THRESHOLD = 0.3
+_META_KEY = "coupling_last_commit_ts"
 
 
 def _file_node_id(rel_path: str) -> str:
-    """Build FILE node id using POSIX repo-relative path."""
     return f"file:{rel_path}"
+
+
+def _get_meta(db: DB, key: str) -> str | None:
+    with db._lock:
+        row = db.connect().execute(
+            "SELECT value FROM meta WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else None
+
+
+def _set_meta(db: DB, key: str, value: str) -> None:
+    with db._lock:
+        conn = db.connect()
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES(?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+        conn.commit()
 
 
 async def compute_coupling(
@@ -33,32 +53,50 @@ async def compute_coupling(
     months: int = _DEFAULT_MONTHS,
     threshold: float = _DEFAULT_THRESHOLD,
 ) -> int:
-    """Analyze git history to find files that co-change; persist COUPLED_WITH edges.
+    """Analyze git history to find co-changing files; persist COUPLED_WITH edges.
 
+    Skips re-analysis if the newest commit hasn't changed since the last run.
     Returns count of coupling edges written.
     """
-    edges = await _analyze_coupling(repo_path, months=months, threshold=threshold)
-    if not edges:
-        return 0
-    await edge_store.bulk_upsert_edges(db, edges)
-    return len(edges)
-
-
-async def _analyze_coupling(
-    repo_path: Path,
-    *,
-    months: int,
-    threshold: float,
-) -> list[Edge]:
-    """Return COUPLED_WITH edges from git co-change history."""
     try:
         repo = await asyncio.to_thread(
             git.Repo, str(repo_path), search_parent_directories=True
         )
     except (git.InvalidGitRepositoryError, git.NoSuchPathError) as exc:
         logger.warning("Not a valid git repo %s: %s", repo_path, exc)
-        return []
+        return 0
 
+    def _latest_commit_ts() -> str | None:
+        try:
+            commit = next(repo.iter_commits(max_count=1))
+            return str(commit.committed_date)
+        except (StopIteration, git.GitCommandError):
+            return None
+
+    latest_ts = await asyncio.to_thread(_latest_commit_ts)
+    if latest_ts is None:
+        return 0
+
+    stored_ts = await asyncio.to_thread(_get_meta, db, _META_KEY)
+    if stored_ts == latest_ts:
+        logger.info("[coupling] no new commits since last run — skipped")
+        return 0
+
+    edges = await _analyze_coupling(repo, repo_path, months=months, threshold=threshold)
+    if edges:
+        await edge_store.bulk_upsert_edges(db, edges)
+    await asyncio.to_thread(_set_meta, db, _META_KEY, latest_ts)
+    return len(edges)
+
+
+async def _analyze_coupling(
+    repo: git.Repo,
+    repo_path: Path,
+    *,
+    months: int,
+    threshold: float,
+) -> list[Edge]:
+    """Return COUPLED_WITH edges from git co-change history."""
     working_dir = repo.working_tree_dir
     if not isinstance(working_dir, str) or not working_dir:
         logger.warning("No working tree for %s", repo_path)

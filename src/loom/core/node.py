@@ -33,6 +33,7 @@ class Node(BaseModel):
 
     content_hash: str | None = None
     file_hash: str | None = None
+    file_mtime: float | None = None
 
     summary: str | None = None
 

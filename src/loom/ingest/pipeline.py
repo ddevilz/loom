@@ -51,8 +51,8 @@ class IndexResult:
     errors: list[str] = field(default_factory=list)
 
 
-def _hash_file(f: Path) -> tuple[Path, str]:
-    return f, sha256_of_file(f)
+def _hash_file(f: Path) -> tuple[Path, str, float]:
+    return f, sha256_of_file(f), f.stat().st_mtime
 
 
 def _remap_id(old_id: str, abs_path: str, rel_path: str) -> str:
@@ -78,7 +78,9 @@ def _parse_file(file_path: Path, *, repo_root: Path) -> ParseResult:
         return ParseResult(errors=[f"path {abs_path!r} outside repo_root {repo_root}"])
 
     try:
+        st = file_path.stat()
         file_hash = sha256_of_file(file_path)
+        file_mtime = st.st_mtime
     except OSError as exc:
         return ParseResult(errors=[f"hash failed {abs_path}: {exc}"])
 
@@ -100,6 +102,7 @@ def _parse_file(file_path: Path, *, repo_root: Path) -> ParseResult:
         name=file_path.name,
         path=rel_path,
         file_hash=file_hash,
+        file_mtime=file_mtime,
         metadata={},
     )
 
@@ -211,15 +214,33 @@ async def index_repo(
     ]
     existing = await node_store.get_content_hashes(db)
 
+    # Fast mtime pre-filter: skip hashing if mtime matches stored value
+    needs_hash: list[Path] = []
     changed: list[Path] = []
     skipped = 0
-    with ProcessPoolExecutor(max_workers=max_workers) as pool:
-        for f, h in pool.map(_hash_file, all_files, chunksize=50):
-            rel = f.relative_to(repo_path).as_posix()
-            if h == existing.get(rel):
+    for f in all_files:
+        rel = f.relative_to(repo_path).as_posix()
+        stored = existing.get(rel)
+        if stored is not None:
+            stored_hash, stored_mtime = stored
+            if stored_mtime is not None and f.stat().st_mtime == stored_mtime:
                 skipped += 1
-            else:
-                changed.append(f)
+                continue
+        needs_hash.append(f)
+
+    # Full hash only for files that passed the mtime gate
+    mtime_map: dict[str, float] = {}
+    if needs_hash:
+        with ProcessPoolExecutor(max_workers=max_workers) as pool:
+            for f, h, mtime in pool.map(_hash_file, needs_hash, chunksize=50):
+                rel = f.relative_to(repo_path).as_posix()
+                mtime_map[rel] = mtime
+                stored = existing.get(rel)
+                stored_hash = stored[0] if stored else None
+                if h == stored_hash:
+                    skipped += 1
+                else:
+                    changed.append(f)
     logger.info(
         "[scan] done in %.1fs — %d total, %d changed, %d skipped",
         time.perf_counter() - t, len(all_files), len(changed), skipped,
@@ -254,10 +275,11 @@ async def index_repo(
         logger.info("[parse] nothing to parse (all %d files unchanged)", skipped)
 
     # --- Phase 3: resolve cross-file calls ---
-    logger.info("[calls] resolving cross-file call edges")
-    t = time.perf_counter()
-    nodes_all, edges_all = resolve_calls(nodes_all, edges_all, repo_path)
-    logger.info("[calls] done in %.1fs — %d total edges", time.perf_counter() - t, len(edges_all))
+    if nodes_all:
+        logger.info("[calls] resolving cross-file call edges")
+        t = time.perf_counter()
+        nodes_all, edges_all = resolve_calls(nodes_all, edges_all, repo_path)
+        logger.info("[calls] done in %.1fs — %d total edges", time.perf_counter() - t, len(edges_all))
 
     # --- Phase 4: write to DB ---
     by_path: dict[str, tuple[list[Node], list[Edge]]] = {}

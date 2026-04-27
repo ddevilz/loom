@@ -65,10 +65,18 @@ async def test_update_summary_missing_node(db: DB) -> None:
 
 @pytest.mark.asyncio
 async def test_get_content_hashes(db: DB) -> None:
-    a = _fn("a.py", "foo")
-    await node_store.bulk_upsert_nodes(db, [a])
+    file_node = Node(
+        id="file:a.py",
+        kind=NodeKind.FILE,
+        source=NodeSource.CODE,
+        name="a.py",
+        path="a.py",
+        file_hash="hash-a.py",
+    )
+    await node_store.bulk_upsert_nodes(db, [file_node])
     hashes = await node_store.get_content_hashes(db)
     assert "a.py" in hashes
+    assert hashes["a.py"][0] == "hash-a.py"
 
 
 @pytest.mark.asyncio

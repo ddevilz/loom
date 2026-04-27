@@ -76,10 +76,21 @@ async def test_replace_file_atomic(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_get_content_hashes(tmp_path: Path):
     db = DB(path=tmp_path / "loom.db")
-    a = _fn("a.py", "f")
-    await node_store.bulk_upsert_nodes(db, [a])
+    file_node = Node(
+        id="file:a.py",
+        kind=NodeKind.FILE,
+        source=NodeSource.CODE,
+        name="a.py",
+        path="a.py",
+        file_hash="hash-a.py",
+        file_mtime=1234567890.0,
+    )
+    await node_store.bulk_upsert_nodes(db, [file_node])
     hashes = await node_store.get_content_hashes(db)
-    assert hashes.get("a.py") == "hash-a.py"
+    entry = hashes.get("a.py")
+    assert entry is not None
+    assert entry[0] == "hash-a.py"
+    assert entry[1] == 1234567890.0
 
 
 @pytest.mark.asyncio
