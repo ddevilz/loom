@@ -111,15 +111,6 @@ def trace_calls(
         candidates = all_symbols.get(callee_name, [])
 
         if not candidates:
-            edges.append(
-                Edge(
-                    from_id=function_node.id,
-                    to_id=f"unresolved:{callee_name}",
-                    kind=EdgeType.CALLS,
-                    confidence=confidence,
-                    metadata={"unresolved": True},
-                )
-            )
             continue
 
         if len(candidates) == 1:

@@ -111,17 +111,15 @@ def trace_calls_for_java_file(path: str, nodes: list[Node]) -> list[Edge]:
         if len(candidates) == 1:
             callee_node = candidates[0]
 
-        metadata: dict[str, object] = {}
         if callee_node is None:
-            metadata["unresolved"] = True
+            continue
 
         edges.append(
             Edge(
                 from_id=caller.id,
-                to_id=callee_node.id if callee_node else f"unresolved:{callee_name}",
+                to_id=callee_node.id,
                 kind=EdgeType.CALLS,
                 confidence=confidence,
-                metadata=metadata,
             )
         )
 

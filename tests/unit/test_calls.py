@@ -70,11 +70,30 @@ def test_trace_method_call():
 def caller():
     obj.method()
 """
+    # Unresolvable method call — no edge emitted
     edges = _parse_and_trace(code, "caller")
+    assert len(edges) == 0
 
+
+def test_trace_method_call_resolved():
+    code = """
+def caller():
+    obj.method()
+"""
+    method_node = Node(
+        id="method:test.py:method",
+        kind=NodeKind.METHOD,
+        source=NodeSource.CODE,
+        name="method",
+        path="test.py",
+        start_line=5,
+        end_line=6,
+        language="python",
+        metadata={},
+    )
+    edges = _parse_and_trace(code, "caller", {"method": method_node})
     assert len(edges) == 1
-    assert edges[0].kind == EdgeType.CALLS
-    assert "method" in edges[0].to_id
+    assert edges[0].to_id == method_node.id
     assert edges[0].confidence == 0.8
 
 
@@ -83,12 +102,9 @@ def test_trace_chained_method_call():
 def caller():
     obj.chain.method()
 """
+    # Unresolvable chained method call — no edge emitted
     edges = _parse_and_trace(code, "caller")
-
-    assert len(edges) == 1
-    assert edges[0].kind == EdgeType.CALLS
-    assert "method" in edges[0].to_id
-    assert edges[0].confidence == 0.8
+    assert len(edges) == 0
 
 
 def test_trace_filters_builtin_noise():
@@ -221,13 +237,9 @@ def test_trace_unresolved_calls():
 def caller():
     unknown_function()
 """
+    # Unresolvable calls are dropped — no edge emitted
     edges = _parse_and_trace(code, "caller", {})
-
-    assert len(edges) == 1
-    assert edges[0].kind == EdgeType.CALLS
-    assert edges[0].to_id == "unresolved:unknown_function"
-    assert edges[0].metadata["unresolved"] is True
-    assert edges[0].confidence == 1.0
+    assert len(edges) == 0
 
 
 def test_trace_calls_for_file_integration(tmp_path: Path):
