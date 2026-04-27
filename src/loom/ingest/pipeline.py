@@ -282,41 +282,44 @@ async def index_repo(
             await node_store.replace_file(db, path, fn, fe)
         logger.info("[write] done in %.1fs", time.perf_counter() - t)
 
-    # --- Phase 5: communities ---
-    logger.info("[communities] computing Louvain communities")
-    t = time.perf_counter()
-    try:
-        await compute_communities(db)
-        logger.info("[communities] done in %.1fs", time.perf_counter() - t)
-    except Exception as exc:
-        logger.warning("[communities] failed in %.1fs: %s", time.perf_counter() - t, exc)
+    if not changed:
+        logger.info("[skip] no files changed — skipping analysis phases")
+    else:
+        # --- Phase 5: communities ---
+        logger.info("[communities] computing Louvain communities")
+        t = time.perf_counter()
+        try:
+            await compute_communities(db)
+            logger.info("[communities] done in %.1fs", time.perf_counter() - t)
+        except Exception as exc:
+            logger.warning("[communities] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
-    # --- Phase 6: coupling ---
-    logger.info("[coupling] computing git co-change coupling")
-    t = time.perf_counter()
-    try:
-        await compute_coupling(db, repo_path)
-        logger.info("[coupling] done in %.1fs", time.perf_counter() - t)
-    except Exception as exc:
-        logger.warning("[coupling] failed in %.1fs: %s", time.perf_counter() - t, exc)
+        # --- Phase 6: coupling ---
+        logger.info("[coupling] computing git co-change coupling")
+        t = time.perf_counter()
+        try:
+            await compute_coupling(db, repo_path)
+            logger.info("[coupling] done in %.1fs", time.perf_counter() - t)
+        except Exception as exc:
+            logger.warning("[coupling] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
-    # --- Phase 7: dead code ---
-    logger.info("[dead_code] marking dead code")
-    t = time.perf_counter()
-    try:
-        await mark_dead_code(db)
-        logger.info("[dead_code] done in %.1fs", time.perf_counter() - t)
-    except Exception as exc:
-        logger.warning("[dead_code] failed in %.1fs: %s", time.perf_counter() - t, exc)
+        # --- Phase 7: dead code ---
+        logger.info("[dead_code] marking dead code")
+        t = time.perf_counter()
+        try:
+            await mark_dead_code(db)
+            logger.info("[dead_code] done in %.1fs", time.perf_counter() - t)
+        except Exception as exc:
+            logger.warning("[dead_code] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
-    # --- Phase 8: auto-summaries ---
-    logger.info("[summaries] generating auto-summaries for unsummarized nodes")
-    t = time.perf_counter()
-    try:
-        filled = await _fill_auto_summaries(db)
-        logger.info("[summaries] done in %.1fs — %d summaries written", time.perf_counter() - t, filled)
-    except Exception as exc:
-        logger.warning("[summaries] failed in %.1fs: %s", time.perf_counter() - t, exc)
+        # --- Phase 8: auto-summaries ---
+        logger.info("[summaries] generating auto-summaries for unsummarized nodes")
+        t = time.perf_counter()
+        try:
+            filled = await _fill_auto_summaries(db)
+            logger.info("[summaries] done in %.1fs — %d summaries written", time.perf_counter() - t, filled)
+        except Exception as exc:
+            logger.warning("[summaries] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
     # --- Phase 9: soft-delete removed files ---
     try:
