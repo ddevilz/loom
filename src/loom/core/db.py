@@ -54,7 +54,6 @@ CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
 CREATE INDEX IF NOT EXISTS idx_nodes_path ON nodes(path);
 CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
 CREATE INDEX IF NOT EXISTS idx_nodes_lang ON nodes(language);
-CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at);
 
 CREATE TABLE IF NOT EXISTS edges (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,3 +131,8 @@ def init_schema(conn: sqlite3.Connection) -> None:
     # Migrations for existing databases (idempotent)
     _add_column_if_missing(conn, "nodes", "summary_hash", "TEXT")
     _add_column_if_missing(conn, "nodes", "deleted_at", "INTEGER")
+    # Index on deleted_at must be created after the column migration
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at)"
+    )
+    conn.commit()
