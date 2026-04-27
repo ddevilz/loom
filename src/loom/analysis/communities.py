@@ -47,11 +47,13 @@ async def compute_communities(db: DB) -> int:
                     member_ids = list(members)
                     if not member_ids:
                         continue
-                    ph = ",".join("?" * len(member_ids))
-                    conn.execute(
-                        f"UPDATE nodes SET community_id = ? WHERE id IN ({ph})",
-                        (cid, *member_ids),
-                    )
+                    for i in range(0, len(member_ids), 900):
+                        chunk = member_ids[i : i + 900]
+                        ph = ",".join("?" * len(chunk))
+                        conn.execute(
+                            f"UPDATE nodes SET community_id = ? WHERE id IN ({ph})",
+                            (cid, *chunk),
+                        )
                 conn.commit()
                 return len(communities)
             except Exception:
