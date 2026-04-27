@@ -5,6 +5,7 @@ import functools
 import json
 import logging
 import sqlite3
+import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from multiprocessing import cpu_count
@@ -193,13 +194,16 @@ async def index_repo(
     *,
     workers: int | None = None,
 ) -> IndexResult:
+    t0 = time.perf_counter()
     repo_path = repo_path.resolve()
 
+    # --- Phase 1: scan ---
+    logger.info("[scan] discovering files in %s", repo_path)
+    t = time.perf_counter()
     files_by_lang = walk_repo(str(repo_path))
     all_files: list[Path] = [
         Path(fp) for fps in files_by_lang.values() for fp in fps
     ]
-
     existing = await node_store.get_content_hashes(db)
     changed: list[Path] = []
     skipped = 0
@@ -209,13 +213,9 @@ async def index_repo(
             skipped += 1
         else:
             changed.append(f)
-
     logger.info(
-        "index_repo root=%s total=%d changed=%d skipped=%d",
-        repo_path,
-        len(all_files),
-        len(changed),
-        skipped,
+        "[scan] done in %.1fs — %d total, %d changed, %d skipped",
+        time.perf_counter() - t, len(all_files), len(changed), skipped,
     )
 
     nodes_all: list[Node] = []
@@ -224,22 +224,37 @@ async def index_repo(
 
     max_workers = workers or min(cpu_count(), 8)
 
-    if len(changed) >= 8:
-        parse_fn = functools.partial(_parse_file, repo_root=repo_path)
-        with ProcessPoolExecutor(max_workers=max_workers) as pool:
-            for result in pool.map(parse_fn, changed, chunksize=20):
-                nodes_all.extend(result.nodes)
-                edges_all.extend(result.edges)
-                errors.extend(result.errors)
+    # --- Phase 2: parse ---
+    if changed:
+        logger.info("[parse] parsing %d files with %d workers", len(changed), max_workers)
+        t = time.perf_counter()
+        if len(changed) >= 8:
+            parse_fn = functools.partial(_parse_file, repo_root=repo_path)
+            with ProcessPoolExecutor(max_workers=max_workers) as pool:
+                for result in pool.map(parse_fn, changed, chunksize=20):
+                    nodes_all.extend(result.nodes)
+                    edges_all.extend(result.edges)
+                    errors.extend(result.errors)
+        else:
+            for f in changed:
+                r = _parse_file(f, repo_root=repo_path)
+                nodes_all.extend(r.nodes)
+                edges_all.extend(r.edges)
+                errors.extend(r.errors)
+        logger.info(
+            "[parse] done in %.1fs — %d nodes, %d edges",
+            time.perf_counter() - t, len(nodes_all), len(edges_all),
+        )
     else:
-        for f in changed:
-            r = _parse_file(f, repo_root=repo_path)
-            nodes_all.extend(r.nodes)
-            edges_all.extend(r.edges)
-            errors.extend(r.errors)
+        logger.info("[parse] nothing to parse (all %d files unchanged)", skipped)
 
+    # --- Phase 3: resolve cross-file calls ---
+    logger.info("[calls] resolving cross-file call edges")
+    t = time.perf_counter()
     nodes_all, edges_all = resolve_calls(nodes_all, edges_all, repo_path)
+    logger.info("[calls] done in %.1fs — %d total edges", time.perf_counter() - t, len(edges_all))
 
+    # --- Phase 4: write to DB ---
     by_path: dict[str, tuple[list[Node], list[Edge]]] = {}
     for n in nodes_all:
         if n.path not in by_path:
@@ -255,31 +270,50 @@ async def index_repo(
         if src_path in by_path:
             by_path[src_path][1].append(e)
 
-    for path, (fn, fe) in by_path.items():
-        await node_store.replace_file(db, path, fn, fe)
+    if by_path:
+        logger.info("[write] writing %d paths to DB", len(by_path))
+        t = time.perf_counter()
+        for path, (fn, fe) in by_path.items():
+            await node_store.replace_file(db, path, fn, fe)
+        logger.info("[write] done in %.1fs", time.perf_counter() - t)
 
+    # --- Phase 5: communities ---
+    logger.info("[communities] computing Louvain communities")
+    t = time.perf_counter()
     try:
         await compute_communities(db)
+        logger.info("[communities] done in %.1fs", time.perf_counter() - t)
     except Exception as exc:
-        logger.warning("compute_communities failed: %s", exc)
+        logger.warning("[communities] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
+    # --- Phase 6: coupling ---
+    logger.info("[coupling] computing git co-change coupling")
+    t = time.perf_counter()
     try:
         await compute_coupling(db, repo_path)
+        logger.info("[coupling] done in %.1fs", time.perf_counter() - t)
     except Exception as exc:
-        logger.warning("compute_coupling failed: %s", exc)
+        logger.warning("[coupling] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
+    # --- Phase 7: dead code ---
+    logger.info("[dead_code] marking dead code")
+    t = time.perf_counter()
     try:
         await mark_dead_code(db)
+        logger.info("[dead_code] done in %.1fs", time.perf_counter() - t)
     except Exception as exc:
-        logger.warning("mark_dead_code failed: %s", exc)
+        logger.warning("[dead_code] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
-    # Fill auto-summaries for nodes that have none (never overwrites agent summaries)
+    # --- Phase 8: auto-summaries ---
+    logger.info("[summaries] generating auto-summaries for unsummarized nodes")
+    t = time.perf_counter()
     try:
-        await _fill_auto_summaries(db)
+        filled = await _fill_auto_summaries(db)
+        logger.info("[summaries] done in %.1fs — %d summaries written", time.perf_counter() - t, filled)
     except Exception as exc:
-        logger.warning("auto_summaries failed: %s", exc)
+        logger.warning("[summaries] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
-    # Soft-delete files that no longer exist on disk
+    # --- Phase 9: soft-delete removed files ---
     try:
         current_rel_paths: set[str] = {
             f.relative_to(repo_path).as_posix() for f in all_files
@@ -293,19 +327,28 @@ async def index_repo(
                     ).fetchall()
                 ]
         indexed_paths = await asyncio.to_thread(_get_indexed_paths)
+        deleted_count = 0
         for ipath in indexed_paths:
             if ipath not in current_rel_paths:
                 await mark_nodes_deleted(db, ipath)
-                logger.info("soft-deleted removed file: %s", ipath)
+                deleted_count += 1
+        if deleted_count:
+            logger.info("[cleanup] soft-deleted %d removed files", deleted_count)
         await prune_tombstones(db)
     except Exception as exc:
-        logger.warning("deleted_file_detection failed: %s", exc)
+        logger.warning("[cleanup] deleted_file_detection failed: %s", exc)
 
-    # Prune old sessions (keep last 20 per agent)
+    # --- Phase 10: prune sessions ---
     try:
         await prune_sessions(db, keep=20)
     except Exception as exc:
-        logger.warning("prune_sessions failed: %s", exc)
+        logger.warning("[cleanup] prune_sessions failed: %s", exc)
+
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "[done] total %.1fs — %d files parsed, %d nodes, %d edges",
+        elapsed, len(changed), len(nodes_all), len(edges_all),
+    )
 
     return IndexResult(
         repo_path=repo_path,

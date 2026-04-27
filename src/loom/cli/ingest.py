@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.logging import RichHandler
 
 from loom.cli._app import app
 from loom.ingest.pipeline import index_repo
@@ -12,6 +14,16 @@ from loom.ingest.incremental import sync_paths
 from loom.mcp.server import build_server
 
 console = Console()
+
+
+def _enable_progress_logging() -> None:
+    """Wire loom.ingest logger → Rich console so index_repo phase logs show live."""
+    handler = RichHandler(console=console, show_path=False, markup=False)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    log = logging.getLogger("loom.ingest.pipeline")
+    if not log.handlers:
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
 
 
 @app.command()
@@ -22,6 +34,7 @@ def analyze(
     ),
 ) -> None:
     """Build or refresh the Loom graph for a repo."""
+    _enable_progress_logging()
     db = ctx.obj["db"]
     result = asyncio.run(index_repo(path, db))
     console.print(
