@@ -51,6 +51,10 @@ class IndexResult:
     errors: list[str] = field(default_factory=list)
 
 
+def _hash_file(f: Path) -> tuple[Path, str]:
+    return f, sha256_of_file(f)
+
+
 def _remap_id(old_id: str, abs_path: str, rel_path: str) -> str:
     if f":{abs_path}:" in old_id:
         return old_id.replace(f":{abs_path}:", f":{rel_path}:", 1)
@@ -196,23 +200,26 @@ async def index_repo(
 ) -> IndexResult:
     t0 = time.perf_counter()
     repo_path = repo_path.resolve()
+    max_workers = workers or min(cpu_count(), 8)
 
     # --- Phase 1: scan ---
-    logger.info("[scan] discovering files in %s", repo_path)
+    logger.info("[scan] discovering files in %s (workers=%d)", repo_path, max_workers)
     t = time.perf_counter()
     files_by_lang = walk_repo(str(repo_path))
     all_files: list[Path] = [
         Path(fp) for fps in files_by_lang.values() for fp in fps
     ]
     existing = await node_store.get_content_hashes(db)
+
     changed: list[Path] = []
     skipped = 0
-    for f in all_files:
-        rel = f.relative_to(repo_path).as_posix()
-        if sha256_of_file(f) == existing.get(rel):
-            skipped += 1
-        else:
-            changed.append(f)
+    with ProcessPoolExecutor(max_workers=max_workers) as pool:
+        for f, h in pool.map(_hash_file, all_files, chunksize=50):
+            rel = f.relative_to(repo_path).as_posix()
+            if h == existing.get(rel):
+                skipped += 1
+            else:
+                changed.append(f)
     logger.info(
         "[scan] done in %.1fs — %d total, %d changed, %d skipped",
         time.perf_counter() - t, len(all_files), len(changed), skipped,
@@ -221,8 +228,6 @@ async def index_repo(
     nodes_all: list[Node] = []
     edges_all: list[Edge] = []
     errors: list[str] = []
-
-    max_workers = workers or min(cpu_count(), 8)
 
     # --- Phase 2: parse ---
     if changed:
