@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import functools
+import json
 import logging
+import sqlite3
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from multiprocessing import cpu_count
@@ -325,9 +328,7 @@ async def _fill_auto_summaries(db: DB) -> int:
     Returns:
         Number of nodes updated.
     """
-    import json as _json
-
-    def _get_null_summary_nodes() -> list[tuple]:
+    def _get_null_summary_nodes() -> list[sqlite3.Row]:
         with db._lock:
             conn = db.connect()
             return conn.execute(
@@ -340,16 +341,14 @@ async def _fill_auto_summaries(db: DB) -> int:
     if not rows:
         return 0
 
-    from loom.core.node import Node as _Node, NodeKind as _NK, NodeSource as _NS
-
     updates: list[tuple[str, str]] = []
     for row in rows:
         try:
-            metadata = _json.loads(row["metadata"]) if row["metadata"] else {}
-            n = _Node(
+            metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+            n = Node(
                 id=row["id"],
-                kind=_NK(row["kind"]),
-                source=_NS.CODE,
+                kind=NodeKind(row["kind"]),
+                source=NodeSource.CODE,
                 name=row["name"],
                 path=row["path"],
                 language=row["language"],
@@ -358,7 +357,8 @@ async def _fill_auto_summaries(db: DB) -> int:
             auto = extract_summary(n)
             if auto and auto.strip():
                 updates.append((auto, row["id"]))
-        except Exception:
+        except Exception as exc:
+            logger.warning("auto_summary failed for %s: %s", row["id"], exc)
             continue
 
     if not updates:

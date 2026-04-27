@@ -8,10 +8,11 @@ import networkx as nx
 import networkx.algorithms.community as nx_comm
 
 from loom.core.context import DB
+from loom.core.edge import EdgeType
 
 
 async def compute_communities(db: DB) -> int:
-    """Run Louvain on CALLS+MEMBER_OF+IMPORTS subgraph.
+    """Run Louvain on CALLS+COUPLED_WITH subgraph.
 
     Persists community_id on every member node and materializes one
     COMMUNITY-kind node per cluster. Returns the number of communities found.
@@ -21,8 +22,8 @@ async def compute_communities(db: DB) -> int:
         with db._lock:
             conn = db.connect()
             edges = conn.execute(
-                "SELECT from_id, to_id FROM edges "
-                "WHERE kind IN ('calls','member_of','imports')"
+                "SELECT from_id, to_id FROM edges WHERE kind IN (?, ?)",
+                (EdgeType.CALLS.value, EdgeType.COUPLED_WITH.value),
             ).fetchall()
             g: nx.Graph = nx.Graph()
             for row in edges:

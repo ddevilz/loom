@@ -9,12 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class EdgeType(StrEnum):
     CALLS = "calls"
     CONTAINS = "contains"
-    EXTENDS = "extends"
-    IMPORTS = "imports"
     COUPLED_WITH = "coupled_with"
-    MEMBER_OF = "member_of"
-    CHILD_OF = "child_of"
-    REFERENCES = "references"
 
 
 class ConfidenceTier(StrEnum):

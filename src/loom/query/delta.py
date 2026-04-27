@@ -8,13 +8,13 @@ from typing import Any
 
 from loom.analysis.code.extractor import extract_summary
 from loom.core.context import DB
-from loom.store.nodes import _row_to_node
+from loom.store.nodes import row_to_node
 
 _DEFAULT_LIMIT = 100
 
 
 def _row_to_mini_packet(row: sqlite3.Row, change_type: str) -> dict[str, Any]:
-    node = _row_to_node(row)
+    node = row_to_node(row)
     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
     auto_summary = extract_summary(node) if not node.summary else None
 

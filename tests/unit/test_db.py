@@ -16,7 +16,7 @@ def test_init_schema_creates_tables(tmp_path: Path):
     ).fetchall()}
     assert "nodes" in tables
     assert "edges" in tables
-    assert "schema_meta" in tables
+    assert "sessions" in tables
 
 
 def test_init_schema_sets_wal(tmp_path: Path):

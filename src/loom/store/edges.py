@@ -4,7 +4,7 @@ import asyncio
 import json
 
 from loom.core.context import DB
-from loom.core.edge import ConfidenceTier, Edge
+from loom.core.edge import Edge
 
 
 async def bulk_upsert_edges(db: DB, edges: list[Edge]) -> None:

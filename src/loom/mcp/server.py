@@ -48,7 +48,7 @@ def build_server(
     *,
     db: DB | None = None,
 ) -> "FastMCP":
-    """Build and return the FastMCP server with all 12 tools registered."""
+    """Build and return the FastMCP server with all 15 tools registered."""
     if FastMCP is None:
         raise RuntimeError("fastmcp not installed — run: uv add fastmcp")
     mcp = FastMCP("loom")

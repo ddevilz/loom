@@ -8,7 +8,7 @@ import networkx as nx
 from loom.core.context import DB
 from loom.core.edge import EdgeType
 from loom.core.node import Node
-from loom.store.nodes import _row_to_node
+from loom.store.nodes import row_to_node
 from loom.store.nodes import get_node as _get_node
 
 
@@ -67,9 +67,9 @@ async def neighbors(
             ids = list(visited.keys())
             ph = ",".join("?" * len(ids))
             rows = conn.execute(
-                f"SELECT * FROM nodes WHERE id IN ({ph})", ids
+                f"SELECT * FROM nodes WHERE id IN ({ph}) AND deleted_at IS NULL", ids
             ).fetchall()
-            return [_row_to_node(r) for r in rows]
+            return [row_to_node(r) for r in rows]
 
     return await asyncio.to_thread(_run)
 
@@ -86,16 +86,17 @@ async def blast_radius(db: DB, node_id: str, depth: int = 3) -> list[Node]:
                     SELECT e.from_id, i.d + 1
                       FROM edges e
                       JOIN impacted i ON e.to_id = i.id
-                     WHERE e.kind = 'calls' AND i.d < ?
+                     WHERE e.kind = ? AND i.d < ?
                 )
                 SELECT n.*, i.d AS _depth
                   FROM impacted i JOIN nodes n ON n.id = i.id
                  WHERE i.id != ?
+                   AND n.deleted_at IS NULL
                  ORDER BY i.d, n.name
                 """,
-                (node_id, depth, node_id),
+                (node_id, EdgeType.CALLS.value, depth, node_id),
             ).fetchall()
-            return [_row_to_node(r) for r in rows]
+            return [row_to_node(r) for r in rows]
 
     return await asyncio.to_thread(_run)
 
@@ -105,7 +106,8 @@ async def shortest_path(db: DB, from_id: str, to_id: str) -> list[Node] | None:
         with db._lock:
             conn = db.connect()
             rows = conn.execute(
-                "SELECT from_id, to_id FROM edges WHERE kind = 'calls'"
+                "SELECT from_id, to_id FROM edges WHERE kind = ?",
+                (EdgeType.CALLS.value,),
             ).fetchall()
             g = nx.DiGraph()
             for r in rows:
@@ -129,9 +131,10 @@ async def community_members(db: DB, community_id: str) -> list[Node]:
         with db._lock:
             conn = db.connect()
             rows = conn.execute(
-                "SELECT * FROM nodes WHERE community_id = ?", (community_id,)
+                "SELECT * FROM nodes WHERE community_id = ? AND deleted_at IS NULL",
+                (community_id,),
             ).fetchall()
-            return [_row_to_node(r) for r in rows]
+            return [row_to_node(r) for r in rows]
 
     return await asyncio.to_thread(_run)
 
@@ -143,13 +146,14 @@ async def god_nodes(db: DB, limit: int = 20) -> list[tuple[Node, int]]:
             rows = conn.execute(
                 """SELECT n.*, COUNT(e.id) AS _indeg
                      FROM nodes n JOIN edges e ON e.to_id = n.id
-                    WHERE e.kind = 'calls'
+                    WHERE e.kind = ?
+                      AND n.deleted_at IS NULL
                     GROUP BY n.id
                     ORDER BY _indeg DESC
                     LIMIT ?""",
-                (limit,),
+                (EdgeType.CALLS.value, limit),
             ).fetchall()
-            return [(_row_to_node(r), r["_indeg"]) for r in rows]
+            return [(row_to_node(r), r["_indeg"]) for r in rows]
 
     return await asyncio.to_thread(_run)
 
@@ -158,12 +162,15 @@ async def stats(db: DB) -> dict[str, Any]:
     def _run() -> dict[str, Any]:
         with db._lock:
             conn = db.connect()
-            n_total = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+            n_total = conn.execute(
+                "SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL"
+            ).fetchone()[0]
             e_total = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
             by_kind = {
                 r["kind"]: r["c"]
                 for r in conn.execute(
-                    "SELECT kind, COUNT(*) AS c FROM nodes GROUP BY kind"
+                    "SELECT kind, COUNT(*) AS c FROM nodes "
+                    "WHERE deleted_at IS NULL GROUP BY kind"
                 ).fetchall()
             }
             by_edge = {

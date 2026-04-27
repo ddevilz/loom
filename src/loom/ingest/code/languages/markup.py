@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
-logger = logging.getLogger(__name__)
-
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
 from loom.ingest.code.languages.constants import (

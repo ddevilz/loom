@@ -52,11 +52,17 @@ def test_kept_edge_types_present():
     for kept in (
         "CALLS",
         "CONTAINS",
+        "COUPLED_WITH",
+    ):
+        assert hasattr(EdgeType, kept)
+
+
+def test_dead_edge_types_absent():
+    for removed in (
         "EXTENDS",
         "IMPORTS",
-        "COUPLED_WITH",
         "MEMBER_OF",
         "CHILD_OF",
         "REFERENCES",
     ):
-        assert hasattr(EdgeType, kept)
+        assert not hasattr(EdgeType, removed), f"{removed} should have been removed (never produced by pipeline)"

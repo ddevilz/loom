@@ -6,11 +6,11 @@ import sqlite3
 import time
 
 from loom.core.context import DB
-from loom.core.edge import ConfidenceTier, Edge, EdgeType
+from loom.core.edge import Edge
 from loom.core.node import Node, NodeKind, NodeSource
 
 
-def _row_to_node(row: sqlite3.Row) -> Node:
+def row_to_node(row: sqlite3.Row) -> Node:
     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
     node = Node(
         id=row["id"],
@@ -40,7 +40,7 @@ async def get_node(db: DB, node_id: str) -> Node | None:
             row = conn.execute(
                 "SELECT * FROM nodes WHERE id = ?", (node_id,)
             ).fetchone()
-            return _row_to_node(row) if row else None
+            return row_to_node(row) if row else None
     return await asyncio.to_thread(_run)
 
 
@@ -51,7 +51,7 @@ async def get_nodes_by_name(db: DB, name: str, limit: int = 10) -> list[Node]:
             rows = conn.execute(
                 "SELECT * FROM nodes WHERE name = ? LIMIT ?", (name, limit)
             ).fetchall()
-            return [_row_to_node(r) for r in rows]
+            return [row_to_node(r) for r in rows]
     return await asyncio.to_thread(_run)
 
 
@@ -227,6 +227,16 @@ async def replace_file(
             conn = db.connect()
             conn.execute("BEGIN IMMEDIATE")
             try:
+                # Save existing agent summaries before replacing (by node id)
+                saved: dict[str, tuple[str, str | None]] = {
+                    r["id"]: (r["summary"], r["summary_hash"])
+                    for r in conn.execute(
+                        "SELECT id, summary, summary_hash FROM nodes "
+                        "WHERE path = ? AND summary IS NOT NULL",
+                        (path,),
+                    ).fetchall()
+                }
+
                 conn.execute(
                     "DELETE FROM edges WHERE from_id IN "
                     "(SELECT id FROM nodes WHERE path = ?)",
@@ -250,6 +260,15 @@ async def replace_file(
                            VALUES (?,?,?,?,?,?)""",
                         edge_rows,
                     )
+
+                # Restore agent summaries that survived re-parse (node id still exists)
+                for node_id, (summary, summary_hash) in saved.items():
+                    conn.execute(
+                        "UPDATE nodes SET summary = ?, summary_hash = ? "
+                        "WHERE id = ? AND summary IS NULL",
+                        (summary, summary_hash, node_id),
+                    )
+
                 conn.commit()
             except Exception:
                 conn.rollback()

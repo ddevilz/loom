@@ -56,7 +56,7 @@ async def test_search_returns_search_result_with_score() -> None:
     r = results[0]
     assert isinstance(r, SearchResult)
     assert r.node.name == "foo"
-    assert r.score == 1.0
+    assert r.score >= 0  # real BM25 score — positive, magnitude varies with corpus size
 
 
 @pytest.mark.asyncio

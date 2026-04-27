@@ -7,8 +7,8 @@ from typing import Any
 
 from loom.analysis.code.extractor import extract_summary
 from loom.core.context import DB
-from loom.core.node import NodeKind
-from loom.store.nodes import _row_to_node
+from loom.core.edge import EdgeType
+from loom.store.nodes import row_to_node
 
 _CALLER_LIMIT = 10
 _CALLEE_LIMIT = 10
@@ -22,7 +22,7 @@ def _build_packet(
     callees: list[sqlite3.Row],
     callees_total: int,
 ) -> dict[str, Any]:
-    node = _row_to_node(node_row)
+    node = row_to_node(node_row)
     metadata = json.loads(node_row["metadata"]) if node_row["metadata"] else {}
 
     summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None
@@ -63,7 +63,7 @@ def _build_members_packet(
     members: list[sqlite3.Row],
     members_total: int,
 ) -> dict[str, Any]:
-    node = _row_to_node(node_row)
+    node = row_to_node(node_row)
     auto_summary = extract_summary(node)
     return {
         "id": node.id,
@@ -104,7 +104,7 @@ async def get_context_packet(db: DB, node_id: str) -> dict[str, Any] | None:
         with db._lock:
             conn = db.connect()
             node_row = conn.execute(
-                "SELECT * FROM nodes WHERE id = ?", (node_id,)
+                "SELECT * FROM nodes WHERE id = ? AND deleted_at IS NULL", (node_id,)
             ).fetchone()
             if not node_row:
                 return None
@@ -119,15 +119,15 @@ async def get_context_packet(db: DB, node_id: str) -> dict[str, Any] | None:
                            (SELECT COUNT(*) FROM edges e2 WHERE e2.to_id = n.id) AS indeg
                     FROM edges e
                     JOIN nodes n ON n.id = e.from_id
-                    WHERE e.to_id = ? AND e.kind = 'calls'
+                    WHERE e.to_id = ? AND e.kind = ?
                     ORDER BY CASE WHEN n.path = ? THEN 0 ELSE 1 END, indeg DESC
                     LIMIT ?
                     """,
-                    (node_id, path, _CALLER_LIMIT),
+                    (node_id, EdgeType.CALLS.value, path, _CALLER_LIMIT),
                 ).fetchall()
                 callers_total = conn.execute(
-                    "SELECT COUNT(*) FROM edges WHERE to_id = ? AND kind = 'calls'",
-                    (node_id,),
+                    "SELECT COUNT(*) FROM edges WHERE to_id = ? AND kind = ?",
+                    (node_id, EdgeType.CALLS.value),
                 ).fetchone()[0]
 
                 callees = conn.execute(
@@ -135,15 +135,15 @@ async def get_context_packet(db: DB, node_id: str) -> dict[str, Any] | None:
                     SELECT n.id, n.name, n.path, n.start_line
                     FROM edges e
                     JOIN nodes n ON n.id = e.to_id
-                    WHERE e.from_id = ? AND e.kind = 'calls'
+                    WHERE e.from_id = ? AND e.kind = ?
                     ORDER BY CASE WHEN n.path = ? THEN 0 ELSE 1 END
                     LIMIT ?
                     """,
-                    (node_id, path, _CALLEE_LIMIT),
+                    (node_id, EdgeType.CALLS.value, path, _CALLEE_LIMIT),
                 ).fetchall()
                 callees_total = conn.execute(
-                    "SELECT COUNT(*) FROM edges WHERE from_id = ? AND kind = 'calls'",
-                    (node_id,),
+                    "SELECT COUNT(*) FROM edges WHERE from_id = ? AND kind = ?",
+                    (node_id, EdgeType.CALLS.value),
                 ).fetchone()[0]
 
                 return _build_packet(node_row, callers, callers_total, callees, callees_total)
@@ -154,14 +154,14 @@ async def get_context_packet(db: DB, node_id: str) -> dict[str, Any] | None:
                     SELECT n.id, n.name, n.path, n.kind
                     FROM edges e
                     JOIN nodes n ON n.id = e.to_id
-                    WHERE e.from_id = ? AND e.kind = 'contains'
+                    WHERE e.from_id = ? AND e.kind = ?
                     LIMIT ?
                     """,
-                    (node_id, _MEMBER_LIMIT),
+                    (node_id, EdgeType.CONTAINS.value, _MEMBER_LIMIT),
                 ).fetchall()
                 members_total = conn.execute(
-                    "SELECT COUNT(*) FROM edges WHERE from_id = ? AND kind = 'contains'",
-                    (node_id,),
+                    "SELECT COUNT(*) FROM edges WHERE from_id = ? AND kind = ?",
+                    (node_id, EdgeType.CONTAINS.value),
                 ).fetchone()[0]
                 return _build_members_packet(node_row, members, members_total)
 

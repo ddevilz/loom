@@ -72,11 +72,6 @@ CREATE INDEX IF NOT EXISTS idx_edges_kind      ON edges(kind);
 CREATE INDEX IF NOT EXISTS idx_edges_to_kind   ON edges(to_id, kind);
 CREATE INDEX IF NOT EXISTS idx_edges_from_kind ON edges(from_id, kind);
 
-CREATE TABLE IF NOT EXISTS schema_meta (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS sessions (
     id          TEXT PRIMARY KEY,
     agent_id    TEXT NOT NULL DEFAULT 'default',
