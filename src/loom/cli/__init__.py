@@ -6,7 +6,7 @@ import typer
 
 from loom import __version__
 from loom.cli._app import app
-from loom.core.context import DB, DEFAULT_DB_PATH
+from loom.core.context import DB, DEFAULT_DB_PATH, resolve_db_path
 
 
 def _version_callback(value: bool) -> None:
@@ -29,7 +29,7 @@ def _root(
     db: Path | None = typer.Option(None, "--db", help="SQLite db path", is_eager=False),
 ) -> None:
     ctx.ensure_object(dict)
-    ctx.obj["db"] = DB(path=db or DEFAULT_DB_PATH)
+    ctx.obj["db"] = DB(path=db or resolve_db_path())
     if ctx.invoked_subcommand is None:
         raise typer.Exit(code=0)
 

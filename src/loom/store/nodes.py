@@ -80,11 +80,41 @@ async def get_file_hash(db: DB, path: str) -> str | None:
     return await asyncio.to_thread(_run)
 
 
-async def update_summary(db: DB, node_id: str, summary: str) -> bool:
-    def _run() -> bool:
+_UpdateResult = dict  # {"updated": bool, "skipped": bool, "found": bool}
+
+
+async def update_summary(
+    db: DB, node_id: str, summary: str, *, force: bool = False
+) -> _UpdateResult:
+    """Write agent summary for a node.
+
+    Skips write when summary already exists and content_hash unchanged (function not
+    modified since last store). Pass force=True to overwrite regardless.
+
+    Args:
+        db: Database context.
+        node_id: Exact node id.
+        summary: One-sentence description of what the function does and why.
+        force: Overwrite even if summary is fresh.
+
+    Returns:
+        Dict with keys: found (bool), updated (bool), skipped (bool).
+    """
+    def _run() -> _UpdateResult:
         with db._lock:
             conn = db.connect()
-            cur = conn.execute(
+            row = conn.execute(
+                "SELECT summary, summary_hash, content_hash FROM nodes WHERE id = ?",
+                (node_id,),
+            ).fetchone()
+            if row is None:
+                return {"found": False, "updated": False, "skipped": False}
+
+            # Skip if fresh: summary exists and hash matches current content
+            if not force and row["summary"] and row["summary_hash"] == row["content_hash"]:
+                return {"found": True, "updated": False, "skipped": True}
+
+            conn.execute(
                 """UPDATE nodes
                       SET summary = ?,
                           summary_hash = content_hash,
@@ -93,7 +123,8 @@ async def update_summary(db: DB, node_id: str, summary: str) -> bool:
                 (summary.strip(), int(time.time()), node_id),
             )
             conn.commit()
-            return cur.rowcount > 0
+            return {"found": True, "updated": True, "skipped": False}
+
     return await asyncio.to_thread(_run)
 
 

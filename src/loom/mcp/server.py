@@ -163,25 +163,38 @@ def build_server(
     async def store_understanding_batch(updates: list[dict]) -> dict:
         """Cache summaries for multiple nodes in one call. Max 50 per call."""
         batch = updates[:50]
-        stored = 0
+        stored = skipped = 0
         for item in batch:
             nid = str(item.get("node_id", "")).strip()
             s = str(item.get("summary", "")).strip()
+            force = bool(item.get("force", False))
             if nid and s:
-                ok = await node_store.update_summary(db, nid, s)
-                if ok:
+                r = await node_store.update_summary(db, nid, s, force=force)
+                if r["updated"]:
                     stored += 1
-        return {"stored": stored, "total": len(batch)}
+                elif r["skipped"]:
+                    skipped += 1
+        return {"stored": stored, "skipped": skipped, "total": len(batch)}
 
     @mcp.tool()
-    async def store_understanding(node_id: str, summary: str) -> dict:
-        """Persist agent-generated understanding of a node back into the graph."""
+    async def store_understanding(node_id: str, summary: str, force: bool = False) -> dict:
+        """Persist agent-generated understanding of a node back into the graph.
+
+        Skips write if a summary already exists and the function has not changed
+        since it was last stored (content_hash unchanged). Pass force=True to
+        overwrite an existing summary regardless.
+
+        Returns {"ok": true, "skipped": true} when skipped — no re-read needed.
+        """
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         s = _req_text(summary, field="summary", max_length=4000)
-        updated = await node_store.update_summary(db, nid, s)
-        if not updated:
+        result = await node_store.update_summary(db, nid, s, force=force)
+        if not result["found"]:
             return {"ok": False, "error": "node not found"}
-        return {"ok": True, "node_id": nid}
+        if result["skipped"]:
+            return {"ok": True, "skipped": True, "node_id": nid,
+                    "reason": "summary already cached and function unchanged"}
+        return {"ok": True, "skipped": False, "node_id": nid}
 
     @mcp.tool()
     async def get_context(node_id: str) -> dict | None:

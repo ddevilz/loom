@@ -10,8 +10,19 @@ from loom.ingest.code.registry import get_registry
 
 
 def _load_gitignore(root: Path) -> PathSpec:
+    """Load .gitignore files from the repo, skipping node_modules and hidden dirs."""
     lines: list[str] = []
-    for gi in root.rglob(".gitignore"):
+    skip = DEFAULT_SKIP_DIRS | frozenset({"node_modules"})
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune dirs in-place so os.walk doesn't recurse into them
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in skip and not d.startswith(".")
+        ]
+        if ".gitignore" not in filenames:
+            continue
+        gi = Path(dirpath) / ".gitignore"
         try:
             rel_dir = gi.parent.relative_to(root).as_posix()
             prefix = "" if rel_dir == "." else rel_dir + "/"

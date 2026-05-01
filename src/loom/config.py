@@ -12,10 +12,8 @@ try:
 except ImportError:
     pass
 
-# SQLite database path
-LOOM_DB_PATH: str = os.getenv(
-    "LOOM_DB_PATH", str(Path.home() / ".loom" / "loom.db")
-)
+# SQLite database path — override disables auto-project resolution
+LOOM_DB_PATH: str | None = os.getenv("LOOM_DB_PATH") or None
 
 # Optional: LLM for summary generation
 LOOM_LLM_MODEL: str | None = os.getenv("LOOM_LLM_MODEL") or None
