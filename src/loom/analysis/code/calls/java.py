@@ -1,26 +1,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+from tree_sitter import Node as TSNode
+from tree_sitter import Parser
+from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
 from loom.core import Edge, EdgeType, Node, NodeKind
 
-if TYPE_CHECKING:
-    from tree_sitter import Node as TSNode
-
-_java_parser: object | None = None
-
-
-def _get_java_parser() -> object:
-    global _java_parser
-    if _java_parser is None:
-        from tree_sitter import Parser
-        from tree_sitter_language_pack import get_language as _get_ts_language
-
-        _java_parser = Parser(_get_ts_language("java"))
-    return _java_parser
+_JAVA_LANGUAGE = _get_ts_language("java")
 
 
 _JAVA_METHOD_INVOCATION = "method_invocation"
@@ -88,7 +78,7 @@ def trace_calls_for_java_file(path: str, nodes: list[Node]) -> list[Edge]:
     p = Path(path)
     src = p.read_bytes()
 
-    parser = _get_java_parser()
+    parser = Parser(_JAVA_LANGUAGE)
     tree = parser.parse(src)
 
     symbol_map: dict[str, list[Node]] = {}

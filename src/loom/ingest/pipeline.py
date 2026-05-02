@@ -11,10 +11,6 @@ from dataclasses import dataclass, field
 from multiprocessing import cpu_count
 from pathlib import Path
 
-from loom.analysis.code.calls.python import (
-    _build_symbol_map,
-    trace_calls_for_file_with_global_symbols,
-)
 from loom.analysis.code.extractor import extract_summary
 from loom.analysis.code.parser import parse_code
 from loom.analysis.communities import compute_communities
@@ -157,6 +153,11 @@ def resolve_calls(
     nodes: list[Node], edges: list[Edge], repo_root: Path
 ) -> tuple[list[Node], list[Edge]]:
     """Enhance cross-file CALLS resolution for Python using a global symbol map."""
+    from loom.analysis.code.calls.python import (
+        _build_symbol_map,
+        trace_calls_for_file_with_global_symbols,
+    )
+
     global_symbol_map = _build_symbol_map(nodes)
     if not global_symbol_map:
         return nodes, edges
