@@ -52,7 +52,7 @@ async def test_update_summary(db: DB) -> None:
     a = _fn("a.py", "foo")
     await node_store.bulk_upsert_nodes(db, [a])
     ok = await node_store.update_summary(db, a.id, "Does foo things")
-    assert ok is True
+    assert ok["updated"] is True
     got = await node_store.get_node(db, a.id)
     assert got is not None and got.summary == "Does foo things"
 
@@ -60,7 +60,7 @@ async def test_update_summary(db: DB) -> None:
 @pytest.mark.asyncio
 async def test_update_summary_missing_node(db: DB) -> None:
     ok = await node_store.update_summary(db, "no-such-id", "summary")
-    assert ok is False
+    assert ok["found"] is False
 
 
 @pytest.mark.asyncio

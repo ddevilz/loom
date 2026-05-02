@@ -23,7 +23,7 @@ def row_to_node(row: sqlite3.Row) -> Node:
         language=row["language"],
         content_hash=row["content_hash"],
         file_hash=row["file_hash"],
-        file_mtime=row.get("file_mtime", None),
+        file_mtime=row["file_mtime"],
         summary=row["summary"],
         is_dead_code=bool(row["is_dead_code"]),
         community_id=row["community_id"],
