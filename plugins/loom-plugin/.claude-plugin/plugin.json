@@ -1,7 +1,7 @@
 {
   "name": "loom",
   "description": "Persistent symbol index for AI coding agents. Tree-sitter indexes your codebase into SQLite. Agents search by name/keyword and get summaries + signatures instantly.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": {
     "name": "Devashish",
     "email": "jadhavom24@gmail.com"
