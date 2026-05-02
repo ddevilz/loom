@@ -9,7 +9,7 @@ Loom indexes your codebase into a local SQLite database using tree-sitter. It ex
 **Core loop:**
 
 ```
-loom analyze .              # tree-sitter indexes all symbols → ~/.loom/loom.db
+loom analyze .              # tree-sitter indexes all symbols → ~/.loom/projects/myrepo.db
 search_code("login")        # instant: {name, path, line, summary, signature}
 get_context(node_id)        # full picture: summary + callers + callees, one call
 store_understanding(id, s)  # cache what you learned → returned on future searches
@@ -21,9 +21,14 @@ No Docker. No embeddings. No LLM calls from Loom. Pure tree-sitter + SQLite.
 
 Every Claude Code / Cursor / Codex session starts by re-exploring the codebase: reading CLAUDE.md, grepping for functions, re-discovering structure. Loom eliminates that.
 
-- **First session:** 8× token savings — summaries replace file reads
-- **Session 2+:** 90×+ savings — delta context shows only what changed
-- **Compounding:** every agent run makes Loom smarter for the next
+| Repo | Files | Without Loom | With Loom | Reduction |
+|------|-------|-------------|-----------|-----------|
+| replay-agent | 35 Python | ~22,112 tokens | ~433 tokens | **51× fewer** |
+| finpower | 678 TS/TSX/Python/Go | ~794,462 tokens | ~527 tokens | **1,507× fewer** |
+
+- **Session 1:** agent reads files, stores summaries → Loom gets smarter
+- **Session 2+:** summaries returned instantly → file reads skipped entirely
+- **Compounding:** every session makes Loom richer for every future agent
 
 ## Installation
 
@@ -46,6 +51,21 @@ loom serve          # start MCP stdio server
 
 After `loom install`, MCP clients connect automatically. Claude Code sessions get the `loom://primer` resource loaded at startup.
 
+## Project-isolated databases
+
+Loom auto-detects the git root and creates a per-project database. No flags needed.
+
+```
+~/.loom/projects/
+  my-api.db          ← cd ~/projects/my-api && loom analyze .
+  frontend.db        ← cd ~/projects/frontend && loom analyze .
+  loom.db            ← cd ~/projects/loom && loom analyze .
+
+~/.loom/loom.db      ← fallback when not inside a git repo
+```
+
+Override with `LOOM_DB_PATH` env var or `--db` flag.
+
 ## CLI reference
 
 | Command | Purpose |
@@ -54,7 +74,7 @@ After `loom install`, MCP clients connect automatically. Claude Code sessions ge
 | `loom sync [--old-sha] [--new-sha]` | Incremental sync of changed files via SHA-256 |
 | `loom context [-m module]` | Print ~200-token session primer (modules, hot functions, coverage) |
 | `loom serve` | Start MCP stdio server |
-| `loom install [--platform]` | Configure MCP for all detected AI tools + git hook |
+| `loom install [--platform] [--list-plugins]` | Configure MCP for all detected AI tools + git hook |
 | `loom query <text>` | FTS5 / name search across nodes |
 | `loom blast-radius <target>` | Show transitive callers of a function |
 | `loom callers <target>` | Direct callers (one-hop incoming CALLS) |
@@ -66,8 +86,6 @@ After `loom install`, MCP clients connect automatically. Claude Code sessions ge
 | `loom export` | Self-contained interactive HTML graph |
 
 ## MCP tools
-
-Agents use these tools directly when Loom is connected via MCP:
 
 | Tool | Purpose |
 |------|---------|
@@ -82,7 +100,7 @@ Agents use these tools directly when Loom is connected via MCP:
 | `shortest_path(from_id, to_id)` | Shortest directed path on CALLS subgraph |
 | `graph_stats()` | Node/edge counts by kind |
 | `god_nodes(limit)` | Most-called functions (highest in-degree) |
-| `store_understanding(node_id, summary)` | Cache agent-generated summary permanently |
+| `store_understanding(node_id, summary, force?)` | Cache agent-generated summary permanently. Returns `skipped: true` if summary already fresh — no re-write needed. |
 | `store_understanding_batch(updates)` | Batch version, max 50 per call |
 | `start_session(agent_id)` | Register session start, returns session_id |
 | `get_delta(previous_session_id)` | What changed since last session (changed + deleted nodes) |
@@ -127,6 +145,43 @@ store_understanding(
     node_id="function:src/auth.py:validate_token",
     summary="Validates JWT tokens, returns False if expired or signature invalid."
 )
+# Returns {"ok": true, "skipped": false} — written
+# Returns {"ok": true, "skipped": true}  — already fresh, no re-write needed
+```
+
+## How summaries work
+
+**Auto-summaries:** `loom analyze` fills summaries from static metadata (params, return type, decorators) via tree-sitter. Coverage goes from 0% → ~80% on first analyze. No LLM.
+
+**Agent summaries:** `store_understanding` stores a summary permanently with a `summary_hash` (snapshot of `content_hash` at write time).
+
+- If source changes → `summary_stale: true` in `get_context` → agent re-reads and updates
+- If source unchanged → `store_understanding` returns `skipped: true` → no duplicate writes
+- Pass `force: true` to overwrite regardless
+
+**Priority:** Agent summaries are never overwritten by auto-summaries. Re-analyzing preserves agent work.
+
+## Plugin system
+
+`loom install` uses a plugin registry. Built-in plugins: `claude-code`, `cursor`, `windsurf`, `codex`.
+
+Add a custom platform without editing any source:
+
+```python
+# ~/.loom/plugins/zed.py
+from loom.cli.plugins import Plugin, register
+from pathlib import Path
+
+register(Plugin(
+    name="zed",
+    config_path=Path.home() / ".config" / "zed" / "mcp.json",
+    config_key="mcpServers",
+))
+```
+
+```bash
+loom install --list-plugins   # see all registered plugins
+loom install --platform zed   # install only for Zed
 ```
 
 ## Session delta — how it works
@@ -146,17 +201,9 @@ Code extraction (functions, methods, classes, calls): Python, TypeScript, TSX, J
 
 Indexed as file nodes: HTML, CSS, JSON, YAML, TOML, XML, INI, .env, .properties
 
-## How summaries work
-
-**Auto-summaries:** `loom analyze` fills summaries from static metadata (params, return type, decorators) via tree-sitter. Coverage goes from 0% → ~80% on first analyze. No LLM.
-
-**Agent summaries:** `store_understanding` stores a summary permanently with a `summary_hash` (snapshot of `content_hash` at write time). If source changes later, `summary_stale: true` appears in `get_context` — agent knows to re-read and update.
-
-**Priority:** Agent summaries are never overwritten by auto-summaries. Re-analyzing the same file preserves agent work.
-
 ## Schema
 
-Two core tables in `~/.loom/loom.db`:
+Full DDL in [`src/loom/core/schema.sql`](src/loom/core/schema.sql). Two core tables:
 
 ```sql
 nodes  -- id, kind, name, path, language, summary, summary_hash,
@@ -165,20 +212,22 @@ edges  -- from_id, to_id, kind, confidence
 ```
 
 FTS5 virtual table `nodes_fts` indexes name + summary + path for full-text search.
-
 Sessions table tracks agent session timestamps for delta context.
 
 ## Architecture
 
 ```
 src/loom/
-├── core/          # Node/Edge models, DB context, schema (db.py)
+├── core/          # Node/Edge models, DB context, schema.sql
 ├── ingest/        # index_repo, sync_paths, tree-sitter parsers per language
 ├── analysis/      # communities (Louvain), coupling (git co-change), dead code
 ├── query/         # search, blast_radius, context packets, primer, delta
 ├── store/         # nodes CRUD, sessions, FTS5 sync
 ├── mcp/           # FastMCP server (server.py), standalone entry point (run.py)
-└── cli/           # typer commands
+├── cli/           # typer commands
+│   └── plugins/   # platform plugin registry (claude-code, cursor, windsurf, codex)
+├── templates/     # graph.html — interactive export UI
+└── data/          # loom-skill.md — Claude Code skill installed by loom install
 ```
 
 ## Development
