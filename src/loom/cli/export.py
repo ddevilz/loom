@@ -98,7 +98,7 @@ def _render_html(data: dict, db_path: Path) -> str:
 def export_graph(
     output: Path = typer.Argument(Path("loom-graph.html"), help="Output HTML file path"),
     db: Path | None = typer.Option(None, "--db", help="Path to loom.db"),
-    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open in browser after export"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open in browser"),
 ) -> None:
     """Export the code graph as a self-contained interactive HTML file."""
     db_obj = DB(path=db or DEFAULT_DB_PATH)

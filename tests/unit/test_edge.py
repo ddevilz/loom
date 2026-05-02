@@ -65,4 +65,6 @@ def test_dead_edge_types_absent():
         "CHILD_OF",
         "REFERENCES",
     ):
-        assert not hasattr(EdgeType, removed), f"{removed} should have been removed (never produced by pipeline)"
+        assert not hasattr(EdgeType, removed), (
+            f"{removed} should have been removed (never produced by pipeline)"
+        )

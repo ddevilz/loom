@@ -9,8 +9,8 @@ from rich.console import Console
 from rich.logging import RichHandler
 
 from loom.cli._app import app
-from loom.ingest.pipeline import index_repo
 from loom.ingest.incremental import sync_paths
+from loom.ingest.pipeline import index_repo
 from loom.mcp.server import build_server
 
 console = Console()
@@ -80,6 +80,7 @@ def context(
 ) -> None:
     """Print compressed codebase overview for agent session startup (~200 tokens)."""
     import json as _json
+
     from loom.query.primer import build_primer
 
     db = ctx.obj["db"]

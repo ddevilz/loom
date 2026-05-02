@@ -54,7 +54,7 @@ def _install_git_hook(repo: Path) -> Path:
 def install(
     platform: str | None = typer.Option(None, "--platform", help="Specific platform to configure"),
     repo: Path = typer.Option(Path(), "--repo", help="Repo root for post-commit hook"),
-    list_plugins: bool = typer.Option(False, "--list-plugins", help="List available platform plugins"),
+    list_plugins: bool = typer.Option(False, "--list-plugins", help="List platform plugins"),
 ) -> None:
     """Auto-configure MCP for AI tools and install git post-commit hook."""
     plugins = get_plugins()

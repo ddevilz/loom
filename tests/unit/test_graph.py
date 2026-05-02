@@ -8,8 +8,8 @@ from loom.core.context import DB
 from loom.core.edge import Edge, EdgeType
 from loom.core.node import Node, NodeKind, NodeSource
 from loom.query import traversal
-from loom.store import nodes as node_store
 from loom.store import edges as edge_store
+from loom.store import nodes as node_store
 
 
 def _fn(path: str, name: str) -> Node:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from itertools import combinations

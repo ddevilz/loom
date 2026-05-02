@@ -8,8 +8,8 @@ import networkx as nx
 from loom.core.context import DB
 from loom.core.edge import EdgeType
 from loom.core.node import Node
-from loom.store.nodes import row_to_node
 from loom.store.nodes import get_node as _get_node
+from loom.store.nodes import row_to_node
 
 
 async def neighbors(

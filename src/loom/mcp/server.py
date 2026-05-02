@@ -3,9 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from loom.core.context import DB
+from loom.core.context import DB, DEFAULT_DB_PATH
 from loom.core.edge import EdgeType
-from loom.core.context import DEFAULT_DB_PATH
 from loom.query import traversal
 from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.context import get_context_packet
@@ -13,7 +12,7 @@ from loom.query.delta import get_delta_payload
 from loom.query.primer import build_primer
 from loom.query.search import search
 from loom.store import nodes as node_store
-from loom.store.sessions import create_session, get_session, get_latest_session_for_agent
+from loom.store.sessions import create_session, get_latest_session_for_agent, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ def build_server(
     db_path: Path | None = None,
     *,
     db: DB | None = None,
-) -> "FastMCP":
+) -> FastMCP:
     """Build and return the FastMCP server with all 15 tools registered."""
     if FastMCP is None:
         raise RuntimeError("fastmcp not installed — run: uv add fastmcp")

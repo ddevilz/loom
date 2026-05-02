@@ -18,7 +18,7 @@ def _row_to_mini_packet(row: sqlite3.Row, change_type: str) -> dict[str, Any]:
     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
     auto_summary = extract_summary(node) if not node.summary else None
 
-    summary_hash = row["summary_hash"] if "summary_hash" in row.keys() else None
+    summary_hash = row.get("summary_hash", None)
     content_hash = row["content_hash"]
     stale = bool(summary_hash and content_hash and summary_hash != content_hash)
 
@@ -118,7 +118,7 @@ async def get_delta_payload(
                 (since_ts,),
             ).fetchone()[0]
 
-            since_dt = datetime.datetime.fromtimestamp(since_ts, tz=datetime.timezone.utc)
+            since_dt = datetime.datetime.fromtimestamp(since_ts, tz=datetime.UTC)
 
             changed = [_row_to_mini_packet(r, "modified") for r in changed_rows]
             deleted = [

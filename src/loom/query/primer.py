@@ -139,7 +139,8 @@ def _build_primer_data(conn: sqlite3.Connection) -> dict[str, Any]:
 def _build_module_detail(conn: sqlite3.Connection, module: str) -> dict[str, Any]:
     rows = conn.execute(
         """SELECT n.name, n.path, n.summary, n.metadata,
-                  (SELECT COUNT(*) FROM edges e WHERE e.to_id = n.id AND e.kind = 'calls') AS callers
+                  (SELECT COUNT(*) FROM edges e
+                   WHERE e.to_id = n.id AND e.kind = 'calls') AS callers
            FROM nodes n
            WHERE n.kind IN ('function', 'method')
              AND n.deleted_at IS NULL
@@ -206,11 +207,13 @@ def _format_primer(data: dict[str, Any], module: str | None = None) -> str:
     if cov["total"]:
         sig_pct = int(cov["signatures"] / cov["total"] * 100)
         sum_pct = int(cov["summaries"] / cov["total"] * 100)
-        lines.append(f"Signatures: {cov['signatures']}/{cov['total']} ({sig_pct}%) — from tree-sitter")
+        lines.append(
+            f"Signatures: {cov['signatures']}/{cov['total']} ({sig_pct}%) — from tree-sitter"
+        )
         lines.append(f"Summaries: {cov['summaries']}/{cov['total']} ({sum_pct}%)")
 
     if data["last_analyzed"]:
-        dt = datetime.datetime.fromtimestamp(data["last_analyzed"])
+        dt = datetime.datetime.fromtimestamp(data["last_analyzed"], tz=datetime.UTC)
         lines.append(f"Last analyzed: {dt.strftime('%Y-%m-%d %H:%M')}")
 
     return "\n".join(lines)

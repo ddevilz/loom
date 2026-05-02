@@ -15,8 +15,9 @@ from loom.analysis.code.calls.python import (
     _build_symbol_map,
     trace_calls_for_file_with_global_symbols,
 )
-from loom.analysis.communities import compute_communities
 from loom.analysis.code.extractor import extract_summary
+from loom.analysis.code.parser import parse_code
+from loom.analysis.communities import compute_communities
 from loom.analysis.coupling import compute_coupling
 from loom.analysis.dead_code import mark_dead_code
 from loom.core.context import DB
@@ -29,7 +30,6 @@ from loom.ingest.utils import sha256_of_file
 from loom.store import nodes as node_store
 from loom.store.nodes import mark_nodes_deleted, prune_tombstones
 from loom.store.sessions import prune_sessions
-from loom.analysis.code.parser import parse_code
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +279,8 @@ async def index_repo(
         logger.info("[calls] resolving cross-file call edges")
         t = time.perf_counter()
         nodes_all, edges_all = resolve_calls(nodes_all, edges_all, repo_path)
-        logger.info("[calls] done in %.1fs — %d total edges", time.perf_counter() - t, len(edges_all))
+        elapsed = time.perf_counter() - t
+        logger.info("[calls] done in %.1fs — %d total edges", elapsed, len(edges_all))
 
     # --- Phase 4: write to DB ---
     by_path: dict[str, tuple[list[Node], list[Edge]]] = {}
@@ -339,7 +340,8 @@ async def index_repo(
         t = time.perf_counter()
         try:
             filled = await _fill_auto_summaries(db)
-            logger.info("[summaries] done in %.1fs — %d summaries written", time.perf_counter() - t, filled)
+            elapsed = time.perf_counter() - t
+            logger.info("[summaries] done in %.1fs — %d summaries written", elapsed, filled)
         except Exception as exc:
             logger.warning("[summaries] failed in %.1fs: %s", time.perf_counter() - t, exc)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+
 from loom.core.context import DB
 from loom.core.edge import Edge, EdgeType
 from loom.core.node import Node, NodeKind, NodeSource

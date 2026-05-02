@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import pytest
+
 from loom.core.context import DB
-from loom.core.edge import Edge, EdgeType
 from loom.core.node import Node, NodeKind, NodeSource
 from loom.store import nodes as node_store
 
