@@ -40,6 +40,17 @@ uv add loom-tool
 
 Requirements: Python 3.12+. No Docker. No external services.
 
+### Claude Code plugin
+
+Anyone can install directly from GitHub:
+
+```
+/plugin marketplace add ddevilz/loom
+/plugin install loom@loom-tool
+```
+
+Installs the MCP server (`uvx --from loom-tool loom-mcp`) and the `/loom` skill automatically.
+
 ## Quick start
 
 ```bash
@@ -243,4 +254,4 @@ uv run mypy src/
 
 ## License
 
-MIT
+MIT - Free for personal and commercial use
