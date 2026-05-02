@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -12,15 +13,9 @@ try:
 except ImportError:
     pass
 
-# SQLite database path — override disables auto-project resolution
-LOOM_DB_PATH: str | None = os.getenv("LOOM_DB_PATH") or None
-
-# Optional: LLM for summary generation
-LOOM_LLM_MODEL: str | None = os.getenv("LOOM_LLM_MODEL") or None
-LOOM_LLM_API_KEY: str = os.getenv("LOOM_LLM_API_KEY", "")
-
-# Logging
-LOOM_LOG_LEVEL: str = os.getenv("LOOM_LOG_LEVEL", "INFO")
+# Logging — set before any loom logger is used
+LOOM_LOG_LEVEL: str = os.getenv("LOOM_LOG_LEVEL", "WARNING")
+logging.basicConfig(level=getattr(logging, LOOM_LOG_LEVEL, logging.WARNING))
 
 # Default skip directories for repo walking
 DEFAULT_SKIP_DIRS: frozenset[str] = frozenset(
