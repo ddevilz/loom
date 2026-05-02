@@ -1,17 +1,27 @@
 from __future__ import annotations
 
 from pathlib import Path
-
-from tree_sitter import Node as TSNode
-from tree_sitter import Parser
-from tree_sitter_language_pack import get_language as _get_ts_language
+from typing import TYPE_CHECKING
 
 from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
 from loom.core import Edge, EdgeType, Node, NodeKind
 
-_TS_LANGUAGE = _get_ts_language("typescript")
-_TSX_LANGUAGE = _get_ts_language("tsx")
+if TYPE_CHECKING:
+    from tree_sitter import Node as TSNode
+
+_ts_parsers: dict[str, object] = {}
+
+
+def _get_ts_parser(suffix: str) -> object:
+    if suffix not in _ts_parsers:
+        from tree_sitter import Parser
+        from tree_sitter_language_pack import get_language as _get_ts_language
+
+        lang_name = "tsx" if suffix == ".tsx" else "typescript"
+        _ts_parsers[suffix] = Parser(_get_ts_language(lang_name))
+    return _ts_parsers[suffix]
+
 
 _TS_CALL = "call_expression"
 _TS_IDENTIFIER = "identifier"
@@ -80,8 +90,7 @@ def trace_calls_for_ts_file(path: str, nodes: list[Node]) -> list[Edge]:
     p = Path(path)
     src = p.read_bytes()
 
-    lang = _TSX_LANGUAGE if p.suffix.lower() == ".tsx" else _TS_LANGUAGE
-    parser = Parser(lang)
+    parser = _get_ts_parser(p.suffix.lower())
     tree = parser.parse(src)
 
     symbol_map: dict[str, list[Node]] = {}
