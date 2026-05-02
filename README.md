@@ -40,6 +40,18 @@ uv add loom-tool
 
 Requirements: Python 3.10+. Tested on 3.10, 3.11, 3.12, 3.13, 3.14. No Docker. No external services.
 
+**If you see `ModuleNotFoundError: No module named 'tree_sitter_language_pack'`** — pip sometimes silently skips binary deps on newer Python versions. Fix:
+
+```bash
+pip install loom-tool tree-sitter-language-pack
+```
+
+Or use `uvx` which manages an isolated environment automatically:
+
+```bash
+uvx --from loom-tool loom --help
+```
+
 ### Claude Code plugin
 
 Anyone can install directly from GitHub:
