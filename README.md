@@ -38,7 +38,7 @@ pip install loom-tool
 uv add loom-tool
 ```
 
-Requirements: Python 3.12+. No Docker. No external services.
+Requirements: Python 3.10+. Tested on 3.10, 3.11, 3.12, 3.13, 3.14. No Docker. No external services.
 
 ### Claude Code plugin
 
