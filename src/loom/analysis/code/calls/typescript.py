@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tree_sitter_typescript as _ts_typescript
+from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
-from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
 from loom.core import Edge, EdgeType, Node, NodeKind
 
-_TS_LANGUAGE = _get_ts_language("typescript")
-_TSX_LANGUAGE = _get_ts_language("tsx")
+_TS_LANGUAGE = _Language(_ts_typescript.language_typescript())
+_TSX_LANGUAGE = _Language(_ts_typescript.language_tsx())
 
 
 _TS_CALL = "call_expression"

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tree_sitter_java as _ts_java
+from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
-from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
 from loom.core import Edge, EdgeType, Node, NodeKind
 
-_JAVA_LANGUAGE = _get_ts_language("java")
+_JAVA_LANGUAGE = _Language(_ts_java.language())
 
 
 _JAVA_METHOD_INVOCATION = "method_invocation"

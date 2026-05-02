@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import tree_sitter_python as _ts_python
+from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
-from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
@@ -61,7 +62,7 @@ from loom.ingest.code.languages.constants import (
     TS_PY_IDENTIFIER,
 )
 
-_PY_LANGUAGE = _get_ts_language("python")
+_PY_LANGUAGE = _Language(_ts_python.language())
 
 
 def _qualname(ctx: _BaseContext, name: str) -> str:

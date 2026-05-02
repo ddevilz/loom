@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tree_sitter_java as _ts_java
+from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
-from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_for_line_span
@@ -37,7 +38,7 @@ from loom.ingest.code.languages.constants import (
     TS_JAVA_RECORD_DECL,
 )
 
-_JAVA_LANGUAGE = _get_ts_language("java")
+_JAVA_LANGUAGE = _Language(_ts_java.language())
 
 
 def _qualname(ctx: _BaseContext, name: str, package: str = "") -> str:

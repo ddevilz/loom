@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import tree_sitter_python as _ts_python
+from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
-from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.analysis.code.calls._base import node_text
 from loom.analysis.code.noise_filter import should_ignore_call
@@ -17,7 +18,7 @@ from loom.ingest.code.languages.constants import (
     TS_PY_IDENTIFIER,
 )
 
-_PY_LANGUAGE = _get_ts_language("python")
+_PY_LANGUAGE = _Language(_ts_python.language())
 
 
 def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float]:

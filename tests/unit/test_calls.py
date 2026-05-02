@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import tree_sitter_python as _ts_python
+from tree_sitter import Language as _Language
 from tree_sitter import Parser
-from tree_sitter_language_pack import get_language as _get_ts_language
 
 from loom.analysis.code.calls import trace_calls, trace_calls_for_file
 from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
 
-_PY_LANGUAGE = _get_ts_language("python")
+_PY_LANGUAGE = _Language(_ts_python.language())
 
 
 def _parse_and_trace(
