@@ -1,7 +1,7 @@
 {
   "name": "loom",
   "display_name": "Loom — Code Intelligence",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Persistent symbol index for AI coding agents. Tree-sitter indexes your codebase into SQLite. Agents search by name/keyword and get summaries + signatures instantly — 51–1507× fewer tokens than reading files. Agent-written summaries persist across sessions: every run makes Loom smarter. Zero LLM cost. No Docker.",
   "icon_url": "https://raw.githubusercontent.com/ddevilz/loom/main/assets/icon.png",
   "categories": ["developer-tools", "code-intelligence", "productivity"],
