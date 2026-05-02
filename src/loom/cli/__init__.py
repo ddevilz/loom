@@ -56,6 +56,7 @@ from loom.cli.graph import (  # noqa: E402, F401
     callees,
     callers,
     query,
+    savings,
     stats,
     summaries,
 )
@@ -77,5 +78,6 @@ __all__ = [
     "dead_code",
     "install",
     "export_graph",
+    "savings",
     "summaries",
 ]

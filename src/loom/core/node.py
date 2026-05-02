@@ -36,6 +36,8 @@ class Node(BaseModel):
     file_mtime: float | None = None
 
     summary: str | None = None
+    summary_hash: str | None = None
+    token_count: int | None = None
 
     start_line: int | None = None
     end_line: int | None = None

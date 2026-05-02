@@ -14,6 +14,7 @@ from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.node_lookup import resolve_node_id
 from loom.query.search import search as search_nodes
 from loom.store import nodes as node_store
+from loom.store.savings import get_recent_savings, get_savings_stats
 
 console = Console()
 
@@ -86,6 +87,32 @@ def stats(ctx: typer.Context) -> None:
     db = ctx.obj["db"]
     s = asyncio.run(traversal.stats(db))
     console.print_json(data=s)
+
+
+@app.command()
+def savings(
+    ctx: typer.Context,
+    limit: int = typer.Option(20, "--limit", "-n"),
+) -> None:
+    """Show token savings from Loom cache hits."""
+    db = ctx.obj["db"]
+    s = asyncio.run(get_savings_stats(db))
+    recent = asyncio.run(get_recent_savings(db, limit=limit))
+
+    console.print(f"\n[bold green]Total tokens saved:[/bold green] {s['total_tokens_saved']:,}")
+    console.print(f"[bold]Cache hits:[/bold] {s['total_hits']:,}  "
+                  f"([cyan]agent: {s['agent_hits']}[/cyan]  auto: {s['auto_hits']})")
+    console.print("[dim]agent = store_understanding summaries (provably skipped file reads)[/dim]")
+    console.print("[dim]auto  = metadata summaries from loom analyze[/dim]\n")
+
+    if recent:
+        t = Table("node", "query", "tokens saved", "type")
+        for r in recent:
+            node_name = r["node_id"].split(":")[-1] if ":" in r["node_id"] else r["node_id"]
+            t.add_row(node_name, (r["query"] or "")[:40], str(r["tokens_saved"]), r["summary_type"])
+        console.print(t)
+    else:
+        console.print("[yellow]No savings yet. Run loom analyze then search_code.[/yellow]")
 
 
 @app.command()

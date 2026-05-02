@@ -12,6 +12,7 @@ from loom.query.delta import get_delta_payload
 from loom.query.primer import build_primer
 from loom.query.search import search
 from loom.store import nodes as node_store
+from loom.store.savings import get_recent_savings, get_savings_stats, log_saving
 from loom.store.sessions import create_session, get_latest_session_for_agent, get_session
 
 logger = logging.getLogger(__name__)
@@ -60,22 +61,49 @@ def build_server(
 
         Returns summary and signature when available — if summary exists,
         you may not need to read the source file at all.
+        The tokens_saved field shows how many tokens Loom saved by returning
+        a cached summary instead of requiring you to read the source file.
         """
         q = _req_text(query, field="query", max_length=_MAX_QUERY)
         results = await search(q, db, limit=_clamp_limit(limit))
-        return [
-            {
-                "id": r.node.id,
-                "name": r.node.name,
-                "path": r.node.path,
-                "kind": r.node.kind.value,
-                "line": r.node.start_line,
+
+        output = []
+        for r in results:
+            node = r.node
+            tokens_saved = 0
+            summary_type = None
+
+            if node.summary:
+                # summary_hash set → store_understanding wrote it → agent-verified
+                summary_type = "agent" if node.summary_hash else "auto"
+                src_tokens = node.token_count or 0
+                summary_tokens = len(node.summary) // 4
+                tokens_saved = max(0, src_tokens - summary_tokens)
+                if tokens_saved > 0:
+                    await log_saving(
+                        db,
+                        node_id=node.id,
+                        query=q,
+                        tokens_saved=tokens_saved,
+                        summary_type=summary_type,
+                    )
+
+            result: dict = {
+                "id": node.id,
+                "name": node.name,
+                "path": node.path,
+                "kind": node.kind.value,
+                "line": node.start_line,
                 "score": r.score,
-                "summary": r.node.summary,
-                "signature": r.node.metadata.get("signature"),
+                "summary": node.summary,
+                "signature": node.metadata.get("signature"),
             }
-            for r in results
-        ]
+            if tokens_saved > 0:
+                result["tokens_saved"] = tokens_saved
+                result["summary_type"] = summary_type
+            output.append(result)
+
+        return output
 
     @mcp.tool()
     async def get_node(node_id: str) -> dict | None:
@@ -196,6 +224,21 @@ def build_server(
         return {"ok": True, "skipped": False, "node_id": nid}
 
     @mcp.tool()
+    async def get_savings() -> dict:
+        """Report tokens saved by Loom cache hits — all-time and recent.
+
+        agent_hits: summaries written by you (store_understanding) — file reads provably skipped.
+        auto_hits: structural summaries from analyze — may still need source for full context.
+        """
+        stats = await get_savings_stats(db)
+        recent = await get_recent_savings(db, limit=10)
+        return {
+            **stats,
+            "recent": recent,
+            "note": "tokens_saved estimated from source line counts (15 tokens/line avg)",
+        }
+
+    @mcp.tool()
     async def get_context(node_id: str) -> dict | None:
         """Full context packet — everything to reason about a function without reading source.
 
@@ -267,6 +310,28 @@ def build_server(
                 }
 
         return await get_delta_payload(db, since_ts=session_row["started_at"])
+
+    @mcp.resource("loom://savings")
+    async def savings_resource() -> str:
+        """Token savings report — how much Loom has saved across all sessions."""
+        stats = await get_savings_stats(db)
+        recent = await get_recent_savings(db, limit=5)
+        lines = [
+            "# Loom Token Savings",
+            f"Total saved : {stats['total_tokens_saved']:,} tokens",
+            f"Cache hits  : {stats['total_hits']:,}  "
+            f"(agent: {stats['agent_hits']}, auto: {stats['auto_hits']})",
+            "",
+            "## Recent hits",
+        ]
+        for r in recent:
+            lines.append(
+                f"- {r['node_id'].split(':')[-1]}  "
+                f"+{r['tokens_saved']} tokens  [{r['summary_type']}]"
+            )
+        if not recent:
+            lines.append("None yet — run loom analyze and search_code to start tracking.")
+        return "\n".join(lines)
 
     @mcp.resource("loom://primer")
     async def primer_resource() -> str:

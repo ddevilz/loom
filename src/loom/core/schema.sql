@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     file_mtime      REAL,
     summary         TEXT,
     summary_hash    TEXT,
+    token_count     INTEGER,
     is_dead_code    INTEGER NOT NULL DEFAULT 0,
     community_id    TEXT,
     metadata        TEXT NOT NULL DEFAULT '{}',
@@ -58,6 +59,16 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS savings (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           INTEGER NOT NULL,
+    node_id      TEXT    NOT NULL,
+    query        TEXT,
+    tokens_saved INTEGER NOT NULL DEFAULT 0,
+    summary_type TEXT    NOT NULL DEFAULT 'auto'
+);
+CREATE INDEX IF NOT EXISTS idx_savings_ts ON savings(ts DESC);
 
 -- ── FTS5 (loaded only when SQLite was compiled with fts5) ─────────────────────
 

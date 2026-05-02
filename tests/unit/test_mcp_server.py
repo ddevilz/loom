@@ -43,6 +43,7 @@ async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
         "store_understanding",
         "store_understanding_batch",
         "get_context",
+        "get_savings",
         "start_session",
         "get_delta",
     }

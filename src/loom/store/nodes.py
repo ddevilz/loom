@@ -9,6 +9,17 @@ from loom.core.context import DB
 from loom.core.edge import Edge
 from loom.core.node import Node, NodeKind, NodeSource
 
+_TOKENS_PER_LINE = 15  # avg chars/line ~60, chars/token ~4 → 15 tokens/line
+
+
+def _calc_token_count(n: Node) -> int | None:
+    """Estimate tokens in this node's source span. Returns None for file/community nodes."""
+    if n.kind.value in ("file", "community"):
+        return None
+    if n.start_line is None or n.end_line is None:
+        return None
+    return max(1, n.end_line - n.start_line + 1) * _TOKENS_PER_LINE
+
 
 def row_to_node(row: sqlite3.Row) -> Node:
     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
@@ -25,6 +36,8 @@ def row_to_node(row: sqlite3.Row) -> Node:
         file_hash=row["file_hash"],
         file_mtime=row["file_mtime"],
         summary=row["summary"],
+        summary_hash=row["summary_hash"] if "summary_hash" in row.keys() else None,  # noqa: SIM118
+        token_count=row["token_count"] if "token_count" in row.keys() else None,  # noqa: SIM118
         is_dead_code=bool(row["is_dead_code"]),
         community_id=row["community_id"],
         metadata=metadata,
@@ -217,6 +230,7 @@ async def bulk_upsert_nodes(db: DB, nodes: list[Node]) -> None:
                     n.file_hash,
                     n.file_mtime,
                     n.summary,
+                    _calc_token_count(n),
                     int(n.is_dead_code),
                     n.community_id,
                     json.dumps(n.metadata, default=str),
@@ -228,8 +242,8 @@ async def bulk_upsert_nodes(db: DB, nodes: list[Node]) -> None:
                 """INSERT INTO nodes
                      (id, kind, source, name, path, start_line, end_line,
                       language, content_hash, file_hash, file_mtime, summary,
-                      is_dead_code, community_id, metadata, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      token_count, is_dead_code, community_id, metadata, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET
                      kind=excluded.kind, source=excluded.source, name=excluded.name,
                      path=excluded.path, start_line=excluded.start_line,
@@ -241,6 +255,7 @@ async def bulk_upsert_nodes(db: DB, nodes: list[Node]) -> None:
                          THEN excluded.summary
                          ELSE nodes.summary
                      END,
+                     token_count=COALESCE(excluded.token_count, nodes.token_count),
                      is_dead_code=excluded.is_dead_code,
                      community_id=excluded.community_id, metadata=excluded.metadata,
                      updated_at=CASE
@@ -272,6 +287,7 @@ async def replace_file(db: DB, path: str, nodes: list[Node], edges: list[Edge]) 
             n.file_hash,
             n.file_mtime,
             n.summary,
+            _calc_token_count(n),
             int(n.is_dead_code),
             n.community_id,
             json.dumps(n.metadata, default=str),
@@ -316,8 +332,8 @@ async def replace_file(db: DB, path: str, nodes: list[Node], edges: list[Edge]) 
                         """INSERT OR REPLACE INTO nodes
                              (id, kind, source, name, path, start_line, end_line,
                               language, content_hash, file_hash, file_mtime, summary,
-                              is_dead_code, community_id, metadata, updated_at)
-                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                              token_count, is_dead_code, community_id, metadata, updated_at)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                         node_rows,
                     )
                 if edge_rows:
