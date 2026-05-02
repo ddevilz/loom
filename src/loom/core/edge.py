@@ -9,6 +9,8 @@ else:
 
     class StrEnum(str, Enum):  # type: ignore[no-redef]
         pass
+
+
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
