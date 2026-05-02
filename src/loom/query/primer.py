@@ -213,7 +213,7 @@ def _format_primer(data: dict[str, Any], module: str | None = None) -> str:
         lines.append(f"Summaries: {cov['summaries']}/{cov['total']} ({sum_pct}%)")
 
     if data["last_analyzed"]:
-        dt = datetime.datetime.fromtimestamp(data["last_analyzed"], tz=datetime.UTC)
+        dt = datetime.datetime.fromtimestamp(data["last_analyzed"], tz=datetime.timezone.utc)
         lines.append(f"Last analyzed: {dt.strftime('%Y-%m-%d %H:%M')}")
 
     return "\n".join(lines)

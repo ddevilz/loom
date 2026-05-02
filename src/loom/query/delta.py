@@ -119,7 +119,7 @@ async def get_delta_payload(
                 (since_ts,),
             ).fetchone()[0]
 
-            since_dt = datetime.datetime.fromtimestamp(since_ts, tz=datetime.UTC)
+            since_dt = datetime.datetime.fromtimestamp(since_ts, tz=datetime.timezone.utc)
 
             changed = [_row_to_mini_packet(r, "modified") for r in changed_rows]
             deleted = [
