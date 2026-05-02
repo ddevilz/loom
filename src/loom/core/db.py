@@ -4,6 +4,21 @@ import sqlite3
 from pathlib import Path
 
 _FTS5_PROBE = "CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_probe USING fts5(x);"
+_SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+
+
+def _load_schema() -> tuple[str, str]:
+    """Read schema.sql and split into CORE and FTS5 sections.
+
+    Returns:
+        (core_ddl, fts5_ddl) — strings suitable for executescript().
+    """
+    text = _SCHEMA_PATH.read_text(encoding="utf-8")
+    if "-- @fts5" in text:
+        core, fts5 = text.split("-- @fts5", 1)
+    else:
+        core, fts5 = text, ""
+    return core, fts5
 
 
 def connect(db_path: Path | str) -> sqlite3.Connection:
@@ -30,83 +45,7 @@ def has_fts5(conn: sqlite3.Connection) -> bool:
         return False
 
 
-_DDL_CORE = """
-CREATE TABLE IF NOT EXISTS nodes (
-    id              TEXT PRIMARY KEY,
-    kind            TEXT NOT NULL,
-    source          TEXT NOT NULL,
-    name            TEXT NOT NULL,
-    path            TEXT NOT NULL,
-    start_line      INTEGER,
-    end_line        INTEGER,
-    language        TEXT,
-    content_hash    TEXT,
-    file_hash       TEXT,
-    file_mtime      REAL,
-    summary         TEXT,
-    summary_hash    TEXT,
-    is_dead_code    INTEGER NOT NULL DEFAULT 0,
-    community_id    TEXT,
-    metadata        TEXT NOT NULL DEFAULT '{}',
-    updated_at      INTEGER NOT NULL,
-    deleted_at      INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
-CREATE INDEX IF NOT EXISTS idx_nodes_path ON nodes(path);
-CREATE INDEX IF NOT EXISTS idx_nodes_kind ON nodes(kind);
-CREATE INDEX IF NOT EXISTS idx_nodes_lang ON nodes(language);
-
-CREATE TABLE IF NOT EXISTS edges (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_id          TEXT NOT NULL,
-    to_id            TEXT NOT NULL,
-    kind             TEXT NOT NULL,
-    confidence       REAL NOT NULL DEFAULT 1.0,
-    confidence_tier  TEXT NOT NULL DEFAULT 'extracted',
-    metadata         TEXT NOT NULL DEFAULT '{}',
-    UNIQUE(from_id, to_id, kind)
-);
-CREATE INDEX IF NOT EXISTS idx_edges_from      ON edges(from_id);
-CREATE INDEX IF NOT EXISTS idx_edges_to        ON edges(to_id);
-CREATE INDEX IF NOT EXISTS idx_edges_kind      ON edges(kind);
-CREATE INDEX IF NOT EXISTS idx_edges_to_kind   ON edges(to_id, kind);
-CREATE INDEX IF NOT EXISTS idx_edges_from_kind ON edges(from_id, kind);
-
-CREATE TABLE IF NOT EXISTS sessions (
-    id          TEXT PRIMARY KEY,
-    agent_id    TEXT NOT NULL DEFAULT 'default',
-    started_at  INTEGER NOT NULL,
-    metadata    TEXT NOT NULL DEFAULT '{}'
-);
-CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id, started_at DESC);
-
-CREATE TABLE IF NOT EXISTS meta (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-"""
-
-_DDL_FTS5 = """
-CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
-    id UNINDEXED, name, summary, path,
-    content='nodes', content_rowid='rowid',
-    tokenize='porter unicode61'
-);
-CREATE TRIGGER IF NOT EXISTS nodes_ai AFTER INSERT ON nodes BEGIN
-    INSERT INTO nodes_fts(rowid, id, name, summary, path)
-    VALUES (new.rowid, new.id, new.name, new.summary, new.path);
-END;
-CREATE TRIGGER IF NOT EXISTS nodes_ad AFTER DELETE ON nodes BEGIN
-    INSERT INTO nodes_fts(nodes_fts, rowid, id, name, summary, path)
-    VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.path);
-END;
-CREATE TRIGGER IF NOT EXISTS nodes_au AFTER UPDATE ON nodes BEGIN
-    INSERT INTO nodes_fts(nodes_fts, rowid, id, name, summary, path)
-    VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.path);
-    INSERT INTO nodes_fts(rowid, id, name, summary, path)
-    VALUES (new.rowid, new.id, new.name, new.summary, new.path);
-END;
-"""
+_DDL_CORE, _DDL_FTS5 = _load_schema()
 
 
 def _add_column_if_missing(
