@@ -38,10 +38,9 @@ async def get_node(db: DB, node_id: str) -> Node | None:
     def _run() -> Node | None:
         with db._lock:
             conn = db.connect()
-            row = conn.execute(
-                "SELECT * FROM nodes WHERE id = ?", (node_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
             return row_to_node(row) if row else None
+
     return await asyncio.to_thread(_run)
 
 
@@ -53,11 +52,13 @@ async def get_nodes_by_name(db: DB, name: str, limit: int = 10) -> list[Node]:
                 "SELECT * FROM nodes WHERE name = ? LIMIT ?", (name, limit)
             ).fetchall()
             return [row_to_node(r) for r in rows]
+
     return await asyncio.to_thread(_run)
 
 
 async def get_content_hashes(db: DB) -> dict[str, tuple[str, float | None]]:
     """Return {rel_path: (file_hash, file_mtime)} for all indexed files."""
+
     def _run() -> dict[str, tuple[str, float | None]]:
         with db._lock:
             conn = db.connect()
@@ -66,6 +67,7 @@ async def get_content_hashes(db: DB) -> dict[str, tuple[str, float | None]]:
                 "WHERE kind = 'file' AND file_hash IS NOT NULL AND deleted_at IS NULL"
             ).fetchall()
             return {r["path"]: (r["file_hash"], r["file_mtime"]) for r in rows}
+
     return await asyncio.to_thread(_run)
 
 
@@ -77,6 +79,7 @@ async def get_file_hash(db: DB, path: str) -> str | None:
                 "SELECT file_hash FROM nodes WHERE path = ? LIMIT 1", (path,)
             ).fetchone()
             return row["file_hash"] if row else None
+
     return await asyncio.to_thread(_run)
 
 
@@ -100,6 +103,7 @@ async def update_summary(
     Returns:
         Dict with keys: found (bool), updated (bool), skipped (bool).
     """
+
     def _run() -> _UpdateResult:
         with db._lock:
             conn = db.connect()
@@ -138,6 +142,7 @@ async def mark_nodes_deleted(db: DB, path: str) -> int:
     Returns:
         Number of nodes marked deleted.
     """
+
     def _run() -> int:
         with db._lock:
             conn = db.connect()
@@ -147,6 +152,7 @@ async def mark_nodes_deleted(db: DB, path: str) -> int:
             )
             conn.commit()
             return cur.rowcount
+
     return await asyncio.to_thread(_run)
 
 
@@ -171,6 +177,7 @@ async def prune_tombstones(db: DB, *, older_than_days: int = 30) -> int:
             )
             conn.commit()
             return cur.rowcount
+
     return await asyncio.to_thread(_run)
 
 
@@ -184,6 +191,7 @@ async def get_summaries(db: DB, limit: int = 20) -> list[sqlite3.Row]:
                 "ORDER BY updated_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
+
     return await asyncio.to_thread(_run)
 
 
@@ -197,10 +205,22 @@ async def bulk_upsert_nodes(db: DB, nodes: list[Node]) -> None:
             now = int(time.time())
             rows = [
                 (
-                    n.id, n.kind.value, n.source.value, n.name, n.path,
-                    n.start_line, n.end_line, n.language, n.content_hash,
-                    n.file_hash, n.file_mtime, n.summary, int(n.is_dead_code),
-                    n.community_id, json.dumps(n.metadata, default=str), now,
+                    n.id,
+                    n.kind.value,
+                    n.source.value,
+                    n.name,
+                    n.path,
+                    n.start_line,
+                    n.end_line,
+                    n.language,
+                    n.content_hash,
+                    n.file_hash,
+                    n.file_mtime,
+                    n.summary,
+                    int(n.is_dead_code),
+                    n.community_id,
+                    json.dumps(n.metadata, default=str),
+                    now,
                 )
                 for n in nodes
             ]
@@ -236,23 +256,37 @@ async def bulk_upsert_nodes(db: DB, nodes: list[Node]) -> None:
     await asyncio.to_thread(_run)
 
 
-async def replace_file(
-    db: DB, path: str, nodes: list[Node], edges: list[Edge]
-) -> None:
+async def replace_file(db: DB, path: str, nodes: list[Node], edges: list[Edge]) -> None:
     now = int(time.time())
     node_rows = [
         (
-            n.id, n.kind.value, n.source.value, n.name, n.path,
-            n.start_line, n.end_line, n.language, n.content_hash,
-            n.file_hash, n.file_mtime, n.summary, int(n.is_dead_code),
-            n.community_id, json.dumps(n.metadata, default=str), now,
+            n.id,
+            n.kind.value,
+            n.source.value,
+            n.name,
+            n.path,
+            n.start_line,
+            n.end_line,
+            n.language,
+            n.content_hash,
+            n.file_hash,
+            n.file_mtime,
+            n.summary,
+            int(n.is_dead_code),
+            n.community_id,
+            json.dumps(n.metadata, default=str),
+            now,
         )
         for n in nodes
     ]
     edge_rows = [
         (
-            e.from_id, e.to_id, e.kind.value, e.confidence,
-            e.confidence_tier.value, json.dumps(e.metadata, default=str),
+            e.from_id,
+            e.to_id,
+            e.kind.value,
+            e.confidence,
+            e.confidence_tier.value,
+            json.dumps(e.metadata, default=str),
         )
         for e in edges
     ]
@@ -273,8 +307,7 @@ async def replace_file(
                 }
 
                 conn.execute(
-                    "DELETE FROM edges WHERE from_id IN "
-                    "(SELECT id FROM nodes WHERE path = ?)",
+                    "DELETE FROM edges WHERE from_id IN (SELECT id FROM nodes WHERE path = ?)",
                     (path,),
                 )
                 conn.execute("DELETE FROM nodes WHERE path = ?", (path,))
@@ -319,7 +352,5 @@ def get_export_rows(db: DB) -> tuple[list[sqlite3.Row], list[sqlite3.Row]]:
         node_rows = conn.execute(
             "SELECT id, kind, name, path, language, is_dead_code FROM nodes"
         ).fetchall()
-        edge_rows = conn.execute(
-            "SELECT from_id, to_id, kind FROM edges"
-        ).fetchall()
+        edge_rows = conn.execute("SELECT from_id, to_id, kind FROM edges").fetchall()
     return node_rows, edge_rows

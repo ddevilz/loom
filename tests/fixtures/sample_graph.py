@@ -65,9 +65,7 @@ def build_sample_graph():
         edges.append(Edge(from_id=fid[s], to_id=fid[t], kind=EdgeType.CALLS))
 
     # Additional CALLS edge
-    edges.append(
-        Edge(from_id=fid["x"], to_id=fid["validate_user"], kind=EdgeType.CALLS)
-    )
+    edges.append(Edge(from_id=fid["x"], to_id=fid["validate_user"], kind=EdgeType.CALLS))
 
     assert len(func_nodes) == 15
 

@@ -27,18 +27,22 @@ async def db_with_graph() -> DB:
     a, b, c = _fn("a.py", "f"), _fn("b.py", "g"), _fn("c.py", "h")
     await node_store.bulk_upsert_nodes(db, [a, b, c])
     # a calls b, b calls c
-    await edge_store.bulk_upsert_edges(db, [
-        Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS),
-        Edge(from_id=b.id, to_id=c.id, kind=EdgeType.CALLS),
-    ])
+    await edge_store.bulk_upsert_edges(
+        db,
+        [
+            Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS),
+            Edge(from_id=b.id, to_id=c.id, kind=EdgeType.CALLS),
+        ],
+    )
     return db
 
 
 @pytest.mark.asyncio
 async def test_neighbors_in(db_with_graph: DB) -> None:
     db = db_with_graph
-    nodes = await traversal.neighbors(db, _fn("b.py", "g").id, depth=1,
-                                       edge_types=[EdgeType.CALLS], direction="in")
+    nodes = await traversal.neighbors(
+        db, _fn("b.py", "g").id, depth=1, edge_types=[EdgeType.CALLS], direction="in"
+    )
     assert len(nodes) == 1
     assert nodes[0].name == "f"
 
@@ -46,8 +50,9 @@ async def test_neighbors_in(db_with_graph: DB) -> None:
 @pytest.mark.asyncio
 async def test_neighbors_out(db_with_graph: DB) -> None:
     db = db_with_graph
-    nodes = await traversal.neighbors(db, _fn("a.py", "f").id, depth=1,
-                                       edge_types=[EdgeType.CALLS], direction="out")
+    nodes = await traversal.neighbors(
+        db, _fn("a.py", "f").id, depth=1, edge_types=[EdgeType.CALLS], direction="out"
+    )
     assert len(nodes) == 1
     assert nodes[0].name == "g"
 
@@ -65,9 +70,7 @@ async def test_blast_radius(db_with_graph: DB) -> None:
 @pytest.mark.asyncio
 async def test_shortest_path(db_with_graph: DB) -> None:
     db = db_with_graph
-    path = await traversal.shortest_path(
-        db, _fn("a.py", "f").id, _fn("c.py", "h").id
-    )
+    path = await traversal.shortest_path(db, _fn("a.py", "f").id, _fn("c.py", "h").id)
     assert path is not None
     assert [n.name for n in path] == ["f", "g", "h"]
 
@@ -75,9 +78,7 @@ async def test_shortest_path(db_with_graph: DB) -> None:
 @pytest.mark.asyncio
 async def test_shortest_path_none_when_unreachable(db_with_graph: DB) -> None:
     db = db_with_graph
-    path = await traversal.shortest_path(
-        db, _fn("c.py", "h").id, _fn("a.py", "f").id
-    )
+    path = await traversal.shortest_path(db, _fn("c.py", "h").id, _fn("a.py", "f").id)
     assert path is None
 
 

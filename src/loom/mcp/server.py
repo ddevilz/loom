@@ -85,9 +85,14 @@ def build_server(
         if n is None:
             return None
         return {
-            "id": n.id, "name": n.name, "path": n.path,
-            "kind": n.kind.value, "language": n.language,
-            "summary": n.summary, "start_line": n.start_line, "end_line": n.end_line,
+            "id": n.id,
+            "name": n.name,
+            "path": n.path,
+            "kind": n.kind.value,
+            "language": n.language,
+            "summary": n.summary,
+            "start_line": n.start_line,
+            "end_line": n.end_line,
         }
 
     @mcp.tool()
@@ -119,20 +124,14 @@ def build_server(
         """Generic neighbor traversal across all edge kinds, both directions."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         nodes = await traversal.neighbors(db, nid, depth=_clamp_depth(depth))
-        return [
-            {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value}
-            for n in nodes
-        ]
+        return [{"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value} for n in nodes]
 
     @mcp.tool()
     async def get_community(community_id: str) -> list[dict]:
         """Return all member nodes of a community cluster."""
         cid = _req_text(community_id, field="community_id", max_length=_MAX_ID)
         nodes = await traversal.community_members(db, cid)
-        return [
-            {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value}
-            for n in nodes
-        ]
+        return [{"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value} for n in nodes]
 
     @mcp.tool()
     async def shortest_path(from_id: str, to_id: str) -> list[dict] | None:
@@ -153,10 +152,7 @@ def build_server(
     async def god_nodes(limit: int = 20) -> list[dict]:
         """Highest in-degree on CALLS subgraph (most-called functions)."""
         pairs = await traversal.god_nodes(db, _clamp_limit(limit))
-        return [
-            {"id": n.id, "name": n.name, "path": n.path, "in_degree": deg}
-            for n, deg in pairs
-        ]
+        return [{"id": n.id, "name": n.name, "path": n.path, "in_degree": deg} for n, deg in pairs]
 
     @mcp.tool()
     async def store_understanding_batch(updates: list[dict]) -> dict:
@@ -191,8 +187,12 @@ def build_server(
         if not result["found"]:
             return {"ok": False, "error": "node not found"}
         if result["skipped"]:
-            return {"ok": True, "skipped": True, "node_id": nid,
-                    "reason": "summary already cached and function unchanged"}
+            return {
+                "ok": True,
+                "skipped": True,
+                "node_id": nid,
+                "reason": "summary already cached and function unchanged",
+            }
         return {"ok": True, "skipped": False, "node_id": nid}
 
     @mcp.tool()

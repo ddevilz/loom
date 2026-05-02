@@ -28,9 +28,7 @@ def _file_node_id(rel_path: str) -> str:
 
 def _get_meta(db: DB, key: str) -> str | None:
     with db._lock:
-        row = db.connect().execute(
-            "SELECT value FROM meta WHERE key = ?", (key,)
-        ).fetchone()
+        row = db.connect().execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else None
 
 
@@ -58,9 +56,7 @@ async def compute_coupling(
     Returns count of coupling edges written.
     """
     try:
-        repo = await asyncio.to_thread(
-            git.Repo, str(repo_path), search_parent_directories=True
-        )
+        repo = await asyncio.to_thread(git.Repo, str(repo_path), search_parent_directories=True)
     except (git.InvalidGitRepositoryError, git.NoSuchPathError) as exc:
         logger.warning("Not a valid git repo %s: %s", repo_path, exc)
         return 0
@@ -106,9 +102,7 @@ async def _analyze_coupling(
 
     def _process() -> list[Edge]:
         try:
-            commits = list(
-                repo.iter_commits(since=cutoff.strftime(_GIT_SINCE_FORMAT))
-            )
+            commits = list(repo.iter_commits(since=cutoff.strftime(_GIT_SINCE_FORMAT)))
         except git.GitCommandError as exc:
             logger.warning("git iter_commits failed: %s", exc)
             return []

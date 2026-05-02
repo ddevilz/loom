@@ -105,12 +105,8 @@ def _is_async_function(src: bytes, n: TSNode) -> bool:
 def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict[str, Any]:
     params_node = n.child_by_field_name("parameters")
     return_node = n.child_by_field_name("return_type")
-    params = (
-        _split_params(_node_text(src, params_node)) if params_node is not None else []
-    )
-    return_type = (
-        _node_text(src, return_node).strip() if return_node is not None else None
-    )
+    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
+    return_type = _node_text(src, return_node).strip() if return_node is not None else None
     signature = f"{name}({', '.join(params)})"
     if return_type:
         signature = f"{signature} -> {return_type}"
@@ -189,9 +185,7 @@ def _extract_from_def(
         decs = _get_decorators(src, n)
         inner = n.child_by_field_name("definition")
         if inner is not None:
-            _extract_from_def(
-                path=path, src=src, n=inner, ctx=ctx, out=out, decorators=decs
-            )
+            _extract_from_def(path=path, src=src, n=inner, ctx=ctx, out=out, decorators=decs)
         return
 
     if n.type == TS_PY_CLASS_DEF:
@@ -342,9 +336,7 @@ def _try_extract_assignment(
                             source=NodeSource.CODE,
                             name=name,
                             path=path,
-                            content_hash=content_hash_for_line_span(
-                                src, start_line, end_line
-                            ),
+                            content_hash=content_hash_for_line_span(src, start_line, end_line),
                             start_line=start_line,
                             end_line=end_line,
                             language=LANG_PYTHON,

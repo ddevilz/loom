@@ -47,9 +47,7 @@ def _print_table_or_none(
         console.print(_NONE_TEXT)
 
 
-def _print_call_rows(
-    console: Console, *, heading: str, rows: list[dict[str, object]]
-) -> None:
+def _print_call_rows(console: Console, *, heading: str, rows: list[dict[str, object]]) -> None:
     _print_table_or_none(
         console,
         heading=heading,
@@ -63,9 +61,7 @@ def _print_call_rows(
     )
 
 
-def _print_context_rows(
-    console: Console, *, heading: str, rows: list[dict[str, object]]
-) -> None:
+def _print_context_rows(console: Console, *, heading: str, rows: list[dict[str, object]]) -> None:
     _print_table_or_none(
         console,
         heading=heading,

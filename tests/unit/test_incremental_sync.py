@@ -17,6 +17,7 @@ def test_validate_ref_accepts_safe_chars() -> None:
 
 def test_validate_ref_rejects_shell_metacharacters() -> None:
     import pytest
+
     with pytest.raises(ValueError, match="unsafe git ref"):
         _validate_ref("abc; rm -rf /")
     with pytest.raises(ValueError, match="unsafe git ref"):
@@ -26,9 +27,7 @@ def test_validate_ref_rejects_shell_metacharacters() -> None:
 
 
 def _git(cwd: Path, *args: str) -> str:
-    return subprocess.check_output(
-        ["git", *args], cwd=str(cwd), text=True, stderr=subprocess.PIPE
-    )
+    return subprocess.check_output(["git", *args], cwd=str(cwd), text=True, stderr=subprocess.PIPE)
 
 
 def _init(repo: Path) -> None:

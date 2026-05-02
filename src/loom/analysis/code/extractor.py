@@ -65,7 +65,4 @@ async def extract_summaries(nodes: list[Node]) -> list[Node]:
     """Assign static summaries to nodes that don't have one yet.
     No LLM calls — uses extract_summary() for static extraction.
     """
-    return [
-        n if n.summary else n.model_copy(update={"summary": extract_summary(n)})
-        for n in nodes
-    ]
+    return [n if n.summary else n.model_copy(update={"summary": extract_summary(n)}) for n in nodes]

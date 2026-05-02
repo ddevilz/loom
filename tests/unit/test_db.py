@@ -11,9 +11,10 @@ def test_init_schema_creates_tables(tmp_path: Path):
     db = tmp_path / "t.db"
     conn = connect(db)
     init_schema(conn)
-    tables = {row[0] for row in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    ).fetchall()}
+    tables = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
     assert "nodes" in tables
     assert "edges" in tables
     assert "sessions" in tables

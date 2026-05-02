@@ -29,9 +29,7 @@ def _enable_progress_logging() -> None:
 @app.command()
 def analyze(
     ctx: typer.Context,
-    path: Path = typer.Argument(
-        Path(), exists=True, file_okay=False, dir_okay=True
-    ),
+    path: Path = typer.Argument(Path(), exists=True, file_okay=False, dir_okay=True),
 ) -> None:
     """Build or refresh the Loom graph for a repo."""
     _enable_progress_logging()
@@ -49,9 +47,7 @@ def analyze(
 @app.command()
 def sync(
     ctx: typer.Context,
-    path: Path = typer.Argument(
-        Path(), exists=True, file_okay=False, dir_okay=True
-    ),
+    path: Path = typer.Argument(Path(), exists=True, file_okay=False, dir_okay=True),
     old_sha: str | None = typer.Option(None, "--old-sha"),
     new_sha: str | None = typer.Option(None, "--new-sha"),
 ) -> None:

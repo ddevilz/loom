@@ -15,6 +15,7 @@ Example custom plugin (~/.loom/plugins/my_editor.py):
         config_key="mcpServers",
     ))
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -39,11 +40,12 @@ class Plugin:
         server_entry: The JSON value written under ``config_key["loom"]``.
                       Defaults to ``{"command": "uvx", "args": ["loom-tool"]}``.
     """
+
     name: str
     config_path: Path
     config_key: str = "mcpServers"
     server_entry: dict = field(
-        default_factory=lambda: {"command": "uvx", "args": ["loom-tool"]}
+        default_factory=lambda: {"command": "uvx", "args": ["--from", "loom-tool", "loom-mcp"]}
     )
 
 

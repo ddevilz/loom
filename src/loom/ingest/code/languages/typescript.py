@@ -70,12 +70,8 @@ def _extract_decorators(src: bytes, n: TSNode) -> list[str]:
 def _function_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
     params_node = n.child_by_field_name("parameters")
     return_node = n.child_by_field_name("return_type")
-    params = (
-        _split_params(_node_text(src, params_node)) if params_node is not None else []
-    )
-    return_type = (
-        _node_text(src, return_node).strip() if return_node is not None else None
-    )
+    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
+    return_type = _node_text(src, return_node).strip() if return_node is not None else None
     if isinstance(return_type, str) and return_type.startswith(":"):
         return_type = return_type[1:].strip()
     signature = f"{name}({', '.join(params)})"
@@ -402,9 +398,7 @@ def _walk(
             TS_JS_TYPE_ALIAS_DECL,
             TS_JS_EXPORT_STATEMENT,
         }:
-            _extract_from_def(
-                path=path, src=src, n=child, ctx=ctx, out=out, language=language
-            )
+            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, language=language)
         elif _try_extract_const_function(
             path=path, src=src, n=child, ctx=ctx, out=out, language=language
         ):

@@ -28,6 +28,7 @@ async def search(query: str, db: DB, *, limit: int = 10) -> list[SearchResult]:
         List of SearchResult ordered by relevance (highest score first).
         Soft-deleted nodes are excluded.
     """
+
     def _run() -> list[tuple[Node, float]]:
         with db._lock:
             conn = db.connect()

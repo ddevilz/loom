@@ -81,8 +81,7 @@ def test_properties_file_parsing():
     assert "sensitive_keys" in metadata, "Should detect sensitive keys"
     sensitive = metadata["sensitive_keys"]
     assert any(
-        "password" in k.lower() or "secret" in k.lower() or "key" in k.lower()
-        for k in sensitive
+        "password" in k.lower() or "secret" in k.lower() or "key" in k.lower() for k in sensitive
     ), "Should detect password/secret/key fields"
 
     print("\n✅ Properties File Test Results:")
@@ -96,17 +95,12 @@ def test_properties_file_parsing():
 def test_env_file_parsing():
     """Test .env file parsing."""
     # Test with Vue TSX app .env.example
-    fixture_path = (
-        Path(__file__).parent.parent / "fixtures" / "vue_tsx_app" / ".env.example"
-    )
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "vue_tsx_app" / ".env.example"
 
     if not fixture_path.exists():
         # Try Python Flask app
         fixture_path = (
-            Path(__file__).parent.parent
-            / "fixtures"
-            / "python_flask_app"
-            / ".env.example"
+            Path(__file__).parent.parent / "fixtures" / "python_flask_app" / ".env.example"
         )
 
     if not fixture_path.exists():
@@ -139,9 +133,9 @@ def test_env_file_parsing():
 
     # Common sensitive patterns
     sensitive_patterns = ["SECRET", "KEY", "PASSWORD", "TOKEN"]
-    assert any(
-        any(pattern in var for pattern in sensitive_patterns) for var in sensitive
-    ), "Should detect common sensitive variable patterns"
+    assert any(any(pattern in var for pattern in sensitive_patterns) for var in sensitive), (
+        "Should detect common sensitive variable patterns"
+    )
 
     print("\n✅ Environment File Test Results:")
     print(f"   Variables: {metadata['variable_count']}")
@@ -359,9 +353,7 @@ def test_json_file_parsing():
         # Should detect package.json file type
         if "file_type" in metadata:
             # The parser uses 'package.json' as the file type value
-            assert "package" in metadata["file_type"].lower(), (
-                "Should detect package.json type"
-            )
+            assert "package" in metadata["file_type"].lower(), "Should detect package.json type"
 
         print("\n✅ JSON File Test Results:")
         print(f"   Top-level keys: {len(keys)}")
@@ -397,19 +389,13 @@ def test_markup_parsers_comprehensive():
     )
     if props_path.exists():
         nodes = parse_properties(str(props_path))
-        results["properties"] = (
-            len(nodes) == 1 and nodes[0].metadata.get("property_count", 0) > 0
-        )
+        results["properties"] = len(nodes) == 1 and nodes[0].metadata.get("property_count", 0) > 0
 
     # Test env file
-    env_path = (
-        Path(__file__).parent.parent / "fixtures" / "python_flask_app" / ".env.example"
-    )
+    env_path = Path(__file__).parent.parent / "fixtures" / "python_flask_app" / ".env.example"
     if env_path.exists():
         nodes = parse_env(str(env_path))
-        results["env"] = (
-            len(nodes) == 1 and nodes[0].metadata.get("variable_count", 0) > 0
-        )
+        results["env"] = len(nodes) == 1 and nodes[0].metadata.get("variable_count", 0) > 0
 
     print("\n📊 Markup Parser Comprehensive Test:")
     print(f"   Properties parser: {'✅' if results['properties'] else '❌'}")

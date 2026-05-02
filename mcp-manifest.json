@@ -1,0 +1,68 @@
+{
+  "name": "loom",
+  "display_name": "Loom — Code Intelligence",
+  "version": "0.3.0",
+  "description": "Persistent symbol index for AI coding agents. Tree-sitter indexes your codebase into SQLite. Agents search by name/keyword and get summaries + signatures instantly — 51–1507× fewer tokens than reading files. Agent-written summaries persist across sessions: every run makes Loom smarter. Zero LLM cost. No Docker.",
+  "icon_url": "https://raw.githubusercontent.com/ddevilz/loom/main/assets/icon.png",
+  "categories": ["developer-tools", "code-intelligence", "productivity"],
+  "server": {
+    "command": "uvx",
+    "args": ["--from", "loom-tool", "loom-mcp"],
+    "env": {
+      "LOOM_DB_PATH": {
+        "description": "Override the SQLite database path. Optional — Loom auto-detects per-project DB from git root.",
+        "required": false
+      }
+    }
+  },
+  "homepage": "https://github.com/ddevilz/loom",
+  "repository": "https://github.com/ddevilz/loom",
+  "package": {
+    "pypi": "loom-tool"
+  },
+  "tools": [
+    {
+      "name": "search_code",
+      "description": "FTS5 full-text search across all indexed symbols. Returns summary + signature if cached — agent may skip file read entirely."
+    },
+    {
+      "name": "get_context",
+      "description": "Full context packet for one function: summary, signature, callers (top 10), callees (top 10), staleness flag."
+    },
+    {
+      "name": "store_understanding",
+      "description": "Write agent-generated summary back to the index permanently. Skips write if summary already fresh."
+    },
+    {
+      "name": "get_blast_radius",
+      "description": "Transitive callers of a function — what breaks if this changes."
+    },
+    {
+      "name": "get_delta",
+      "description": "What changed since last session. Only read changed functions, skip the rest."
+    },
+    {
+      "name": "start_session",
+      "description": "Register session start, returns session_id for use with get_delta."
+    },
+    {
+      "name": "god_nodes",
+      "description": "Most-called functions in the repo — good entry points for exploration."
+    },
+    {
+      "name": "graph_stats",
+      "description": "Node and edge counts by kind — fast repo overview."
+    }
+  ],
+  "resources": [
+    {
+      "uri": "loom://primer",
+      "description": "~200-token codebase overview: modules, hot functions, summary coverage, last analyzed. Load at session start."
+    }
+  ],
+  "prerequisites": [
+    "Python 3.12+",
+    "Run `loom analyze .` in your repo before connecting"
+  ],
+  "setup_instructions": "1. Install: `pip install loom-tool`\n2. Index your repo: `cd your-repo && loom analyze .`\n3. Configure all AI tools: `loom install`\n4. Connect this MCP server — Claude Code will load `loom://primer` automatically at session start."
+}

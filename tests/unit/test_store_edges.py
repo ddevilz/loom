@@ -31,16 +31,12 @@ def db() -> DB:
 async def test_bulk_upsert_edges(db: DB) -> None:
     a, b = _fn("a.py", "f"), _fn("b.py", "g")
     await node_store.bulk_upsert_nodes(db, [a, b])
-    await edge_store.bulk_upsert_edges(db, [
-        Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)
-    ])
+    await edge_store.bulk_upsert_edges(db, [Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)])
 
     def _check():
         with db._lock:
             conn = db.connect()
-            row = conn.execute(
-                "SELECT COUNT(*) as c FROM edges WHERE kind='calls'"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) as c FROM edges WHERE kind='calls'").fetchone()
             return row["c"]
 
     count = await asyncio.to_thread(_check)

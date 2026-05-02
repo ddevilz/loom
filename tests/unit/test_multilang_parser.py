@@ -248,10 +248,7 @@ def test_parse_java_extracts_enum(tmp_path: Path):
 def test_parse_java_package_qualified_ids(tmp_path: Path):
     p = tmp_path / "UserService.java"
     p.write_text(
-        "package com.example.service;\n\n"
-        "public class UserService {\n"
-        "  public void save() {}\n"
-        "}\n",
+        "package com.example.service;\n\npublic class UserService {\n  public void save() {}\n}\n",
         encoding="utf-8",
     )
     nodes = parse_java(str(p))

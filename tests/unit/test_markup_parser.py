@@ -104,9 +104,7 @@ def test_parse_xml_handles_invalid_xml(tmp_path: Path):
 
 def test_parse_json_extracts_top_level_keys(tmp_path: Path):
     p = tmp_path / "data.json"
-    p.write_text(
-        '{"name": "test", "version": "1.0", "author": "dev"}', encoding="utf-8"
-    )
+    p.write_text('{"name": "test", "version": "1.0", "author": "dev"}', encoding="utf-8")
     nodes = parse_json(str(p))
     assert len(nodes) == 1
     assert nodes[0].kind == NodeKind.FILE
@@ -240,20 +238,14 @@ def test_parse_repo_includes_markup_files(tmp_path: Path):
 
     # Create a mini web project
     (tmp_path / "app.py").write_text("def index():\n    pass\n", encoding="utf-8")
-    (tmp_path / "index.html").write_text(
-        "<html><title>Home</title></html>", encoding="utf-8"
-    )
+    (tmp_path / "index.html").write_text("<html><title>Home</title></html>", encoding="utf-8")
     (tmp_path / "style.css").write_text(".btn { color: red; }", encoding="utf-8")
     (tmp_path / "config.json").write_text('{"debug": true}', encoding="utf-8")
     (tmp_path / "docker-compose.yml").write_text(
         "version: '3'\nservices:\n  web:\n", encoding="utf-8"
     )
-    (tmp_path / "application.properties").write_text(
-        "spring.port=8080\n", encoding="utf-8"
-    )
-    (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "x"\n', encoding="utf-8"
-    )
+    (tmp_path / "application.properties").write_text("spring.port=8080\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n', encoding="utf-8")
     (tmp_path / "settings.ini").write_text("[main]\nkey=value\n", encoding="utf-8")
     (tmp_path / ".env").write_text("HELLO=world\n", encoding="utf-8")
     (tmp_path / ".env.local").write_text("LOCAL=1\n", encoding="utf-8")

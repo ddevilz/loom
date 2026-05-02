@@ -56,8 +56,7 @@ async def neighbors(
                     params = (*frontier, *kinds, *frontier, *kinds)
                 rows = conn.execute(sql, params).fetchall()
                 next_frontier = {
-                    r["other"] for r in rows
-                    if r["other"] not in visited and r["other"] != node_id
+                    r["other"] for r in rows if r["other"] not in visited and r["other"] != node_id
                 }
                 for nid in next_frontier:
                     visited[nid] = d
@@ -169,8 +168,7 @@ async def stats(db: DB) -> dict[str, Any]:
             by_kind = {
                 r["kind"]: r["c"]
                 for r in conn.execute(
-                    "SELECT kind, COUNT(*) AS c FROM nodes "
-                    "WHERE deleted_at IS NULL GROUP BY kind"
+                    "SELECT kind, COUNT(*) AS c FROM nodes WHERE deleted_at IS NULL GROUP BY kind"
                 ).fetchall()
             }
             by_edge = {

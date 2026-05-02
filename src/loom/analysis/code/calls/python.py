@@ -43,9 +43,7 @@ def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float
     return None, 0.5
 
 
-def _find_calls_in_node(
-    src: bytes, n: TSNode, calls: list[tuple[str, float, bool]]
-) -> None:
+def _find_calls_in_node(src: bytes, n: TSNode, calls: list[tuple[str, float, bool]]) -> None:
     """Recursively find all call nodes and extract their names."""
     if n.type == TS_PY_CALL:
         func_node = n.child_by_field_name("function")
@@ -205,9 +203,7 @@ def trace_calls_for_file_with_global_symbols(
         if node.kind.value in {"function", "method"}:
             if node.start_line is None:
                 continue
-            func_body = _find_function_body(
-                src, tree.root_node, node.name, node.start_line
-            )
+            func_body = _find_function_body(src, tree.root_node, node.name, node.start_line)
             if func_body:
                 edges = trace_calls(node, func_body, symbol_map, src=src)
                 all_edges.extend(edges)

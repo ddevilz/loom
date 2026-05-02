@@ -44,6 +44,7 @@ async def get_session(db: DB, session_id: str) -> dict[str, Any] | None:
     Returns:
         Session dict or None if not found.
     """
+
     def _run() -> dict[str, Any] | None:
         with db._lock:
             conn = db.connect()
@@ -68,6 +69,7 @@ async def get_latest_session_for_agent(db: DB, agent_id: str) -> dict[str, Any] 
     Returns:
         Most recent session dict or None if no sessions exist.
     """
+
     def _run() -> dict[str, Any] | None:
         with db._lock:
             conn = db.connect()
@@ -93,18 +95,18 @@ async def prune_sessions(db: DB, *, keep: int = 20) -> int:
     Returns:
         Number of sessions deleted.
     """
+
     def _run() -> int:
         with db._lock:
             conn = db.connect()
             agents = [
-                r[0] for r in conn.execute(
-                    "SELECT DISTINCT agent_id FROM sessions"
-                ).fetchall()
+                r[0] for r in conn.execute("SELECT DISTINCT agent_id FROM sessions").fetchall()
             ]
             deleted = 0
             for agent_id in agents:
                 keep_ids = [
-                    r[0] for r in conn.execute(
+                    r[0]
+                    for r in conn.execute(
                         "SELECT id FROM sessions WHERE agent_id = ? "
                         "ORDER BY started_at DESC LIMIT ?",
                         (agent_id, keep),

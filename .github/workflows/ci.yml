@@ -42,4 +42,7 @@ jobs:
         run: |
           uv build --wheel
           uv run loom --version
+          uv run python -c "from loom.mcp.run import run_stdio; print('mcp entry ok')"
+          uv run python -c "from loom.core.context import resolve_db_path; print('resolve_db_path ok')"
+          uv run python -c "from loom.cli.plugins import get_plugins; ps=get_plugins(); print(f'plugins ok: {len(ps)} registered')"
         shell: bash

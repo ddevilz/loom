@@ -189,8 +189,7 @@ def resolve_calls(
         return nodes, edges
 
     filtered = [
-        e for e in edges
-        if not (e.kind == EdgeType.CALLS and e.from_id in python_source_ids)
+        e for e in edges if not (e.kind == EdgeType.CALLS and e.from_id in python_source_ids)
     ]
     return nodes, filtered + global_call_edges
 
@@ -209,9 +208,7 @@ async def index_repo(
     logger.info("[scan] discovering files in %s (workers=%d)", repo_path, max_workers)
     t = time.perf_counter()
     files_by_lang = walk_repo(str(repo_path))
-    all_files: list[Path] = [
-        Path(fp) for fps in files_by_lang.values() for fp in fps
-    ]
+    all_files: list[Path] = [Path(fp) for fps in files_by_lang.values() for fp in fps]
     existing = await node_store.get_content_hashes(db)
 
     # Fast mtime pre-filter: skip hashing if mtime matches stored value
@@ -243,7 +240,10 @@ async def index_repo(
                     changed.append(f)
     logger.info(
         "[scan] done in %.1fs — %d total, %d changed, %d skipped",
-        time.perf_counter() - t, len(all_files), len(changed), skipped,
+        time.perf_counter() - t,
+        len(all_files),
+        len(changed),
+        skipped,
     )
 
     nodes_all: list[Node] = []
@@ -269,7 +269,9 @@ async def index_repo(
                 errors.extend(r.errors)
         logger.info(
             "[parse] done in %.1fs — %d nodes, %d edges",
-            time.perf_counter() - t, len(nodes_all), len(edges_all),
+            time.perf_counter() - t,
+            len(nodes_all),
+            len(edges_all),
         )
     else:
         logger.info("[parse] nothing to parse (all %d files unchanged)", skipped)
@@ -347,17 +349,18 @@ async def index_repo(
 
     # --- Phase 9: soft-delete removed files ---
     try:
-        current_rel_paths: set[str] = {
-            f.relative_to(repo_path).as_posix() for f in all_files
-        }
+        current_rel_paths: set[str] = {f.relative_to(repo_path).as_posix() for f in all_files}
+
         def _get_indexed_paths() -> list[str]:
             with db._lock:
                 conn = db.connect()
                 return [
-                    r["path"] for r in conn.execute(
+                    r["path"]
+                    for r in conn.execute(
                         "SELECT DISTINCT path FROM nodes WHERE kind = 'file' AND deleted_at IS NULL"
                     ).fetchall()
                 ]
+
         indexed_paths = await asyncio.to_thread(_get_indexed_paths)
         deleted_count = 0
         for ipath in indexed_paths:
@@ -379,7 +382,10 @@ async def index_repo(
     elapsed = time.perf_counter() - t0
     logger.info(
         "[done] total %.1fs — %d files parsed, %d nodes, %d edges",
-        elapsed, len(changed), len(nodes_all), len(edges_all),
+        elapsed,
+        len(changed),
+        len(nodes_all),
+        len(edges_all),
     )
 
     return IndexResult(
@@ -403,6 +409,7 @@ async def _fill_auto_summaries(db: DB) -> int:
     Returns:
         Number of nodes updated.
     """
+
     def _get_null_summary_nodes() -> list[sqlite3.Row]:
         with db._lock:
             conn = db.connect()

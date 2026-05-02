@@ -48,9 +48,7 @@ def has_fts5(conn: sqlite3.Connection) -> bool:
 _DDL_CORE, _DDL_FTS5 = _load_schema()
 
 
-def _add_column_if_missing(
-    conn: sqlite3.Connection, table: str, col: str, typedef: str
-) -> None:
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, col: str, typedef: str) -> None:
     """Add a column to an existing table if it doesn't already exist.
 
     SQLite does not support ALTER TABLE ADD COLUMN IF NOT EXISTS.
@@ -78,7 +76,5 @@ def init_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "nodes", "deleted_at", "INTEGER")
     _add_column_if_missing(conn, "nodes", "file_mtime", "REAL")
     # Index on deleted_at must be created after the column migration
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at)")
     conn.commit()

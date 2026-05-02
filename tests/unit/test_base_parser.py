@@ -39,10 +39,11 @@ def test_qualified_name_empty():
 def test_pop_on_empty_does_not_raise(caplog):
     """pop on empty stack must be a no-op with a warning, never raise."""
     import logging
+
     ctx = _BaseContext()
     with caplog.at_level(logging.WARNING):
-        ctx.pop_class()   # empty — must not raise
-        ctx.pop_fn()      # empty — must not raise
+        ctx.pop_class()  # empty — must not raise
+        ctx.pop_fn()  # empty — must not raise
     assert len(caplog.records) == 2
 
 

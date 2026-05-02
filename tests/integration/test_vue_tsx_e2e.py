@@ -81,9 +81,7 @@ def test_vue_tsx_app_parsing_accuracy():
 
     # Test 4: Function detection in composables
     composable_functions = [
-        n
-        for n in all_nodes
-        if n.kind == NodeKind.FUNCTION and "useTaskManager" in n.path
+        n for n in all_nodes if n.kind == NodeKind.FUNCTION and "useTaskManager" in n.path
     ]
     func_names = {f.name for f in composable_functions}
 
@@ -117,9 +115,7 @@ def test_vue_tsx_app_parsing_accuracy():
     # fetchTasks should be async
     fetch_tasks_funcs = [n for n in all_nodes if n.name == "fetchTasks"]
     if fetch_tasks_funcs:
-        assert fetch_tasks_funcs[0].metadata.get("is_async"), (
-            "fetchTasks should be async"
-        )
+        assert fetch_tasks_funcs[0].metadata.get("is_async"), "fetchTasks should be async"
 
     # Test 8: Verify node counts by kind
     assert "function" in nodes_by_kind, "No functions found"
@@ -144,9 +140,7 @@ def test_vue_tsx_app_parsing_accuracy():
 
     # Test 9: Verify all nodes have proper file paths
     for node in all_nodes:
-        assert "vue_tsx_app" in node.path, (
-            f"Node {node.name} has unexpected path: {node.path}"
-        )
+        assert "vue_tsx_app" in node.path, f"Node {node.name} has unexpected path: {node.path}"
         assert node.path.endswith((".ts", ".tsx")), (
             f"Node {node.name} path should end with .ts or .tsx"
         )
@@ -212,9 +206,7 @@ def test_vue_tsx_app_visual_graph():
     graph_lines.append("-" * 60)
     composable_funcs = [n for n in composable_nodes if n.kind == NodeKind.FUNCTION]
     if composable_funcs:
-        main_composable = next(
-            (n for n in composable_funcs if n.name == "useTaskManager"), None
-        )
+        main_composable = next((n for n in composable_funcs if n.name == "useTaskManager"), None)
         if main_composable:
             graph_lines.append(f"  🔷 {main_composable.name}()")
             other_funcs = [n for n in composable_funcs if n.name != "useTaskManager"]
@@ -228,11 +220,7 @@ def test_vue_tsx_app_visual_graph():
         if node.kind == NodeKind.CLASS:
             graph_lines.append(f"  🔷 {node.name}")
             # Show component methods
-            methods = [
-                n
-                for n in all_nodes
-                if n.kind == NodeKind.METHOD and node.name in n.path
-            ]
+            methods = [n for n in all_nodes if n.kind == NodeKind.METHOD and node.name in n.path]
             for method in methods[:3]:
                 graph_lines.append(f"     └─ {method.name}()")
 
@@ -244,11 +232,7 @@ def test_vue_tsx_app_visual_graph():
             graph_lines.append(f"  🔷 {node.name}()")
         elif node.kind == NodeKind.CLASS:
             graph_lines.append(f"  🔷 {node.name} (class)")
-            methods = [
-                n
-                for n in all_nodes
-                if n.kind == NodeKind.METHOD and node.name in n.path
-            ]
+            methods = [n for n in all_nodes if n.kind == NodeKind.METHOD and node.name in n.path]
             for method in methods[:3]:
                 graph_lines.append(f"     └─ {method.name}()")
 

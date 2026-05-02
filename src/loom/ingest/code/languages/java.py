@@ -125,12 +125,8 @@ def _extract_type_parameters(src: bytes, n: TSNode) -> str | None:
 def _method_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
     params_node = n.child_by_field_name("parameters")
     return_node = n.child_by_field_name("type")
-    params = (
-        _split_params(_node_text(src, params_node)) if params_node is not None else []
-    )
-    return_type = (
-        _node_text(src, return_node).strip() if return_node is not None else None
-    )
+    params = _split_params(_node_text(src, params_node)) if params_node is not None else []
+    return_type = _node_text(src, return_node).strip() if return_node is not None else None
     signature = f"{name}({', '.join(params)})"
     if return_type:
         signature = f"{signature} -> {return_type}"
@@ -313,9 +309,7 @@ def _walk(
             TS_JAVA_METHOD_DECL,
             TS_JAVA_CTOR_DECL,
         }:
-            _extract_from_def(
-                path=path, src=src, n=child, ctx=ctx, out=out, package=package
-            )
+            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, package=package)
         else:
             if child.child_count:
                 _walk(path=path, src=src, n=child, ctx=ctx, out=out, package=package)

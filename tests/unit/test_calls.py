@@ -35,9 +35,7 @@ def _parse_and_trace(
         for k, v in all_symbols.items():
             symbols_by_name[k] = [v]
 
-    return trace_calls(
-        func_node, tree.root_node, symbols_by_name, src=code.encode("utf-8")
-    )
+    return trace_calls(func_node, tree.root_node, symbols_by_name, src=code.encode("utf-8"))
 
 
 def test_trace_direct_function_call():

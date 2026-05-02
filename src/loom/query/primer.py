@@ -38,9 +38,7 @@ def _group_by_module(conn: sqlite3.Connection) -> dict[str, int]:
     for row in rows:
         mod = _extract_module(row["path"])
         modules[mod] = modules.get(mod, 0) + row["cnt"]
-    return dict(
-        sorted(modules.items(), key=lambda kv: kv[1], reverse=True)[:_MAX_MODULES]
-    )
+    return dict(sorted(modules.items(), key=lambda kv: kv[1], reverse=True)[:_MAX_MODULES])
 
 
 def _detect_entry_points(conn: sqlite3.Connection) -> list[str]:
@@ -114,9 +112,9 @@ def _build_primer_data(conn: sqlite3.Connection) -> dict[str, Any]:
         "AND summary IS NOT NULL"
     ).fetchone()[0]
 
-    last_ts = conn.execute(
-        "SELECT MAX(updated_at) FROM nodes WHERE deleted_at IS NULL"
-    ).fetchone()[0]
+    last_ts = conn.execute("SELECT MAX(updated_at) FROM nodes WHERE deleted_at IS NULL").fetchone()[
+        0
+    ]
 
     return {
         "empty": False,
@@ -154,12 +152,14 @@ def _build_module_detail(conn: sqlite3.Connection, module: str) -> dict[str, Any
     for r in rows:
         meta = json.loads(r["metadata"]) if r["metadata"] else {}
         sig = meta.get("signature", r["name"])
-        fns.append({
-            "name": r["name"],
-            "signature": sig,
-            "callers": r["callers"],
-            "summary": (r["summary"] or "")[:60],
-        })
+        fns.append(
+            {
+                "name": r["name"],
+                "signature": sig,
+                "callers": r["callers"],
+                "summary": (r["summary"] or "")[:60],
+            }
+        )
 
     total = conn.execute(
         "SELECT COUNT(*) FROM nodes "
@@ -237,6 +237,7 @@ async def build_primer(
     Returns:
         Formatted string or dict.
     """
+
     def _run() -> dict[str, Any]:
         with db._lock:
             conn = db.connect()

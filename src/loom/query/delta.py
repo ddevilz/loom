@@ -57,6 +57,7 @@ async def get_delta_payload(
     Returns:
         Delta payload dict.
     """
+
     def _run() -> dict[str, Any]:
         with db._lock:
             conn = db.connect()
@@ -122,8 +123,7 @@ async def get_delta_payload(
 
             changed = [_row_to_mini_packet(r, "modified") for r in changed_rows]
             deleted = [
-                {"id": r["id"], "path": r["path"], "change_type": "deleted"}
-                for r in deleted_rows
+                {"id": r["id"], "path": r["path"], "change_type": "deleted"} for r in deleted_rows
             ]
 
             parts = []

@@ -32,10 +32,9 @@ async def _first_community_id(db: DB) -> str:
     def _run() -> str:
         with db._lock:
             conn = db.connect()
-            row = conn.execute(
-                "SELECT id FROM nodes WHERE kind = 'community' LIMIT 1"
-            ).fetchone()
+            row = conn.execute("SELECT id FROM nodes WHERE kind = 'community' LIMIT 1").fetchone()
             return row["id"] if row else ""
+
     return await asyncio.to_thread(_run)
 
 

@@ -77,9 +77,7 @@ def _extract_from_def(
                             source=NodeSource.CODE,
                             name=name,
                             path=path,
-                            content_hash=content_hash_for_line_span(
-                                src, start_line, end_line
-                            ),
+                            content_hash=content_hash_for_line_span(src, start_line, end_line),
                             start_line=start_line,
                             end_line=end_line,
                             language=LANG_GO,

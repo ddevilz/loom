@@ -16,10 +16,7 @@ def _load_gitignore(root: Path) -> PathSpec:
 
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune dirs in-place so os.walk doesn't recurse into them
-        dirnames[:] = [
-            d for d in dirnames
-            if d not in skip and not d.startswith(".")
-        ]
+        dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith(".")]
         if ".gitignore" not in filenames:
             continue
         gi = Path(dirpath) / ".gitignore"

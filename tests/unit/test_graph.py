@@ -40,9 +40,7 @@ async def test_bulk_upsert_edges_and_callers(tmp_path: Path):
     a = _fn("a.py", "f")
     b = _fn("b.py", "g")
     await node_store.bulk_upsert_nodes(db, [a, b])
-    await edge_store.bulk_upsert_edges(db, [
-        Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)
-    ])
+    await edge_store.bulk_upsert_edges(db, [Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)])
     rows = await traversal.neighbors(db, b.id, depth=1, edge_types=[EdgeType.CALLS])
     assert any(n.id == a.id for n in rows)
 
@@ -53,10 +51,13 @@ async def test_blast_radius_transitive(tmp_path: Path):
     a, b, c = _fn("a.py", "f"), _fn("b.py", "g"), _fn("c.py", "h")
     await node_store.bulk_upsert_nodes(db, [a, b, c])
     # a -> b -> c  (a calls b, b calls c)
-    await edge_store.bulk_upsert_edges(db, [
-        Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS),
-        Edge(from_id=b.id, to_id=c.id, kind=EdgeType.CALLS),
-    ])
+    await edge_store.bulk_upsert_edges(
+        db,
+        [
+            Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS),
+            Edge(from_id=b.id, to_id=c.id, kind=EdgeType.CALLS),
+        ],
+    )
     result = await traversal.blast_radius(db, c.id, depth=3)
     ids = {n.id for n in result}
     assert a.id in ids and b.id in ids
@@ -98,9 +99,7 @@ async def test_neighbors_direction_in(tmp_path: Path):
     db = DB(path=tmp_path / "loom.db")
     a, b = _fn("a.py", "caller"), _fn("b.py", "callee")
     await node_store.bulk_upsert_nodes(db, [a, b])
-    await edge_store.bulk_upsert_edges(db, [
-        Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)
-    ])
+    await edge_store.bulk_upsert_edges(db, [Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)])
     callers_of_b = await traversal.neighbors(
         db, b.id, depth=1, edge_types=[EdgeType.CALLS], direction="in"
     )

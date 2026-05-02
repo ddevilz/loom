@@ -100,6 +100,7 @@ async def get_context_packet(db: DB, node_id: str) -> dict[str, Any] | None:
     Returns:
         Context packet dict, or None if node not found.
     """
+
     def _run() -> dict[str, Any] | None:
         with db._lock:
             conn = db.connect()

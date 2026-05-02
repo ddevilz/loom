@@ -32,9 +32,7 @@ def db() -> DB:
 async def test_blast_radius_forwards_depth_to_graph(db: DB) -> None:
     a, b = _fn("a.py", "caller"), _fn("b.py", "target")
     await node_store.bulk_upsert_nodes(db, [a, b])
-    await edge_store.bulk_upsert_edges(db, [
-        Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)
-    ])
+    await edge_store.bulk_upsert_edges(db, [Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)])
     result = await build_blast_radius_payload(db, node_id=b.id, depth=2)
     assert result["depth"] == 2
     assert result["count"] == 1
@@ -44,9 +42,7 @@ async def test_blast_radius_forwards_depth_to_graph(db: DB) -> None:
 async def test_blast_radius_payload_shape(db: DB) -> None:
     a, b = _fn("a.py", "caller"), _fn("b.py", "target")
     await node_store.bulk_upsert_nodes(db, [a, b])
-    await edge_store.bulk_upsert_edges(db, [
-        Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)
-    ])
+    await edge_store.bulk_upsert_edges(db, [Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)])
     result = await build_blast_radius_payload(db, node_id=b.id, depth=3)
     assert result["node_id"] == b.id
     assert result["depth"] == 3
@@ -67,8 +63,6 @@ async def test_blast_radius_empty_returns_zero_count(db: DB) -> None:
 async def test_blast_radius_default_depth_is_three(db: DB) -> None:
     a, b = _fn("a.py", "caller"), _fn("b.py", "target")
     await node_store.bulk_upsert_nodes(db, [a, b])
-    await edge_store.bulk_upsert_edges(db, [
-        Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)
-    ])
+    await edge_store.bulk_upsert_edges(db, [Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)])
     result = await build_blast_radius_payload(db, node_id=b.id)
     assert result["depth"] == 3

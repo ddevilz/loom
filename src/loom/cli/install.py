@@ -42,7 +42,7 @@ def _install_git_hook(repo: Path) -> Path:
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text(
         "#!/bin/sh\n"
-        'loom sync \\\n'
+        "loom sync \\\n"
         '  --old-sha "$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)" \\\n'
         '  --new-sha "$(git rev-parse HEAD)"\n'
     )

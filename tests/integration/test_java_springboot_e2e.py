@@ -121,59 +121,37 @@ def test_java_springboot_app_parsing_accuracy():
 
     # Test 10: Method extraction from concrete class
     cc_methods = [
-        n
-        for n in all_nodes
-        if n.kind == NodeKind.METHOD and "CreditCardPayment.java" in n.path
+        n for n in all_nodes if n.kind == NodeKind.METHOD and "CreditCardPayment.java" in n.path
     ]
     cc_method_names = {m.name for m in cc_methods}
 
     # Overridden methods
-    assert "getType" in cc_method_names, (
-        "Overridden 'getType' not found in CreditCardPayment"
-    )
-    assert "validate" in cc_method_names, (
-        "Overridden 'validate' not found in CreditCardPayment"
-    )
+    assert "getType" in cc_method_names, "Overridden 'getType' not found in CreditCardPayment"
+    assert "validate" in cc_method_names, "Overridden 'validate' not found in CreditCardPayment"
 
     # Private helper methods
-    assert "validateCardNumber" in cc_method_names, (
-        "Private method 'validateCardNumber' not found"
-    )
-    assert "maskCardNumber" in cc_method_names, (
-        "Private method 'maskCardNumber' not found"
-    )
+    assert "validateCardNumber" in cc_method_names, "Private method 'validateCardNumber' not found"
+    assert "maskCardNumber" in cc_method_names, "Private method 'maskCardNumber' not found"
 
     # Test 11: Interface method extraction
     processor_methods = [
-        n
-        for n in all_nodes
-        if n.kind == NodeKind.METHOD and "PaymentProcessor.java" in n.path
+        n for n in all_nodes if n.kind == NodeKind.METHOD and "PaymentProcessor.java" in n.path
     ]
     processor_method_names = {m.name for m in processor_methods}
 
     assert "process" in processor_method_names, "Interface method 'process' not found"
-    assert "canProcess" in processor_method_names, (
-        "Interface method 'canProcess' not found"
-    )
+    assert "canProcess" in processor_method_names, "Interface method 'canProcess' not found"
     assert "refund" in processor_method_names, "Interface method 'refund' not found"
 
     # Test 12: Controller methods (REST endpoints)
     controller_methods = [
-        n
-        for n in all_nodes
-        if n.kind == NodeKind.METHOD and "PaymentController.java" in n.path
+        n for n in all_nodes if n.kind == NodeKind.METHOD and "PaymentController.java" in n.path
     ]
     controller_method_names = {m.name for m in controller_methods}
 
-    assert "createPayment" in controller_method_names, (
-        "REST endpoint 'createPayment' not found"
-    )
-    assert "getPayment" in controller_method_names, (
-        "REST endpoint 'getPayment' not found"
-    )
-    assert "getAllPayments" in controller_method_names, (
-        "REST endpoint 'getAllPayments' not found"
-    )
+    assert "createPayment" in controller_method_names, "REST endpoint 'createPayment' not found"
+    assert "getPayment" in controller_method_names, "REST endpoint 'getPayment' not found"
+    assert "getAllPayments" in controller_method_names, "REST endpoint 'getAllPayments' not found"
 
     # Test 13: Verify node counts by kind
     assert "class" in nodes_by_kind, "No classes found"
@@ -198,12 +176,8 @@ def test_java_springboot_app_parsing_accuracy():
 
     # Test 14: Verify all nodes have proper file paths
     for node in all_nodes:
-        assert "java_springboot" in node.path, (
-            f"Node {node.name} has unexpected path: {node.path}"
-        )
-        assert node.path.endswith(".java"), (
-            f"Node {node.name} path should end with .java"
-        )
+        assert "java_springboot" in node.path, f"Node {node.name} has unexpected path: {node.path}"
+        assert node.path.endswith(".java"), f"Node {node.name} path should end with .java"
 
     # Test 15: Verify Spring annotations are extracted
     controller = find_node("PaymentController", NodeKind.CLASS)
@@ -223,9 +197,7 @@ def test_java_springboot_app_parsing_accuracy():
     assert len(create_payment_methods) > 0, "createPayment method not found"
     create_payment = create_payment_methods[0]
     method_annotations = create_payment.metadata.get("annotations", [])
-    assert "PostMapping" in method_annotations, (
-        "@PostMapping annotation not found on createPayment"
-    )
+    assert "PostMapping" in method_annotations, "@PostMapping annotation not found on createPayment"
 
     # Test 17: Verify abstract class detection
     payment_class = find_node("Payment", NodeKind.CLASS)
@@ -334,11 +306,7 @@ def test_java_springboot_app_visual_graph():
         if node.kind == NodeKind.CLASS:
             graph_lines.append(f"  🔷 {node.name}")
             # Show REST endpoints
-            methods = [
-                n
-                for n in all_nodes
-                if n.kind == NodeKind.METHOD and node.name in n.path
-            ]
+            methods = [n for n in all_nodes if n.kind == NodeKind.METHOD and node.name in n.path]
             for method in methods[:5]:  # Show first 5 methods
                 graph_lines.append(f"     └─ {method.name}()")
 

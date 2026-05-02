@@ -49,17 +49,19 @@ def _build_graph_data(db: DB) -> dict:
     for r in node_rows:
         colour = _KIND_COLOURS.get(r["kind"], _DEFAULT_COLOUR)
         label = r["name"]
-        nodes.append({
-            "data": {
-                "id": r["id"],
-                "label": label,
-                "kind": r["kind"],
-                "path": r["path"],
-                "language": r["language"] or "",
-                "is_dead_code": bool(r["is_dead_code"]),
-                "colour": colour,
+        nodes.append(
+            {
+                "data": {
+                    "id": r["id"],
+                    "label": label,
+                    "kind": r["kind"],
+                    "path": r["path"],
+                    "language": r["language"] or "",
+                    "is_dead_code": bool(r["is_dead_code"]),
+                    "colour": colour,
+                }
             }
-        })
+        )
 
     edges = []
     seen: set[tuple[str, str, str]] = set()
@@ -69,15 +71,17 @@ def _build_graph_data(db: DB) -> dict:
             continue
         seen.add(key)
         colour = _EDGE_COLOURS.get(r["kind"], _DEFAULT_EDGE_COLOUR)
-        edges.append({
-            "data": {
-                "id": f"{r['from_id']}__{r['to_id']}__{r['kind']}",
-                "source": r["from_id"],
-                "target": r["to_id"],
-                "kind": r["kind"],
-                "colour": colour,
+        edges.append(
+            {
+                "data": {
+                    "id": f"{r['from_id']}__{r['to_id']}__{r['kind']}",
+                    "source": r["from_id"],
+                    "target": r["to_id"],
+                    "kind": r["kind"],
+                    "colour": colour,
+                }
             }
-        })
+        )
 
     kinds = sorted({r["kind"] for r in node_rows})
     edge_kinds = sorted({r["kind"] for r in edge_rows})
@@ -91,7 +95,6 @@ def _render_html(data: dict, db_path: Path) -> str:
         .replace("__GRAPH_JSON__", graph_json)
         .replace("__DB_NAME__", db_path.name)
     )
-
 
 
 @app.command(name="export")

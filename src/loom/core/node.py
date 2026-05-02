@@ -65,9 +65,7 @@ class Node(BaseModel):
     def _validate_id_convention(self) -> Node:
         expected_prefix = f"{self.kind.value}:"
         if not self.id.startswith(expected_prefix):
-            raise ValueError(
-                f"Node id must start with {expected_prefix!r} (got {self.id!r})"
-            )
+            raise ValueError(f"Node id must start with {expected_prefix!r} (got {self.id!r})")
         return self
 
     @staticmethod

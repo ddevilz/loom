@@ -78,15 +78,11 @@ def test_python_flask_app_parsing_accuracy():
     # Check for Flask route decorator
     if get_users:
         decorators = get_users.metadata.get("decorators", [])
-        assert "app.route" in decorators, (
-            f"app.route decorator not found, got: {decorators}"
-        )
+        assert "app.route" in decorators, f"app.route decorator not found, got: {decorators}"
 
         # Check for framework hint
         framework_hint = get_users.metadata.get("framework_hint")
-        assert framework_hint == "flask_route", (
-            f"Expected flask_route hint, got: {framework_hint}"
-        )
+        assert framework_hint == "flask_route", f"Expected flask_route hint, got: {framework_hint}"
 
     # Test 4: Async function detection
     async_funcs = [n for n in all_nodes if n.metadata.get("is_async")]
@@ -95,9 +91,7 @@ def test_python_flask_app_parsing_accuracy():
     # Check specific async functions
     async_func_names = {f.name for f in async_funcs}
     assert "get_user_async" in async_func_names, "get_user_async not found"
-    assert "async_background_task" in async_func_names, (
-        "async_background_task not found"
-    )
+    assert "async_background_task" in async_func_names, "async_background_task not found"
 
     # Test 5: Method detection
     assert "method" in nodes_by_kind, "No methods found"
@@ -136,16 +130,12 @@ def test_python_flask_app_parsing_accuracy():
     process_data = find_node("process_data", NodeKind.FUNCTION)
     if process_data:
         decorators = process_data.metadata.get("decorators", [])
-        assert "timing_decorator" in decorators, (
-            "timing_decorator not applied to process_data"
-        )
+        assert "timing_decorator" in decorators, "timing_decorator not applied to process_data"
 
     fibonacci = find_node("fibonacci", NodeKind.FUNCTION)
     if fibonacci:
         decorators = fibonacci.metadata.get("decorators", [])
-        assert "cache_decorator" in decorators, (
-            "cache_decorator not applied to fibonacci"
-        )
+        assert "cache_decorator" in decorators, "cache_decorator not applied to fibonacci"
 
     # Test 9: Generic classes
     data_processor = find_node("DataProcessor", NodeKind.CLASS)
@@ -166,9 +156,7 @@ def test_python_flask_app_parsing_accuracy():
 
     # Test 11: Verify all nodes have proper file paths
     for node in all_nodes:
-        assert "python_flask_app" in node.path, (
-            f"Node {node.name} has unexpected path: {node.path}"
-        )
+        assert "python_flask_app" in node.path, f"Node {node.name} has unexpected path: {node.path}"
         assert node.path.endswith(".py"), f"Node {node.name} path should end with .py"
 
     print("\n✅ Python Flask E2E Test Results:")

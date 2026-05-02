@@ -16,8 +16,12 @@ async def bulk_upsert_edges(db: DB, edges: list[Edge]) -> None:
             conn = db.connect()
             rows = [
                 (
-                    e.from_id, e.to_id, e.kind.value, e.confidence,
-                    e.confidence_tier.value, json.dumps(e.metadata, default=str),
+                    e.from_id,
+                    e.to_id,
+                    e.kind.value,
+                    e.confidence,
+                    e.confidence_tier.value,
+                    json.dumps(e.metadata, default=str),
                 )
                 for e in edges
             ]

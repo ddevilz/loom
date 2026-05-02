@@ -116,9 +116,7 @@ def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:
     if forms:
         meta[META_FORM_COUNT] = len(forms)
         # Extract form actions
-        actions = [
-            m.group(1) for m in re.finditer(RX_HTML_ACTION, content, re.IGNORECASE)
-        ]
+        actions = [m.group(1) for m in re.finditer(RX_HTML_ACTION, content, re.IGNORECASE)]
         if actions:
             meta[META_FORM_ACTIONS] = actions
 
@@ -321,9 +319,7 @@ def parse_yaml(path: str, *, exclude_tests: bool = False) -> list[Node]:
         meta[META_FILE_TYPE] = FILETYPE_DOCKER_COMPOSE
     elif YAML_KEY_API_VERSION in content and YAML_KEY_KIND in content:
         meta[META_FILE_TYPE] = FILETYPE_KUBERNETES
-    elif (
-        YAML_KEY_NAME in content and YAML_KEY_ON in content and YAML_KEY_JOBS in content
-    ):
+    elif YAML_KEY_NAME in content and YAML_KEY_ON in content and YAML_KEY_JOBS in content:
         meta[META_FILE_TYPE] = FILETYPE_GITHUB_ACTIONS
     elif p.name in GITLAB_CI_FILENAMES:
         meta[META_FILE_TYPE] = FILETYPE_GITLAB_CI
@@ -378,9 +374,7 @@ def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
         db_keys = [
             k
             for k in properties
-            if "database" in k.lower()
-            or "datasource" in k.lower()
-            or "jdbc" in k.lower()
+            if "database" in k.lower() or "datasource" in k.lower() or "jdbc" in k.lower()
         ]
         if db_keys:
             meta[META_DATABASE_CONFIG] = True
@@ -388,9 +382,7 @@ def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
         # Detect sensitive keys
         sensitive_patterns = ["password", "secret", "key", "token", "credential"]
         sensitive = [
-            k
-            for k in properties
-            if any(pattern in k.lower() for pattern in sensitive_patterns)
+            k for k in properties if any(pattern in k.lower() for pattern in sensitive_patterns)
         ]
         if sensitive:
             meta[META_SENSITIVE_KEYS] = sensitive[:10]
@@ -438,17 +430,13 @@ def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
             "private",
         ]
         sensitive = [
-            k
-            for k in variables
-            if any(pattern in k.lower() for pattern in sensitive_patterns)
+            k for k in variables if any(pattern in k.lower() for pattern in sensitive_patterns)
         ]
         if sensitive:
             meta[META_SENSITIVE_KEYS] = sensitive[:10]
 
         # Detect database configuration
-        db_keys = [
-            k for k in variables if "database" in k.lower() or "db_" in k.lower()
-        ]
+        db_keys = [k for k in variables if "database" in k.lower() or "db_" in k.lower()]
         if db_keys:
             meta[META_DATABASE_CONFIG] = True
 
@@ -515,19 +503,13 @@ def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
             version = poetry.get("version")
             if isinstance(name, str) and name and META_PROJECT_NAME not in meta:
                 meta[META_PROJECT_NAME] = name
-            if (
-                isinstance(version, str)
-                and version
-                and META_PROJECT_VERSION not in meta
-            ):
+            if isinstance(version, str) and version and META_PROJECT_VERSION not in meta:
                 meta[META_PROJECT_VERSION] = version
 
             poetry_dependencies = poetry.get("dependencies")
             if isinstance(poetry_dependencies, dict):
                 dependencies.extend(
-                    key
-                    for key in poetry_dependencies
-                    if isinstance(key, str) and key != "python"
+                    key for key in poetry_dependencies if isinstance(key, str) and key != "python"
                 )
 
             poetry_group = poetry.get("group")
