@@ -28,9 +28,7 @@ def _auto_index_if_empty(db: object) -> None:
     db_typed: DBType = db  # type: ignore[assignment]
     with db_typed._lock:
         conn = db_typed.connect()
-        count = conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL"
-        ).fetchone()[0]
+        count = conn.execute("SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL").fetchone()[0]
 
     if count > 0:
         return

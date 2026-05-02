@@ -100,8 +100,10 @@ def savings(
     recent = asyncio.run(get_recent_savings(db, limit=limit))
 
     console.print(f"\n[bold green]Total tokens saved:[/bold green] {s['total_tokens_saved']:,}")
-    console.print(f"[bold]Cache hits:[/bold] {s['total_hits']:,}  "
-                  f"([cyan]agent: {s['agent_hits']}[/cyan]  auto: {s['auto_hits']})")
+    console.print(
+        f"[bold]Cache hits:[/bold] {s['total_hits']:,}  "
+        f"([cyan]agent: {s['agent_hits']}[/cyan]  auto: {s['auto_hits']})"
+    )
     console.print("[dim]agent = store_understanding summaries (provably skipped file reads)[/dim]")
     console.print("[dim]auto  = metadata summaries from loom analyze[/dim]\n")
 
