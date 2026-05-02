@@ -4,8 +4,6 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-
-UTC = timezone.utc
 from itertools import combinations
 from pathlib import Path
 
@@ -100,7 +98,7 @@ async def _analyze_coupling(
         return []
     root = Path(working_dir)
 
-    cutoff = datetime.now(UTC) - timedelta(days=months * 30)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=months * 30)
 
     def _process() -> list[Edge]:
         try:
