@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 import logging
 import re
-import tomllib
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
+
+try:
+    import tomllib  # Python 3.11+
+except ImportError:
+    import tomli as tomllib  # type: ignore[no-redef]  # 3.10 fallback
 
 from loom.core import Node, NodeKind, NodeSource
 from loom.core.content_hash import content_hash_bytes
