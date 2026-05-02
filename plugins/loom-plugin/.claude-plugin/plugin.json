@@ -1,0 +1,15 @@
+{
+  "name": "loom",
+  "description": "Persistent symbol index for AI coding agents. Tree-sitter indexes your codebase into SQLite. Agents search by name/keyword and get summaries + signatures instantly.",
+  "version": "0.3.0",
+  "author": {
+    "name": "Devashish",
+    "email": "jadhavom24@gmail.com"
+  },
+  "mcpServers": {
+    "loom": {
+      "command": "uvx",
+      "args": ["--from", "loom-tool", "loom-mcp"]
+    }
+  }
+}
