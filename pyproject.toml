@@ -7,6 +7,17 @@ authors = [
     { name = "Devashish", email = "jadhavom24@gmail.com" }
 ]
 requires-python = ">=3.12"
+license = { text = "MIT" }
+keywords = ["code-intelligence", "mcp", "agent", "symbol-index", "tree-sitter"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
 dependencies = [
     "fastmcp>=3.0.2",
     "gitpython>=3.1.46",
@@ -23,6 +34,10 @@ dependencies = [
     "typer>=0.24.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/devashishjadav/loom"
+Issues = "https://github.com/devashishjadav/loom/issues"
+
 [project.scripts]
 loom = "loom.cli:main"
 loom-mcp = "loom.mcp.run:run_stdio"
@@ -36,6 +51,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/loom"]
 sources = ["src"]
+
 
 [dependency-groups]
 dev = [
@@ -72,7 +88,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"src/loom/cli/export.py" = ["E501"]  # embedded HTML/CSS/JS template strings
 
 [tool.ruff.format]
 quote-style = "double"
