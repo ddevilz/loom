@@ -16,7 +16,7 @@ def _touch(p: Path, content: str = "x") -> None:
 def test_walk_repo_groups_by_language(tmp_path: Path):
     _touch(tmp_path / "a.py", "def a():\n  pass\n")
     _touch(tmp_path / "b.ts", "function b() {}\n")
-    _touch(tmp_path / "c.go", "package main\nfunc c() {}\n")
+    _touch(tmp_path / "c.java", "class C {}\n")
     _touch(tmp_path / "d.html", "<html></html>")
     _touch(tmp_path / "e.css", ".x { color: red; }")
     _touch(tmp_path / "ignored.bin", "")
@@ -25,13 +25,13 @@ def test_walk_repo_groups_by_language(tmp_path: Path):
 
     assert "python" in out
     assert "typescript" in out
-    assert "go" in out
+    assert "java" in out
     assert "html" in out
     assert "css" in out
 
     assert any(p.endswith("a.py") for p in out["python"])
     assert any(p.endswith("b.ts") for p in out["typescript"])
-    assert any(p.endswith("c.go") for p in out["go"])
+    assert any(p.endswith("c.java") for p in out["java"])
 
 
 def test_walk_repo_respects_gitignore(tmp_path: Path):

@@ -11,7 +11,6 @@ from loom.ingest.code.languages.constants import (
     EXT_CSS,
     EXT_CXML,
     EXT_ENV,
-    EXT_GO,
     EXT_HTM,
     EXT_HTML,
     EXT_INI,
@@ -22,8 +21,6 @@ from loom.ingest.code.languages.constants import (
     EXT_PROPERTIES,
     EXT_PY,
     EXT_PYW,
-    EXT_RB,
-    EXT_RS,
     EXT_TOML,
     EXT_TS,
     EXT_TSX,
@@ -202,7 +199,6 @@ def _register_defaults(reg: LanguageRegistry) -> None:
         trace_calls_for_java_file,
         trace_calls_for_ts_file,
     )
-    from loom.ingest.code.languages.go_lang import parse_go
     from loom.ingest.code.languages.java import parse_java
     from loom.ingest.code.languages.javascript import parse_javascript
     from loom.ingest.code.languages.markup import (
@@ -217,8 +213,6 @@ def _register_defaults(reg: LanguageRegistry) -> None:
         parse_yaml,
     )
     from loom.ingest.code.languages.python import parse_python
-    from loom.ingest.code.languages.ruby import parse_ruby
-    from loom.ingest.code.languages.rust import parse_rust
     from loom.ingest.code.languages.typescript import parse_typescript
 
     # Code languages
@@ -264,7 +258,6 @@ def _register_defaults(reg: LanguageRegistry) -> None:
         call_tracer=trace_calls_for_ts_file,
         call_tracer_error_message="javascript call tracing failed",
     )
-    reg.register(EXT_GO, "go", parse_go)
     reg.register(
         EXT_JAVA,
         "java",
@@ -272,8 +265,6 @@ def _register_defaults(reg: LanguageRegistry) -> None:
         call_tracer=trace_calls_for_java_file,
         call_tracer_error_message="java call tracing failed",
     )
-    reg.register(EXT_RS, "rust", parse_rust)
-    reg.register(EXT_RB, "ruby", parse_ruby)
 
     # Markup & config files (parsed as FILE nodes with metadata)
     reg.register(EXT_HTML, "html", parse_html)

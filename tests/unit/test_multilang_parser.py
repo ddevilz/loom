@@ -3,11 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from loom.core import NodeKind
-from loom.ingest.code.languages.go_lang import parse_go
 from loom.ingest.code.languages.java import parse_java
 from loom.ingest.code.languages.javascript import parse_javascript
-from loom.ingest.code.languages.ruby import parse_ruby
-from loom.ingest.code.languages.rust import parse_rust
 from loom.ingest.code.languages.typescript import parse_typescript
 
 
@@ -153,52 +150,6 @@ def test_parse_typescript_export_const_arrow(tmp_path: Path):
     assert h[0].kind == NodeKind.FUNCTION
 
 
-# ── Go ──────────────────────────────────────────────────────────────
-
-
-def test_parse_go_extracts_function(tmp_path: Path):
-    p = tmp_path / "main.go"
-    p.write_text(
-        'package main\n\nfunc main() {\n  println("hello")\n}\n',
-        encoding="utf-8",
-    )
-    nodes = parse_go(str(p))
-    assert len(nodes) == 1
-    assert nodes[0].name == "main"
-    assert nodes[0].kind == NodeKind.FUNCTION
-    assert nodes[0].language == "go"
-
-
-def test_parse_go_extracts_struct(tmp_path: Path):
-    p = tmp_path / "user.go"
-    p.write_text(
-        "package main\n\ntype User struct {\n  Name string\n}\n",
-        encoding="utf-8",
-    )
-    nodes = parse_go(str(p))
-    assert len(nodes) == 1
-    assert nodes[0].name == "User"
-    assert nodes[0].kind == NodeKind.CLASS
-
-
-def test_parse_go_extracts_method_with_receiver(tmp_path: Path):
-    p = tmp_path / "user.go"
-    p.write_text(
-        "package main\n\n"
-        "type User struct {}\n\n"
-        "func (u *User) GetName() string {\n"
-        "  return u.Name\n"
-        "}\n",
-        encoding="utf-8",
-    )
-    nodes = parse_go(str(p))
-
-    get_name = _by_name(nodes, "GetName")[0]
-    assert get_name.kind == NodeKind.METHOD
-    assert "receiver" in get_name.metadata
-    assert get_name.metadata["receiver"] == "User"
-
-
 # ── Java ────────────────────────────────────────────────────────────
 
 
@@ -273,149 +224,6 @@ def test_parse_java_no_package_still_works(tmp_path: Path):
     assert "Simple.run" in method.id
 
 
-# ── Rust ────────────────────────────────────────────────────────────
-
-
-def test_parse_rust_extracts_function(tmp_path: Path):
-    p = tmp_path / "main.rs"
-    p.write_text(
-        'fn main() {\n  println!("hello");\n}\n',
-        encoding="utf-8",
-    )
-    nodes = parse_rust(str(p))
-    assert len(nodes) == 1
-    assert nodes[0].name == "main"
-    assert nodes[0].kind == NodeKind.FUNCTION
-    assert nodes[0].language == "rust"
-
-
-def test_parse_rust_extracts_struct(tmp_path: Path):
-    p = tmp_path / "user.rs"
-    p.write_text(
-        "struct User {\n  name: String,\n}\n",
-        encoding="utf-8",
-    )
-    nodes = parse_rust(str(p))
-    assert len(nodes) == 1
-    assert nodes[0].name == "User"
-    assert nodes[0].kind == NodeKind.CLASS
-
-
-def test_parse_rust_extracts_impl_methods(tmp_path: Path):
-    p = tmp_path / "user.rs"
-    p.write_text(
-        "struct User {}\n\n"
-        "impl User {\n"
-        "  fn new() -> Self {\n"
-        "    User {}\n"
-        "  }\n"
-        "  fn get_name(&self) -> &str {\n"
-        "    &self.name\n"
-        "  }\n"
-        "}\n",
-        encoding="utf-8",
-    )
-    nodes = parse_rust(str(p))
-
-    # Should have: User struct + 2 methods
-    assert len(nodes) >= 3
-
-    new_method = _by_name(nodes, "new")[0]
-    assert new_method.kind == NodeKind.METHOD
-    assert "impl_type" in new_method.metadata
-
-    get_name = _by_name(nodes, "get_name")[0]
-    assert get_name.kind == NodeKind.METHOD
-
-
-# ── Ruby ────────────────────────────────────────────────────────────
-
-
-def test_parse_ruby_extracts_class_and_method(tmp_path: Path):
-    p = tmp_path / "user.rb"
-    p.write_text(
-        "class User\n"
-        "  def initialize(name)\n"
-        "    @name = name\n"
-        "  end\n"
-        "  def get_name\n"
-        "    @name\n"
-        "  end\n"
-        "end\n",
-        encoding="utf-8",
-    )
-    nodes = parse_ruby(str(p))
-    assert len(nodes) >= 3
-
-    user_class = _by_name(nodes, "User")[0]
-    assert user_class.kind == NodeKind.CLASS
-    assert user_class.language == "ruby"
-
-    init = _by_name(nodes, "initialize")[0]
-    assert init.kind == NodeKind.METHOD
-
-
-def test_parse_ruby_extracts_module(tmp_path: Path):
-    p = tmp_path / "utils.rb"
-    p.write_text(
-        "module Utils\n  def self.helper\n    'help'\n  end\nend\n",
-        encoding="utf-8",
-    )
-    nodes = parse_ruby(str(p))
-    assert len(nodes) >= 1
-
-    utils = _by_name(nodes, "Utils")[0]
-    assert utils.kind == NodeKind.CLASS
-
-
-def test_parse_ruby_extracts_top_level_function(tmp_path: Path):
-    p = tmp_path / "script.rb"
-    p.write_text(
-        'def greet(name)\n  puts "Hello, #{name}"\nend\n',
-        encoding="utf-8",
-    )
-    nodes = parse_ruby(str(p))
-    assert len(nodes) == 1
-    assert nodes[0].name == "greet"
-    assert nodes[0].kind == NodeKind.FUNCTION
-
-
-def test_parse_ruby_rails_dsl_extraction(tmp_path: Path):
-    p = tmp_path / "user.rb"
-    p.write_text(
-        "class User < ApplicationRecord\n"
-        "  has_many :posts\n"
-        "  belongs_to :team\n"
-        "  validates :name, presence: true\n"
-        "  scope :active, -> { where(active: true) }\n"
-        "  before_action :authenticate\n"
-        "\n"
-        "  def save\n"
-        "    true\n"
-        "  end\n"
-        "end\n",
-        encoding="utf-8",
-    )
-    nodes = parse_ruby(str(p))
-    user = _by_name(nodes, "User")[0]
-    assert user.kind == NodeKind.CLASS
-    assert user.metadata.get("extends") == "ApplicationRecord"
-
-    dsl = user.metadata.get("rails_dsl")
-    assert dsl is not None
-    dsl_methods = [d["method"] for d in dsl]
-    assert "has_many" in dsl_methods
-    assert "belongs_to" in dsl_methods
-    assert "validates" in dsl_methods
-    assert "scope" in dsl_methods
-    assert "before_action" in dsl_methods
-
-    # Method still extracted
-    save = _by_name(nodes, "save")
-    assert len(save) == 1
-    assert save[0].kind == NodeKind.METHOD
-
-
 # ── Registry integration ────────────────────────────────────────────
 
 
@@ -436,30 +244,9 @@ def test_registry_dispatches_to_correct_parser(tmp_path: Path):
     assert len(js_nodes) == 1
     assert js_nodes[0].language == "javascript"
 
-    # Go
-    go_file = tmp_path / "main.go"
-    go_file.write_text("package main\nfunc main() {}", encoding="utf-8")
-    go_nodes = parse_code(str(go_file))
-    assert len(go_nodes) == 1
-    assert go_nodes[0].language == "go"
-
     # Java
     java_file = tmp_path / "App.java"
     java_file.write_text("class App {}", encoding="utf-8")
     java_nodes = parse_code(str(java_file))
     assert len(java_nodes) == 1
     assert java_nodes[0].language == "java"
-
-    # Rust
-    rust_file = tmp_path / "main.rs"
-    rust_file.write_text("fn main() {}", encoding="utf-8")
-    rust_nodes = parse_code(str(rust_file))
-    assert len(rust_nodes) == 1
-    assert rust_nodes[0].language == "rust"
-
-    # Ruby
-    ruby_file = tmp_path / "app.rb"
-    ruby_file.write_text("def hello; end", encoding="utf-8")
-    ruby_nodes = parse_code(str(ruby_file))
-    assert len(ruby_nodes) == 1
-    assert ruby_nodes[0].language == "ruby"
