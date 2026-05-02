@@ -93,6 +93,7 @@ Override with `LOOM_DB_PATH` env var or `--db` flag.
 | `loom communities` | Run Louvain community detection |
 | `loom dead-code` | Mark functions with no incoming CALLS |
 | `loom summaries [-n N]` | Show agent-written summaries, most recent first |
+| `loom savings [-n N]` | Token savings dashboard — totals + recent cache hits |
 | `loom stats` | Node/edge counts by kind |
 | `loom export` | Self-contained interactive HTML graph |
 
@@ -113,14 +114,16 @@ Override with `LOOM_DB_PATH` env var or `--db` flag.
 | `god_nodes(limit)` | Most-called functions (highest in-degree) |
 | `store_understanding(node_id, summary, force?)` | Cache agent-generated summary permanently. Returns `skipped: true` if summary already fresh — no re-write needed. |
 | `store_understanding_batch(updates)` | Batch version, max 50 per call |
+| `get_savings()` | Token savings report — all-time totals + 10 recent hits |
 | `start_session(agent_id)` | Register session start, returns session_id |
 | `get_delta(previous_session_id)` | What changed since last session (changed + deleted nodes) |
 
-**MCP resource:**
+**MCP resources:**
 
 | Resource | Purpose |
 |----------|---------|
 | `loom://primer` | ~200-token codebase overview — load at session start |
+| `loom://savings` | Token savings report — totals + recent cache hits |
 
 ## Node ID format
 
@@ -206,9 +209,32 @@ Session 1:                     Session 2:
 
 Delta uses `updated_at` on nodes — only bumped when `content_hash` changes. Safe against false positives from re-analyzing identical files.
 
+## Token savings tracking
+
+Every `search_code` hit with a cached summary records how many tokens were saved (source line count × 15 — no extra deps, no index overhead).
+
+```bash
+loom savings          # CLI dashboard
+```
+
+```
+Total tokens saved: 127,400
+Cache hits: 847  (agent: 23  auto: 824)
+agent = store_understanding summaries (provably skipped file reads)
+auto  = metadata summaries from loom analyze
+```
+
+Inside Claude Code, call `get_savings()` MCP tool or load `loom://savings` resource for the same report.
+
+`search_code` results include `tokens_saved` and `summary_type` per hit when a summary is cached.
+
+## Auto-indexing
+
+When installed via the Claude Code plugin, Loom auto-indexes the current project on first session start — no manual `loom analyze` needed. If the DB is empty when the MCP server starts, indexing runs in the background while the session continues.
+
 ## Supported languages
 
-Code extraction (functions, methods, classes, calls): Python, TypeScript, TSX, JavaScript, JSX, Java, Go, Rust, Ruby
+Code extraction (functions, methods, classes, calls): **Python, TypeScript, TSX, JavaScript, JSX, Java**
 
 Indexed as file nodes: HTML, CSS, JSON, YAML, TOML, XML, INI, .env, .properties
 
@@ -217,9 +243,12 @@ Indexed as file nodes: HTML, CSS, JSON, YAML, TOML, XML, INI, .env, .properties
 Full DDL in [`src/loom/core/schema.sql`](src/loom/core/schema.sql). Two core tables:
 
 ```sql
-nodes  -- id, kind, name, path, language, summary, summary_hash,
-          content_hash, start_line, end_line, metadata, deleted_at, updated_at
-edges  -- from_id, to_id, kind, confidence
+nodes    -- id, kind, name, path, language, summary, summary_hash,
+            token_count, content_hash, start_line, end_line, metadata, deleted_at, updated_at
+edges    -- from_id, to_id, kind, confidence
+savings  -- ts, node_id, query, tokens_saved, summary_type
+sessions -- id, agent_id, started_at
+meta     -- key/value counters (savings totals)
 ```
 
 FTS5 virtual table `nodes_fts` indexes name + summary + path for full-text search.
@@ -233,7 +262,7 @@ src/loom/
 ├── ingest/        # index_repo, sync_paths, tree-sitter parsers per language
 ├── analysis/      # communities (Louvain), coupling (git co-change), dead code
 ├── query/         # search, blast_radius, context packets, primer, delta
-├── store/         # nodes CRUD, sessions, FTS5 sync
+├── store/         # nodes CRUD, sessions, savings, FTS5 sync
 ├── mcp/           # FastMCP server (server.py), standalone entry point (run.py)
 ├── cli/           # typer commands
 │   └── plugins/   # platform plugin registry (claude-code, cursor, windsurf, codex)
