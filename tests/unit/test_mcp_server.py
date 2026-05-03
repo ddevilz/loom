@@ -28,7 +28,7 @@ def test_build_server_uses_db_path_when_no_db(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
-    """All 15 tools should be registered."""
+    """All tools should be registered."""
     expected = {
         "search_code",
         "get_node",
@@ -46,6 +46,9 @@ async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
         "get_savings",
         "start_session",
         "get_delta",
+        "get_surprising_connections_tool",
+        "suggest_questions_tool",
+        "get_community_cohesion_tool",
     }
     db = DB(path=tmp_path / "loom.db")
     try:

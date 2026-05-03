@@ -3,6 +3,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from loom.analysis.graph_insights import (
+    get_community_cohesion,
+    get_surprising_connections,
+    suggest_questions,
+)
 from loom.core.context import DB, DEFAULT_DB_PATH
 from loom.core.edge import EdgeType
 from loom.query import traversal
@@ -310,6 +315,43 @@ def build_server(
                 }
 
         return await get_delta_payload(db, since_ts=session_row["started_at"])
+
+    @mcp.tool()
+    async def get_surprising_connections_tool(limit: int = 10) -> list[dict]:
+        """Find non-obvious CALLS edges — cross-community, peripheral-to-hub, cross-module.
+
+        Ranked by composite surprise score. Each result includes human-readable
+        reasons explaining what makes it non-obvious.
+
+        Useful for: discovering hidden coupling, unexpected dependencies,
+        functions that act as unofficial bridges between subsystems.
+        """
+        return await get_surprising_connections(db, limit=_clamp_limit(limit))
+
+    @mcp.tool()
+    async def suggest_questions_tool(limit: int = 7) -> list[dict]:
+        """Generate questions worth investigating based on graph topology.
+
+        Question types:
+        - dead_code: functions with no callers (unused or missing edges)
+        - bridge_node: functions serving multiple communities (possible god function)
+        - missing_summary: hot functions with no cached summary (high documentation value)
+        - low_cohesion: communities whose members mostly call outside (refactor candidate)
+
+        Call this at session start to prioritize what to investigate.
+        """
+        return await suggest_questions(db, limit=_clamp_limit(limit))
+
+    @mcp.tool()
+    async def get_community_cohesion_tool() -> list[dict]:
+        """Cohesion score for every community.
+
+        Cohesion = internal CALLS / (internal + external CALLS).
+        1.0 = perfectly self-contained. 0.0 = all calls cross boundaries.
+
+        Low cohesion (<0.2) communities are refactor candidates.
+        """
+        return await get_community_cohesion(db)
 
     @mcp.resource("loom://savings")
     async def savings_resource() -> str:
