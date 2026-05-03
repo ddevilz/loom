@@ -113,6 +113,7 @@ async def get_surprising_connections(db: DB, limit: int = 10) -> list[dict]:
                   AND n1.kind NOT IN ('file', 'community')
                   AND n2.kind NOT IN ('file', 'community')
                   AND n1.path != n2.path
+                LIMIT 2000
                 """,
                 (
                     EdgeType.CALLS.value,
@@ -222,11 +223,13 @@ async def suggest_questions(db: DB, limit: int = 7) -> list[dict]:
             ).fetchall()
             if orphans:
                 names = ", ".join(f"`{r['name']}`" for r in orphans[:3])
+                extra = len(orphans) - 3
+                suffix = f" (and {extra} more)" if extra > 0 else ""
                 questions.append(
                     {
                         "type": "dead_code",
                         "question": (
-                            f"Are {names} (and {len(orphans) - 3} more) actually"
+                            f"Are {names}{suffix} actually"
                             " unused, or are callers missing from the index?"
                         ),
                         "node_id": orphans[0]["id"],

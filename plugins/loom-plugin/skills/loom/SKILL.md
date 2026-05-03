@@ -2,8 +2,8 @@
 name: loom
 description: >
   Use Loom MCP tools for code intelligence — symbol search, context packets,
-  blast radius, session primer, delta context. Invoke when working on any
-  codebase that has been indexed with `loom analyze .`.
+  blast radius, session primer, delta context, topology insights. Invoke when
+  working on any codebase indexed with `loom analyze .`.
 trigger: >
   When connected to an MCP server named "loom" OR when user says "use loom"
   OR when search_code / get_context / store_understanding tools are available.
@@ -18,6 +18,14 @@ accumulate. Zero LLM cost — all data from tree-sitter + your own stored summar
 
 Call `loom://primer` resource (or `loom context` CLI) for a ~200-token codebase
 overview. Skip file exploration — primer gives you modules, hot functions, coverage.
+
+Then call `suggest_questions()` — surfaces dead code, bridge nodes, undocumented
+hot functions, and low-cohesion clusters worth investigating:
+
+```
+suggest_questions()           # what to look at this session
+get_surprising_connections()  # hidden coupling, unexpected cross-module bridges
+```
 
 If you have a `session_id` from last time:
 ```
@@ -72,6 +80,28 @@ store_understanding_batch([
 ])
 ```
 
+## Topology exploration
+
+Use these to understand architecture and spot problems:
+
+```
+suggest_questions(limit=7)
+```
+Returns questions to investigate: dead code, god functions, missing summaries,
+low-cohesion clusters. Best used at session start to prioritize work.
+
+```
+get_surprising_connections(limit=10)
+```
+CALLS edges that are non-obvious — cross-module, peripheral-to-hub, cross-community.
+Each result includes human-readable reasons. Use when tracing unexpected dependencies.
+
+```
+get_community_cohesion()
+```
+Cohesion score per community (0.0–1.0). Low cohesion (<0.2) = refactor candidate.
+Use when deciding where to split or consolidate modules.
+
 ## Node ID format
 
 `{kind}:{path}:{symbol}`
@@ -88,8 +118,19 @@ Examples:
 | `search_code(query)` | Finding symbols by name/keyword |
 | `get_context(node_id)` | Full picture before reading source |
 | `get_blast_radius(node_id)` | What breaks if this changes |
+| `get_callers(node_id)` | Who calls this function |
+| `get_callees(node_id)` | What this function calls |
+| `get_neighbors(node_id)` | All connected nodes (any edge type) |
+| `get_community(community_id)` | All members of a cluster |
+| `shortest_path(from_id, to_id)` | Dependency path between two nodes |
 | `store_understanding(node_id, summary)` | After understanding any function |
+| `store_understanding_batch(updates)` | Batch summaries — up to 50 at once |
+| `get_context(node_id)` | Full context packet — summary + callers + callees |
 | `get_delta(previous_session_id)` | Session start — what changed |
 | `start_session(agent_id)` | Register session, get session_id |
 | `graph_stats()` | Repo overview: counts by kind |
 | `god_nodes()` | Most-called functions (good entry points) |
+| `suggest_questions()` | Session start — what to investigate |
+| `get_surprising_connections()` | Hidden coupling, cross-module bridges |
+| `get_community_cohesion()` | Cluster cohesion scores |
+| `get_savings()` | Token savings report |

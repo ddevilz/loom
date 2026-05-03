@@ -4,9 +4,9 @@ import logging
 from pathlib import Path
 
 from loom.analysis.graph_insights import (
-    get_community_cohesion,
-    get_surprising_connections,
-    suggest_questions,
+    get_community_cohesion as _get_community_cohesion,
+    get_surprising_connections as _get_surprising_connections,
+    suggest_questions as _suggest_questions,
 )
 from loom.core.context import DB, DEFAULT_DB_PATH
 from loom.core.edge import EdgeType
@@ -53,7 +53,7 @@ def build_server(
     *,
     db: DB | None = None,
 ) -> FastMCP:
-    """Build and return the FastMCP server with all 15 tools registered."""
+    """Build and return the FastMCP server with all 18 tools registered."""
     if FastMCP is None:
         raise RuntimeError("fastmcp not installed — run: uv add fastmcp")
     mcp = FastMCP("loom")
@@ -317,7 +317,7 @@ def build_server(
         return await get_delta_payload(db, since_ts=session_row["started_at"])
 
     @mcp.tool()
-    async def get_surprising_connections_tool(limit: int = 10) -> list[dict]:
+    async def get_surprising_connections(limit: int = 10) -> list[dict]:
         """Find non-obvious CALLS edges — cross-community, peripheral-to-hub, cross-module.
 
         Ranked by composite surprise score. Each result includes human-readable
@@ -326,10 +326,10 @@ def build_server(
         Useful for: discovering hidden coupling, unexpected dependencies,
         functions that act as unofficial bridges between subsystems.
         """
-        return await get_surprising_connections(db, limit=_clamp_limit(limit))
+        return await _get_surprising_connections(db, limit=_clamp_limit(limit))
 
     @mcp.tool()
-    async def suggest_questions_tool(limit: int = 7) -> list[dict]:
+    async def suggest_questions(limit: int = 7) -> list[dict]:
         """Generate questions worth investigating based on graph topology.
 
         Question types:
@@ -340,10 +340,10 @@ def build_server(
 
         Call this at session start to prioritize what to investigate.
         """
-        return await suggest_questions(db, limit=_clamp_limit(limit))
+        return await _suggest_questions(db, limit=_clamp_limit(limit))
 
     @mcp.tool()
-    async def get_community_cohesion_tool() -> list[dict]:
+    async def get_community_cohesion() -> list[dict]:
         """Cohesion score for every community.
 
         Cohesion = internal CALLS / (internal + external CALLS).
@@ -351,7 +351,7 @@ def build_server(
 
         Low cohesion (<0.2) communities are refactor candidates.
         """
-        return await get_community_cohesion(db)
+        return await _get_community_cohesion(db)
 
     @mcp.resource("loom://savings")
     async def savings_resource() -> str:
