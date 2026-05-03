@@ -5,7 +5,11 @@ from pathlib import Path
 
 from loom.analysis.graph_insights import (
     get_community_cohesion as _get_community_cohesion,
+)
+from loom.analysis.graph_insights import (
     get_surprising_connections as _get_surprising_connections,
+)
+from loom.analysis.graph_insights import (
     suggest_questions as _suggest_questions,
 )
 from loom.core.context import DB, DEFAULT_DB_PATH
