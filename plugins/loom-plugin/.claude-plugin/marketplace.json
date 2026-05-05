@@ -1,7 +1,7 @@
 {
   "name": "loom",
   "display_name": "Loom — Agent Memory Layer",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Persistent symbol index for AI coding agents. Tree-sitter indexes your repo into SQLite. Agents search by keyword and get summaries + signatures instantly. Zero LLM cost — summaries accumulate across sessions.",
   "author": "Devashish",
   "license": "MIT",
