@@ -116,19 +116,22 @@ Override with `LOOM_DB_PATH` env var or `--db` flag.
 | `search_code(query, limit)` | FTS5 search — returns summary + signature when cached |
 | `get_node(node_id)` | Single node by id |
 | `get_context(node_id)` | Full context packet: summary, signature, callers, callees, staleness |
-| `get_callers(node_id)` | One-hop incoming CALLS |
-| `get_callees(node_id)` | One-hop outgoing CALLS |
-| `get_blast_radius(node_id, depth)` | Transitive callers via recursive CTE |
-| `get_neighbors(node_id, depth)` | All edges, both directions |
-| `get_community(community_id)` | All members of a community cluster |
-| `shortest_path(from_id, to_id)` | Shortest directed path on CALLS subgraph |
+| `get_callers(node_id)` | One-hop incoming CALLS — each result includes `summary` |
+| `get_callees(node_id)` | One-hop outgoing CALLS — each result includes `summary` |
+| `get_blast_radius(node_id, depth)` | Transitive callers via recursive CTE — each result includes `summary` |
+| `get_neighbors(node_id, depth)` | All edges, both directions — each result includes `summary` |
+| `get_community(community_id)` | All members of a community cluster — each result includes `summary` |
+| `shortest_path(from_id, to_id)` | Shortest directed path on CALLS subgraph — each hop includes `summary` |
 | `graph_stats()` | Node/edge counts by kind |
-| `god_nodes(limit)` | Most-called functions (highest in-degree) |
+| `god_nodes(limit)` | Most-called functions (highest in-degree) — each result includes `summary` |
 | `store_understanding(node_id, summary, force?)` | Cache agent-generated summary permanently. Returns `skipped: true` if summary already fresh — no re-write needed. |
 | `store_understanding_batch(updates)` | Batch version, max 50 per call |
 | `get_savings()` | Token savings report — all-time totals + 10 recent hits |
 | `start_session(agent_id)` | Register session start, returns session_id |
 | `get_delta(previous_session_id)` | What changed since last session (changed + deleted nodes) |
+| `suggest_questions(limit)` | Graph-topology investigation priorities: dead code, bridge nodes, missing summaries, low-cohesion clusters |
+| `get_surprising_connections(limit)` | Non-obvious cross-module CALLS edges — returns `caller_summary` and `callee_summary` per result |
+| `get_community_cohesion()` | Cohesion score per cluster (0.0–1.0). Below 0.2 = refactor candidate |
 
 **MCP resources:**
 
@@ -151,12 +154,14 @@ file:src/auth.py
 ## Agent workflow
 
 ```
-# Session start
-resource = read("loom://primer")         # orient: modules, hot functions, coverage
+# Session start — register first, then orient
 start_session(agent_id="claude-code")    # store returned session_id
 
 # Or if returning:
 get_delta(previous_session_id="<id>")   # only what changed since last time
+
+resource = read("loom://primer")         # orient: modules, hot functions, coverage
+suggest_questions()                      # dead code, bridge nodes, missing summaries
 
 # Finding code
 results = search_code("validate token") # summary + signature included

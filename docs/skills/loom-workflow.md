@@ -20,11 +20,13 @@ Next session skips re-reading. Compounding token savings — 8× first use, 90×
 
 ## Session Start Protocol
 
-### Step 1: Load primer (always)
+### Step 1: Register session
 
-Call the `loom://primer` MCP resource or run `loom context` CLI.
-Returns ~200-token overview: modules, hot functions, summary coverage.
-Replaces grep/file exploration for orientation.
+```
+start_session(agent_id="claude-code")
+```
+
+Store the returned `session_id`. Pass to `get_delta` next session.
 
 ### Step 2: Check delta (if prior session exists)
 
@@ -35,13 +37,11 @@ get_delta(previous_session_id="<stored-id>")
 Returns only changed/deleted nodes since last session.
 If `too_many_changes: true` → treat as fresh start, use search_code.
 
-### Step 3: Register session
+### Step 3: Load primer (always)
 
-```
-start_session(agent_id="claude-code")
-```
-
-Store the returned `session_id`. Pass to `get_delta` next session.
+Call the `loom://primer` MCP resource or run `loom context` CLI.
+Returns ~200-token overview: modules, hot functions, summary coverage.
+Replaces grep/file exploration for orientation.
 
 ---
 

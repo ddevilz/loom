@@ -4,7 +4,7 @@ Day-to-day usage: install, index, query, serve, maintain.
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.10+
 - `uv` (recommended) or `pip`
 - No Docker, no external services
 
@@ -26,7 +26,7 @@ loom analyze .
 What `loom analyze` does:
 - walks repo (gitignore-aware)
 - parses changed/new files with tree-sitter
-- stores nodes + edges in `~/.loom/loom.db`
+- stores nodes + edges in `~/.loom/projects/{git-root-name}.db` (per-project; falls back to `~/.loom/loom.db`)
 - computes communities (Louvain) and coupling (git co-change)
 - marks dead code (no incoming CALLS)
 - fills auto-summaries for nodes with no summary
@@ -64,7 +64,7 @@ Runs in stdio mode. MCP clients connect via the config written by `loom install`
 
 Standalone (for `claude mcp add`):
 ```bash
-uvx loom-tool     # runs loom-mcp entry point directly
+uvx --from loom-tool loom-mcp     # runs loom-mcp entry point directly
 ```
 
 ## Session primer
@@ -156,7 +156,7 @@ If `loom install` doesn't cover your tool, add manually:
   "mcpServers": {
     "loom": {
       "command": "uvx",
-      "args": ["loom-tool"]
+      "args": ["--from", "loom-tool", "loom-mcp"]
     }
   }
 }
@@ -168,7 +168,7 @@ If `loom install` doesn't cover your tool, add manually:
   "mcpServers": {
     "loom": {
       "command": "uvx",
-      "args": ["loom-tool"],
+      "args": ["--from", "loom-tool", "loom-mcp"],
       "env": {
         "LOOM_DB_PATH": "/path/to/project.db"
       }
@@ -181,7 +181,7 @@ If `loom install` doesn't cover your tool, add manually:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `LOOM_DB_PATH` | `~/.loom/loom.db` | SQLite database path |
+| `LOOM_DB_PATH` | `~/.loom/projects/{git-root-name}.db` | SQLite database path override |
 
 ## Typical workflows
 

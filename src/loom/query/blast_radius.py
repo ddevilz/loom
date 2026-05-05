@@ -22,6 +22,7 @@ async def build_blast_radius_payload(
                 "path": n.path,
                 "kind": n.kind.value,
                 "depth": n.depth or 0,
+                "summary": n.summary,
             }
             for n in nodes
         ],

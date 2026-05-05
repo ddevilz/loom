@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "description": "Re-index any changed files in background when Claude Code session starts. Skips unchanged files via content_hash. Only fires in git repos with uvx available. Non-blocking.",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -d .git ] && command -v uvx >/dev/null 2>&1; then uvx --from loom-tool loom analyze . >/dev/null 2>&1 & fi",
+            "continueOnError": true
+          }
+        ]
+      }
+    ]
+  }
+}

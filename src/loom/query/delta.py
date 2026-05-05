@@ -18,7 +18,7 @@ def _row_to_mini_packet(row: sqlite3.Row, change_type: str) -> dict[str, Any]:
     metadata = json.loads(row["metadata"]) if row["metadata"] else {}
     auto_summary = extract_summary(node) if not node.summary else None
 
-    summary_hash = row.get("summary_hash", None)
+    summary_hash = row["summary_hash"] if "summary_hash" in row else None  # noqa: SIM401
     content_hash = row["content_hash"]
     stale = bool(summary_hash and content_hash and summary_hash != content_hash)
 

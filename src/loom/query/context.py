@@ -25,7 +25,7 @@ def _build_packet(
     node = row_to_node(node_row)
     metadata = json.loads(node_row["metadata"]) if node_row["metadata"] else {}
 
-    summary_hash = node_row.get("summary_hash", None)
+    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row else None  # noqa: SIM401
     content_hash = node_row["content_hash"]
     stale = bool(summary_hash and content_hash and summary_hash != content_hash)
 

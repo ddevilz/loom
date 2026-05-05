@@ -1,15 +1,38 @@
 {
   "name": "loom",
-  "description": "Persistent symbol index for AI coding agents. Tree-sitter indexes your codebase into SQLite. Agents search by name/keyword and get summaries + signatures instantly.",
-  "version": "0.3.5",
+  "version": "0.3.6",
+  "description": "Persistent symbol index for AI coding agents. Tree-sitter indexes your codebase into SQLite. Agents search by name/keyword and get summaries + signatures instantly — zero LLM cost.",
   "author": {
     "name": "Devashish",
-    "email": "jadhavom24@gmail.com"
+    "email": "jadhavom24@gmail.com",
+    "url": "https://github.com/devashish"
+  },
+  "homepage": "https://github.com/devashish/loom",
+  "license": "MIT",
+  "keywords": [
+    "loom",
+    "code-intelligence",
+    "symbol-index",
+    "mcp",
+    "agent-memory",
+    "tree-sitter",
+    "sqlite",
+    "blast-radius",
+    "context-packets",
+    "token-savings"
+  ],
+  "main": {
+    "skills": "./skills",
+    "commands": "./commands",
+    "agents": "./agents",
+    "hooks": "./hooks/hooks.json"
   },
   "mcpServers": {
     "loom": {
       "command": "uvx",
-      "args": ["--from", "loom-tool", "loom-mcp"]
+      "args": ["--from", "loom-tool", "loom-mcp"],
+      "description": "19 code intelligence tools — search, context packets, blast radius, sessions, topology insights, token savings tracking. DB resolved: LOOM_DB_PATH env → ~/.loom/projects/{git-root-name}.db → ~/.loom/loom.db.",
+      "optional": false
     }
   }
 }

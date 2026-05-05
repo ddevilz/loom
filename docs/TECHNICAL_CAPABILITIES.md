@@ -125,7 +125,7 @@ Agent summaries are preserved through re-analyze (upsert logic: `ELSE nodes.summ
 
 ## Search (FTS5)
 
-`nodes_fts` is an FTS5 virtual table indexing `name || summary || path`.
+`nodes_fts` is an FTS5 virtual table with separate columns for `name`, `summary`, `path` (porter + unicode61 tokenizer). Triggers keep it in sync on INSERT/UPDATE/DELETE.
 
 `search()` in `query/search.py`:
 1. Try FTS5 query
@@ -210,4 +210,4 @@ Used by `get_delta` MCP tool which looks up `sessions.started_at` for the agent'
 | Models | Pydantic v2 |
 | Async | asyncio.to_thread() for all SQLite ops |
 | Concurrency | threading.RLock per DB instance |
-| Python | 3.12+ |
+| Python | 3.10+ |

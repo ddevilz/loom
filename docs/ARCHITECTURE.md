@@ -49,6 +49,7 @@ src/loom/
 │   ├── communities.py       # Louvain community detection (NetworkX)
 │   ├── coupling.py          # git co-change analysis → COUPLED_WITH edges
 │   ├── dead_code.py         # mark functions with no incoming CALLS
+│   ├── graph_insights.py    # get_surprising_connections(), suggest_questions(), get_community_cohesion()
 │   └── code/
 │       ├── parser.py        # parse_code(), parse_repo()
 │       ├── extractor.py     # extract_summary() — static summary from metadata
@@ -67,10 +68,12 @@ src/loom/
 ├── store/
 │   ├── nodes.py             # bulk_upsert_nodes(), get_node(), update_summary(),
 │   │                        # mark_nodes_deleted(), prune_tombstones(), get_content_hashes()
+│   ├── edges.py             # bulk_upsert_edges()
+│   ├── savings.py           # record_hit(), get_savings_report()
 │   └── sessions.py          # create_session(), get_session(), prune_sessions()
 │
 ├── mcp/
-│   ├── server.py            # build_server() — FastMCP, 15 tools + 1 resource
+│   ├── server.py            # build_server() — FastMCP, 19 tools + 2 resources
 │   └── run.py               # run_stdio() — standalone entry point for uvx
 │
 └── cli/
@@ -110,20 +113,23 @@ Links two nodes.
 
 Key fields:
 - `from_id`, `to_id` — node IDs
-- `kind` — `EdgeType`: CALLS, CONTAINS, MEMBER_OF, COUPLED_WITH
+- `kind` — `EdgeType`: CALLS, CONTAINS, COUPLED_WITH
 - `confidence` — float (1.0 for tree-sitter extracted, lower for heuristic)
 
 ### Schema (`loom.core.db`)
 
 ```sql
-nodes  (id, kind, name, path, language, source, summary, summary_hash,
-        content_hash, file_hash, start_line, end_line, metadata,
-        deleted_at, updated_at, created_at)
-edges  (id, from_id, to_id, kind, confidence, metadata)
-sessions (id, agent_id, started_at, node_count, summary_count)
+nodes    (id, kind, name, path, language, source, summary, summary_hash,
+          content_hash, file_hash, file_mtime, start_line, end_line,
+          token_count, is_dead_code, community_id, metadata,
+          deleted_at, updated_at)
+edges    (id, from_id, to_id, kind, confidence, confidence_tier, metadata)
+sessions (id, agent_id, started_at, metadata)
+savings  (id, ts, node_id, query, tokens_saved, summary_type)
+meta     (key, value)   -- all-time savings counters
 ```
 
-FTS5 virtual table `nodes_fts` indexes `name || summary || path` for full-text search.
+FTS5 virtual table `nodes_fts` indexes `name`, `summary`, `path` as separate columns (porter + unicode61 tokenizer). Triggers keep it in sync on INSERT/UPDATE/DELETE.
 
 New columns added via `_add_column_if_missing()` (SQLite lacks `ADD COLUMN IF NOT EXISTS`).
 
@@ -166,7 +172,7 @@ SHA-256 driven. No git required.
 
 ## MCP server (`build_server`)
 
-Built with FastMCP. 15 tools, 1 resource.
+Built with FastMCP. 19 tools, 2 resources (`loom://primer`, `loom://savings`).
 
 All tools are async, use `asyncio.to_thread()` for SQLite, single `db._lock` per operation.
 
@@ -211,4 +217,4 @@ Two tiers, never conflict:
 | CLI | Typer + Rich |
 | Models | Pydantic v2 |
 | Async | asyncio + asyncio.to_thread() |
-| Python | 3.12+ |
+| Python | 3.10+ |
