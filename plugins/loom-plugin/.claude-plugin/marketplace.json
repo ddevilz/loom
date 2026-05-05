@@ -16,7 +16,7 @@
     "tools": ["uvx"]
   },
   "quick_start": [
-    "cd your-repo",
+    "cd loom",
     "loom analyze .",
     "loom install"
   ]

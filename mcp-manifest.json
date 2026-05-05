@@ -61,8 +61,8 @@
     }
   ],
   "prerequisites": [
-    "Python 3.12+",
+    "Python 3.10+",
     "Run `loom analyze .` in your repo before connecting"
   ],
-  "setup_instructions": "1. Install: `pip install loom-tool`\n2. Index your repo: `cd your-repo && loom analyze .`\n3. Configure all AI tools: `loom install`\n4. Connect this MCP server — Claude Code will load `loom://primer` automatically at session start."
+  "setup_instructions": "1. Install: `pip install loom-tool`\n2. Index your repo: `cd loom && loom analyze .`\n3. Configure all AI tools: `loom install`\n4. Connect this MCP server — Claude Code will load `loom://primer` automatically at session start."
 }

@@ -22,7 +22,7 @@ Run `loom install` to auto-write this config to Claude Code, Cursor, Windsurf, o
 ## Quick Start
 
 ```bash
-cd your-repo
+cd loom
 loom analyze .        # tree-sitter indexes all symbols → ~/.loom/loom.db
 loom install          # writes MCP config + installs post-commit hook
 ```
