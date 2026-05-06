@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from loom.core.context import DB
+from loom.core.edge import Edge, EdgeType
+from loom.core.node import Node, NodeKind, NodeSource
 from loom.mcp.server import build_server
+from loom.store import edges as edge_store
+from loom.store import nodes as node_store
 
 
 def test_build_server_returns_instance_when_fastmcp_available(tmp_path: Path) -> None:
@@ -80,8 +84,8 @@ def test_ok_wraps_list() -> None:
 
 
 def test_err_shape_with_suggestion() -> None:
-    from loom.mcp.server import _err
     from loom.mcp.enums import ErrorCode
+    from loom.mcp.server import _err
     result = _err(ErrorCode.NODE_NOT_FOUND, "Not found.", "Try search_code.")
     assert result["ok"] is False
     assert result["error_code"] == "NODE_NOT_FOUND"
@@ -90,8 +94,51 @@ def test_err_shape_with_suggestion() -> None:
 
 
 def test_err_shape_without_suggestion() -> None:
-    from loom.mcp.server import _err
     from loom.mcp.enums import ErrorCode
+    from loom.mcp.server import _err
     result = _err(ErrorCode.MISSING_ARGS, "Provide args.")
     assert result["ok"] is False
     assert "suggestion" not in result
+
+
+def _fn(path: str, name: str) -> Node:
+    return Node(
+        id=Node.make_code_id(NodeKind.FUNCTION, path, name),
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name=name,
+        path=path,
+        file_hash="h",
+    )
+
+
+@pytest.fixture
+def db(tmp_path: Path) -> DB:
+    return DB(path=tmp_path / "test.db")
+
+
+@pytest.mark.asyncio
+async def test_blast_radius_payload_uses_results_key(db: DB) -> None:
+    """In 0.4.0 the field is still 'results' — rename to 'nodes' happens in 0.4.1."""
+    from loom.query.blast_radius import build_blast_radius_payload
+
+    a, b = _fn("a.py", "caller"), _fn("b.py", "target")
+    await node_store.bulk_upsert_nodes(db, [a, b])
+    await edge_store.bulk_upsert_edges(db, [Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)])
+
+    payload = await build_blast_radius_payload(db, node_id=b.id, depth=3)
+    assert "results" in payload
+    assert payload["results"][0]["name"] == "caller"
+
+
+@pytest.mark.asyncio
+async def test_context_packet_summary_source_shape(db: DB) -> None:
+    from loom.query.context import get_context_packet
+
+    node = _fn("a.py", "fn")
+    await node_store.bulk_upsert_nodes(db, [node])
+
+    packet = await get_context_packet(db, node.id)
+    assert packet is not None
+    assert "summary_source" in packet
+    assert packet["summary_source"] in ("AGENT", "AUTO")
