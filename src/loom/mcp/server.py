@@ -14,6 +14,8 @@ from loom.analysis.graph_insights import (
 )
 from loom.core.context import DB, DEFAULT_DB_PATH
 from loom.core.edge import EdgeType
+from loom.core.enums import SummarySource
+from loom.mcp.enums import ErrorCode
 from loom.query import traversal
 from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.context import get_context_packet
@@ -52,12 +54,23 @@ def _req_text(value: str, *, field: str, max_length: int) -> str:
     return v
 
 
+def _ok(data: object) -> dict:
+    return {"ok": True, "data": data}
+
+
+def _err(error_code: ErrorCode, message: str, suggestion: str | None = None) -> dict:
+    result: dict = {"ok": False, "error_code": error_code, "message": message}
+    if suggestion is not None:
+        result["suggestion"] = suggestion
+    return result
+
+
 def build_server(
     db_path: Path | None = None,
     *,
     db: DB | None = None,
 ) -> FastMCP:
-    """Build and return the FastMCP server with all 18 tools registered."""
+    """Build and return the FastMCP server with all 19 tools registered."""
     if FastMCP is None:
         raise RuntimeError("fastmcp not installed — run: uv add fastmcp")
     mcp = FastMCP("loom")
@@ -65,7 +78,7 @@ def build_server(
         db = DB(path=db_path or DEFAULT_DB_PATH)
 
     @mcp.tool()
-    async def search_code(query: str, limit: int = 10) -> list[dict]:
+    async def search_code(query: str, limit: int = 10) -> dict:
         """Search nodes by name/summary/path via FTS5 or LIKE.
 
         Returns summary and signature when available — if summary exists,
@@ -84,7 +97,7 @@ def build_server(
 
             if node.summary:
                 # summary_hash set → store_understanding wrote it → agent-verified
-                summary_type = "agent" if node.summary_hash else "auto"
+                summary_type = SummarySource.AGENT if node.summary_hash else SummarySource.AUTO
                 src_tokens = node.token_count or 0
                 summary_tokens = len(node.summary) // 4
                 tokens_saved = max(0, src_tokens - summary_tokens)
@@ -112,16 +125,14 @@ def build_server(
                 result["summary_type"] = summary_type
             output.append(result)
 
-        return output
+        return _ok(output)
 
     @mcp.tool()
-    async def get_node(node_id: str) -> dict | None:
+    async def get_node(node_id: str) -> dict:
         """Return a single node by id."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         n = await node_store.get_node(db, nid)
-        if n is None:
-            return None
-        return {
+        return _ok(None if n is None else {
             "id": n.id,
             "name": n.name,
             "path": n.path,
@@ -130,92 +141,105 @@ def build_server(
             "summary": n.summary,
             "start_line": n.start_line,
             "end_line": n.end_line,
-        }
+        })
 
     @mcp.tool()
-    async def get_callers(node_id: str) -> list[dict]:
+    async def get_callers(node_id: str) -> dict:
         """One-hop incoming CALLS — functions that call this node."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         nodes = await traversal.neighbors(
             db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="in"
         )
-        return [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
+        return _ok([
+            {"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes
+        ])
 
     @mcp.tool()
-    async def get_callees(node_id: str) -> list[dict]:
+    async def get_callees(node_id: str) -> dict:
         """One-hop outgoing CALLS — functions this node calls."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         nodes = await traversal.neighbors(
             db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="out"
         )
-        return [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
+        return _ok([
+            {"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes
+        ])
 
     @mcp.tool()
     async def get_blast_radius(node_id: str, depth: int = 3) -> dict:
         """Transitive callers via SQLite recursive CTE."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
-        return await build_blast_radius_payload(db, node_id=nid, depth=_clamp_depth(depth))
+        return _ok(await build_blast_radius_payload(db, node_id=nid, depth=_clamp_depth(depth)))
 
     @mcp.tool()
-    async def get_neighbors(node_id: str, depth: int = 1) -> list[dict]:
+    async def get_neighbors(node_id: str, depth: int = 1) -> dict:
         """Generic neighbor traversal across all edge kinds, both directions."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         nodes = await traversal.neighbors(db, nid, depth=_clamp_depth(depth))
-        return [
+        return _ok([
             {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value, "summary": n.summary}
             for n in nodes
-        ]
+        ])
 
     @mcp.tool()
-    async def get_community(community_id: str) -> list[dict]:
+    async def get_community(community_id: str) -> dict:
         """Return all member nodes of a community cluster."""
         cid = _req_text(community_id, field="community_id", max_length=_MAX_ID)
         nodes = await traversal.community_members(db, cid)
-        return [
+        return _ok([
             {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value, "summary": n.summary}
             for n in nodes
-        ]
+        ])
 
     @mcp.tool()
-    async def shortest_path(from_id: str, to_id: str) -> list[dict] | None:
+    async def shortest_path(from_id: str, to_id: str) -> dict:
         """Shortest directed path on CALLS subgraph."""
         fid = _req_text(from_id, field="from_id", max_length=_MAX_ID)
         tid = _req_text(to_id, field="to_id", max_length=_MAX_ID)
         path = await traversal.shortest_path(db, fid, tid)
-        if path is None:
-            return None
-        return [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in path]
+        return _ok(
+            None if path is None
+            else [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in path]
+        )
 
     @mcp.tool()
     async def graph_stats() -> dict:
         """Node/edge counts broken down by kind."""
-        return await traversal.stats(db)
+        return _ok(await traversal.stats(db))
 
     @mcp.tool()
-    async def god_nodes(limit: int = 20) -> list[dict]:
+    async def god_nodes(limit: int = 20) -> dict:
         """Highest in-degree on CALLS subgraph (most-called functions)."""
         pairs = await traversal.god_nodes(db, _clamp_limit(limit))
-        return [
+        return _ok([
             {"id": n.id, "name": n.name, "path": n.path, "in_degree": deg, "summary": n.summary}
             for n, deg in pairs
-        ]
+        ])
 
     @mcp.tool()
     async def store_understanding_batch(updates: list[dict]) -> dict:
         """Cache summaries for multiple nodes in one call. Max 50 per call."""
         batch = updates[:50]
         stored = skipped = 0
+        errors: list[dict] = []
         for item in batch:
             nid = str(item.get("node_id", "")).strip()
             s = str(item.get("summary", "")).strip()
             force = bool(item.get("force", False))
-            if nid and s:
-                r = await node_store.update_summary(db, nid, s, force=force)
-                if r["updated"]:
-                    stored += 1
-                elif r["skipped"]:
-                    skipped += 1
-        return {"stored": stored, "skipped": skipped, "total": len(batch)}
+            if not nid or not s:
+                errors.append({
+                    "node_id": nid or "(blank)",
+                    "error_code": ErrorCode.VALIDATION_ERROR,
+                })
+                continue
+            r = await node_store.update_summary(db, nid, s, force=force)
+            if not r["found"]:
+                errors.append({"node_id": nid, "error_code": ErrorCode.NODE_NOT_FOUND})
+            elif r["updated"]:
+                stored += 1
+            else:
+                skipped += 1
+        return _ok({"stored": stored, "skipped": skipped, "total": len(batch), "errors": errors})
 
     @mcp.tool()
     async def store_understanding(node_id: str, summary: str, force: bool = False) -> dict:
@@ -231,15 +255,12 @@ def build_server(
         s = _req_text(summary, field="summary", max_length=4000)
         result = await node_store.update_summary(db, nid, s, force=force)
         if not result["found"]:
-            return {"ok": False, "error": "node not found"}
-        if result["skipped"]:
-            return {
-                "ok": True,
-                "skipped": True,
-                "node_id": nid,
-                "reason": "summary already cached and function unchanged",
-            }
-        return {"ok": True, "skipped": False, "node_id": nid}
+            return _err(
+                ErrorCode.NODE_NOT_FOUND,
+                f"Node '{nid}' not found.",
+                "Use search_code() to find the correct ID.",
+            )
+        return _ok({"skipped": result["skipped"], "node_id": nid})
 
     @mcp.tool()
     async def get_savings() -> dict:
@@ -250,14 +271,14 @@ def build_server(
         """
         stats = await get_savings_stats(db)
         recent = await get_recent_savings(db, limit=10)
-        return {
+        return _ok({
             **stats,
             "recent": recent,
             "note": "tokens_saved estimated from source line counts (15 tokens/line avg)",
-        }
+        })
 
     @mcp.tool()
-    async def get_context(node_id: str) -> dict | None:
+    async def get_context(node_id: str) -> dict:
         """Full context packet — everything to reason about a function without reading source.
 
         Returns summary, signature, callers (top 10), callees (top 10), and staleness flag.
@@ -269,7 +290,8 @@ def build_server(
                      Example: 'function:src/auth.py:validate_token'
         """
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
-        return await get_context_packet(db, nid)
+        packet = await get_context_packet(db, nid)
+        return _ok(packet)
 
     @mcp.tool()
     async def start_session(agent_id: str = "default") -> dict:
@@ -284,7 +306,7 @@ def build_server(
         aid = _req_text(agent_id, field="agent_id", max_length=64)
         result = await create_session(db, agent_id=aid)
         result["tip"] = "Store session_id and pass to get_delta() in your next session."
-        return result
+        return _ok(result)
 
     @mcp.tool()
     async def get_delta(
@@ -302,35 +324,32 @@ def build_server(
             agent_id: Find most recent session for this agent type (fallback).
         """
         if not previous_session_id and not agent_id:
-            return {
-                "error": "missing_args",
-                "message": "Provide either previous_session_id or agent_id.",
-            }
+            return _err(ErrorCode.MISSING_ARGS, "Provide either previous_session_id or agent_id.")
 
         session_row = None
         if previous_session_id:
             pid = _req_text(previous_session_id, field="previous_session_id", max_length=64)
             session_row = await get_session(db, pid)
             if session_row is None:
-                return {
-                    "error": "session_not_found",
-                    "message": f"Session '{pid}' not found.",
-                    "suggestion": "Use agent_id= to find your latest session instead.",
-                }
+                return _err(
+                    ErrorCode.SESSION_NOT_FOUND,
+                    f"Session '{pid}' not found.",
+                    "Use agent_id= to find your latest session instead.",
+                )
         else:
             aid = _req_text(agent_id, field="agent_id", max_length=64)  # type: ignore[arg-type]
             session_row = await get_latest_session_for_agent(db, aid)
             if session_row is None:
-                return {
-                    "error": "no_prior_session",
-                    "message": f"No previous session found for agent_id '{agent_id}'.",
-                    "suggestion": "Call start_session() at the beginning of each session.",
-                }
+                return _err(
+                    ErrorCode.NO_PRIOR_SESSION,
+                    f"No previous session found for agent_id '{agent_id}'.",
+                    "Call start_session() at the beginning of each session.",
+                )
 
-        return await get_delta_payload(db, since_ts=session_row["started_at"])
+        return _ok(await get_delta_payload(db, since_ts=session_row["started_at"]))
 
     @mcp.tool()
-    async def get_surprising_connections(limit: int = 10) -> list[dict]:
+    async def get_surprising_connections(limit: int = 10) -> dict:
         """Find non-obvious CALLS edges — cross-community, peripheral-to-hub, cross-module.
 
         Ranked by composite surprise score. Each result includes human-readable
@@ -339,10 +358,10 @@ def build_server(
         Useful for: discovering hidden coupling, unexpected dependencies,
         functions that act as unofficial bridges between subsystems.
         """
-        return await _get_surprising_connections(db, limit=_clamp_limit(limit))
+        return _ok(await _get_surprising_connections(db, limit=_clamp_limit(limit)))
 
     @mcp.tool()
-    async def suggest_questions(limit: int = 7) -> list[dict]:
+    async def suggest_questions(limit: int = 7) -> dict:
         """Generate questions worth investigating based on graph topology.
 
         Question types:
@@ -353,10 +372,10 @@ def build_server(
 
         Call this at session start to prioritize what to investigate.
         """
-        return await _suggest_questions(db, limit=_clamp_limit(limit))
+        return _ok(await _suggest_questions(db, limit=_clamp_limit(limit)))
 
     @mcp.tool()
-    async def get_community_cohesion() -> list[dict]:
+    async def get_community_cohesion() -> dict:
         """Cohesion score for every community.
 
         Cohesion = internal CALLS / (internal + external CALLS).
@@ -364,7 +383,7 @@ def build_server(
 
         Low cohesion (<0.2) communities are refactor candidates.
         """
-        return await _get_community_cohesion(db)
+        return _ok(await _get_community_cohesion(db))
 
     @mcp.resource("loom://savings")
     async def savings_resource() -> str:
