@@ -10,6 +10,7 @@ import asyncio
 
 from loom.core.context import DB
 from loom.core.edge import EdgeType
+from loom.core.enums import QuestionType
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -231,7 +232,7 @@ async def suggest_questions(db: DB, limit: int = 7) -> list[dict]:
                 suffix = f" (and {extra} more)" if extra > 0 else ""
                 questions.append(
                     {
-                        "type": "dead_code",
+                        "type": QuestionType.DEAD_CODE,
                         "question": (
                             f"Are {names}{suffix} actually"
                             " unused, or are callers missing from the index?"
@@ -268,7 +269,7 @@ async def suggest_questions(db: DB, limit: int = 7) -> list[dict]:
             for row in bridges:
                 questions.append(
                     {
-                        "type": "bridge_node",
+                        "type": QuestionType.BRIDGE_NODE,
                         "question": (
                             f"Why does `{row['name']}` serve as a cross-cutting"
                             f" dependency across {row['comm_count']} separate communities?"
@@ -300,7 +301,7 @@ async def suggest_questions(db: DB, limit: int = 7) -> list[dict]:
             for row in undocumented:
                 questions.append(
                     {
-                        "type": "missing_summary",
+                        "type": QuestionType.MISSING_SUMMARY,
                         "question": (
                             f"What does `{row['name']}` do and why does it exist?"
                             f" ({row['caller_count']} callers, no summary)"
@@ -354,7 +355,7 @@ async def suggest_questions(db: DB, limit: int = 7) -> list[dict]:
                 cohesion = (row["internal_calls"] or 0) / total if total else 0
                 questions.append(
                     {
-                        "type": "low_cohesion",
+                        "type": QuestionType.LOW_COHESION,
                         "question": (
                             f"Should the `{row['name']}` cluster be split?"
                             f" Only {cohesion:.0%} of its calls are internal."
