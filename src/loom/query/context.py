@@ -8,6 +8,7 @@ from typing import Any
 from loom.analysis.code.extractor import extract_summary
 from loom.core.context import DB
 from loom.core.edge import EdgeType
+from loom.core.enums import SummarySource
 from loom.store.nodes import row_to_node
 
 _CALLER_LIMIT = 10
@@ -25,7 +26,7 @@ def _build_packet(
     node = row_to_node(node_row)
     metadata = json.loads(node_row["metadata"]) if node_row["metadata"] else {}
 
-    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row else None  # noqa: SIM401
+    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM401
     content_hash = node_row["content_hash"]
     stale = bool(summary_hash and content_hash and summary_hash != content_hash)
 
@@ -39,7 +40,7 @@ def _build_packet(
         "line": node.start_line,
         "signature": metadata.get("signature"),
         "summary": node.summary,
-        "summary_source": "agent" if node.summary else None,
+        "summary_source": SummarySource.AGENT if summary_hash else SummarySource.AUTO,
         "summary_stale": stale,
         "auto_summary": auto_summary if (not node.summary or stale) else None,
         "callers": [
@@ -64,6 +65,7 @@ def _build_members_packet(
     members_total: int,
 ) -> dict[str, Any]:
     node = row_to_node(node_row)
+    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM401
     auto_summary = extract_summary(node)
     return {
         "id": node.id,
@@ -73,7 +75,7 @@ def _build_members_packet(
         "line": node.start_line,
         "signature": None,
         "summary": node.summary,
-        "summary_source": "agent" if node.summary else None,
+        "summary_source": SummarySource.AGENT if summary_hash else SummarySource.AUTO,
         "summary_stale": False,
         "auto_summary": auto_summary if not node.summary else None,
         "members": [
