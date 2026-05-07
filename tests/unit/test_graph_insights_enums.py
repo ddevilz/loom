@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from loom.core.context import DB
-from loom.core.node import Node, NodeKind, NodeSource
 from loom.analysis.graph_insights import suggest_questions
+from loom.core.context import DB
 from loom.core.enums import QuestionType
+from loom.core.node import Node, NodeKind, NodeSource
 from loom.store import nodes as node_store
 
 
