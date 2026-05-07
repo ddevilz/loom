@@ -1,6 +1,6 @@
 [project]
 name = "loom-tool"
-version = "0.3.7"
+version = "0.4.0"
 description = "A code intelligence platform that turns repositories, docs, and tickets into one searchable graph."
 readme = "README.md"
 authors = [
