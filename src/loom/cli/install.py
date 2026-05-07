@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import stat
 from pathlib import Path
 
@@ -18,11 +19,14 @@ _SKILL_SRC = Path(__file__).parent.parent / "data" / "loom-skill.md"
 
 # SessionStart hook: re-index changed files in background on every Claude Code session.
 # Only fires if we're in a git repo and uvx is available. Non-blocking (&).
-_SESSION_HOOK_CMD = (
-    "if [ -d .git ] && command -v uvx >/dev/null 2>&1; then"
-    " uvx --from loom-tool loom analyze . >/dev/null 2>&1 &"
-    " fi"
-)
+def _session_hook_cmd() -> str:
+    """Build SessionStart hook command using absolute uvx path."""
+    uvx = shutil.which("uvx") or "uvx"
+    return (
+        f"if [ -d .git ] && command -v {uvx} >/dev/null 2>&1; then"
+        f" {uvx} --from loom-tool loom analyze . >/dev/null 2>&1 &"
+        " fi"
+    )
 
 
 def _write_mcp_config(plugin: Plugin) -> None:
@@ -66,17 +70,19 @@ def _write_session_hook() -> bool:
         hooks = data.setdefault("hooks", {})
         session_hooks: list[dict] = hooks.setdefault("SessionStart", [])
 
-        # Idempotency: don't add if already present
+        cmd = _session_hook_cmd()
+
+        # Idempotency: don't add if hook command already present
         for entry in session_hooks:
             existing_hooks = entry.get("hooks", [])
             for h in existing_hooks:
-                if h.get("command") == _SESSION_HOOK_CMD:
+                if h.get("command") == cmd:
                     return True
 
         session_hooks.append(
             {
                 "matcher": "",
-                "hooks": [{"type": "command", "command": _SESSION_HOOK_CMD}],
+                "hooks": [{"type": "command", "command": cmd}],
             }
         )
         _CLAUDE_SETTINGS_PATH.write_text(json.dumps(data, indent=2) + "\n")

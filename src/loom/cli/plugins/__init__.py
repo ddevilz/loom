@@ -20,12 +20,24 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _USER_PLUGIN_DIR = Path.home() / ".loom" / "plugins"
+
+
+def _default_server_entry() -> dict:
+    """Build MCP server entry using the absolute path to uvx when available.
+
+    Falls back to bare ``uvx`` if not found on PATH (e.g. during testing).
+    Using an absolute path avoids GUI app PATH truncation on macOS/Linux and
+    works correctly on Windows via WSL.
+    """
+    uvx = shutil.which("uvx") or "uvx"
+    return {"command": uvx, "args": ["--from", "loom-tool", "loom-mcp"]}
 
 
 @dataclass
@@ -45,7 +57,7 @@ class Plugin:
     config_path: Path
     config_key: str = "mcpServers"
     server_entry: dict = field(
-        default_factory=lambda: {"command": "uvx", "args": ["--from", "loom-tool", "loom-mcp"]}
+        default_factory=_default_server_entry
     )
 
 
