@@ -20,16 +20,19 @@ trigger: >
 
 ## Session start
 
-Load `loom://primer` resource for a ~200-token codebase overview.
-
 ```
-suggest_questions()                  # what to investigate this session
 start_session(agent_id="codex")      # store session_id for next time
 ```
 
 If you have a previous session_id:
 ```
 get_delta(previous_session_id="<id>")
+```
+
+Load `loom://primer` resource for a ~200-token codebase overview.
+
+```
+suggest_questions()                  # what to investigate this session
 ```
 
 ## Finding code

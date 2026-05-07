@@ -23,7 +23,7 @@ Read undocumented functions and write summaries back to Loom. Every summary you 
 
 ### 1. Find documentation gaps
 
-Call `suggest_questions(limit=7)` — look for `missing_summary` type entries. These are hot functions (many callers) with no cached summary.
+Call `suggest_questions(limit=7)` — look for `MISSING_SUMMARY` type entries. These are hot functions (many callers) with no cached summary.
 
 Call `god_nodes(limit=20)` — most-called functions. Cross-reference with search results to find which ones have null summaries.
 

@@ -29,9 +29,9 @@ You are a code exploration specialist. Your job is to answer questions about a c
 
 ## Session Start Protocol
 
-1. Load `loom://primer` resource for a 200-token codebase overview
-2. Call `start_session(agent_id="navigator")` — store the returned `session_id`
-3. If previous `session_id` exists: call `get_delta(previous_session_id=<id>)` to see what changed
+1. Call `start_session(agent_id="navigator")` — store the returned `session_id`
+2. If previous `session_id` exists: call `get_delta(previous_session_id=<id>)` to see what changed
+3. Load `loom://primer` resource for a 200-token codebase overview
 4. Call `suggest_questions()` to surface dead code, god functions, low-cohesion clusters
 
 ## Finding Code

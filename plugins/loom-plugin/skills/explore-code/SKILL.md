@@ -100,3 +100,28 @@ Bad: "Handles auth." / "Calls jwt.decode()."
 
 Synthesize from Loom data (summary, signature, callers, callees) into a direct answer.
 Reference node IDs so the user can explore further with other Loom tools.
+
+---
+
+## Task Mode (ticket or task description given)
+
+Skip orientation entirely. The ticket already defines the scope.
+
+1. Extract 2–3 key terms from the task (mental step, no tool call)
+2. Search in parallel:
+   ```
+   search_code("<term1>", limit=5)
+   search_code("<term2>", limit=5)
+   ```
+3. `get_context` on top 2–3 results
+4. Output ≤50 tokens: what you found, what it maps to, what needs changing
+5. Proceed with work
+
+**No primer. No suggest_questions. No god_nodes.**
+
+Example — ticket says "filter Products by Product Category, add toggle from #28274":
+```
+search_code("product category filter")
+search_code("toggle component")
+```
+Get context on hits → map to files → start implementing. Total orientation cost: ~300 tokens.

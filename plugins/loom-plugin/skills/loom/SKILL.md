@@ -36,64 +36,149 @@ allowed-tools:
 Loom is a persistent symbol index. Every session gets faster as agent summaries
 accumulate. Zero LLM cost — all data from tree-sitter + your own stored summaries.
 
-## Session start
+---
 
-**Step 1 — register session first:**
-```
-start_session(agent_id="claude-code")   # → session_id, save for next time
-```
-If you have a `session_id` from last time, use delta instead:
-```
-get_delta(previous_session_id="<id>")   # only what changed — skip unchanged nodes
-```
+## Session Start Protocol
 
-**Step 2 — load primer:**
-
-Call `loom://primer` resource (or `loom context` CLI) for a ~200-token codebase
-overview. Skip file exploration — primer gives you modules, hot functions, coverage.
-
-**Step 3 — prioritize work:**
-```
-suggest_questions()           # dead code, bridge nodes, missing summaries, low cohesion
-get_surprising_connections()  # hidden coupling, unexpected cross-module bridges
-```
-
-## Finding code
+### Step 1 — Register session
 
 ```
-search_code("validate token")   # FTS5 — returns summary + signature if cached
+start_session(agent_id="claude-code")   → { session_id, agent_id, started_at }
 ```
-If result has `summary` → read it, skip file. Summary is authoritative.
-If no summary → use `get_context(node_id)` before opening the file.
+Save `session_id` — pass to `get_delta()` at start of **next** session.
 
-## Reasoning about a function
+### Step 2 — Check delta (if you have a prior session_id)
+
+```
+get_delta(previous_session_id="<id>")
+```
+Returns only changed/deleted nodes since last session. Three response shapes:
+- **Normal:** `{changed: [context_packets...], deleted: [ids...]}` → review each
+- **Too many changes:** `{too_many_changes: true, top_changed_paths: [...]}` → treat as fresh start, use `search_code`
+- **Error:** `{error: "session_not_found"}` → session expired, skip delta, proceed to primer
+
+If no prior session_id, pass `agent_id="claude-code"` instead — loom finds your most recent session.
+
+### Step 3 — Load primer (always)
+
+Read `loom://primer` resource → ~200-token codebase overview.
+
+**Act on primer data:**
+
+| Primer Signal | Agent Action |
+|---------------|--------------|
+| `empty: true` | Repo not indexed. Tell user: `loom analyze .` — or wait, auto-index may be running |
+| `coverage.summaries < 30%` | Prioritize `store_understanding` after every file read |
+| `coverage.summaries > 80%` | Summaries are rich — trust them, skip file reads when possible |
+| `hot` functions listed | Start exploration from these — they're the most-connected entry points |
+| `last_analyzed` > 24h old | Suggest user runs `loom analyze .` for fresh data |
+
+### Step 4 — Prioritize work
+
+```
+suggest_questions()           → dead code, bridge nodes, missing summaries, low cohesion
+get_surprising_connections()  → hidden coupling, unexpected cross-module bridges
+```
+
+---
+
+## Task Mode (ticket or task description given)
+
+Skip orientation. The task defines scope.
+
+1. Extract 2–3 key terms from the task (mental step, no tool call)
+2. Search in parallel:
+   ```
+   search_code("<term1>", limit=5)
+   search_code("<term2>", limit=5)
+   ```
+3. `get_context` on top 2–3 hits
+4. Output ≤50 tokens: what maps to what, what needs changing
+5. Proceed
+
+No primer. No suggest_questions. No god_nodes. Total orientation: ~300 tokens.
+
+---
+
+## Finding Code
+
+```
+search_code("validate token", limit=10)
+```
+Returns: `id, name, path, kind, line, score, summary, signature, tokens_saved`.
+
+**Decision tree after search:**
+- Has `summary` → read it, **skip file read**. Summary is authoritative.
+- Has `signature` but no summary → you know the shape, call `get_context` for callers/callees.
+- Neither → call `get_context(node_id)` before opening the file.
+
+---
+
+## Progressive Detail (Use the Cheapest Tool First)
+
+| Need | Tool | Response Size |
+|------|------|---------------|
+| "Does this exist?" | `get_node(id)` | ~50 tokens |
+| "What does this do?" | `get_context(id)` | ~200 tokens |
+| "What calls/uses this?" | `get_callers(id)` / `get_callees(id)` | ~100-300 tokens |
+| "What breaks if I change this?" | `get_blast_radius(id, depth=3)` | ~500-2000 tokens |
+
+Don't jump to `get_blast_radius` when `get_context` would suffice.
+
+---
+
+## Reasoning About a Function
 
 ```
 get_context("function:src/auth.py:validate_token")
 ```
-Returns: summary, signature, callers (top 10), callees (top 10), staleness flag.
-If `summary_stale: true` → source changed since summary written → re-read + update.
 
-## Impact analysis
+Returns:
+- `summary` — what it does and why
+- `signature` — full type-annotated signature
+- `callers` — top 10 by frequency (same-file first), each with `summary`
+- `callees` — top 10, each with `summary`
+- `summary_stale` — `true` if source changed since summary was written
+- `summary_source` — `"agent"` (verified) or `"auto"` (tree-sitter metadata)
+- `auto_summary` — tree-sitter-extracted metadata (always present as baseline)
+- `edge_coverage` — 0.0–1.0 confidence in call graph completeness
+- `has_dynamic_dispatch` — `true` if callers/callees may be incomplete
+
+**Staleness handling:**
+If `summary_stale: true` → source changed since summary was written.
+Read the source file, then update:
+```
+store_understanding(node_id="...", summary="...", force=True)
+```
+
+**If `get_context` returns `None`:** Node ID is wrong. Use `search_code` to find correct ID.
+
+---
+
+## Impact Analysis
 
 ```
 get_blast_radius("function:src/auth.py:validate_token", depth=3)
 ```
-Each result includes `summary` — read it directly. Only call `get_context` on nodes
-where `summary` is null or you need callers/callees of that node too.
+Each result includes `summary`. Read summaries directly — only call `get_context` on
+nodes where summary is null or you need their callers/callees too.
 
 ```
-get_callers("function:src/auth.py:validate_token")   # each result has summary
-get_callees("function:src/auth.py:validate_token")   # each result has summary
+get_callers("function:src/auth.py:validate_token")   → [{id, name, path, summary}, ...]
+get_callees("function:src/auth.py:validate_token")   → [{id, name, path, summary}, ...]
 ```
 
-## Topology exploration
+**If callers/callees returns `[]`:** Function is a leaf (no callers = dead code or entry point, no callees = leaf function). Check `suggest_questions()` — it flags dead code automatically.
+
+---
+
+## Topology Exploration
 
 ```
 get_surprising_connections(limit=10)
 ```
-Returns `caller_summary` and `callee_summary` on each result — read these before
-deciding whether to investigate further. No extra `get_context` calls needed.
+Returns `caller_summary` and `callee_summary` on each result. Read these before
+deciding whether to investigate further.
 
 ```
 get_community_cohesion()
@@ -103,63 +188,107 @@ Cohesion score per community (0.0–1.0). Low cohesion (<0.2) = refactor candida
 ```
 suggest_questions(limit=7)
 ```
-Question types: `dead_code`, `bridge_node`, `missing_summary`, `low_cohesion`.
+Question types and what they mean:
+- `dead_code` — function has no callers. Safe to delete? Or undiscovered entry point?
+- `bridge_node` — connects two otherwise-separate communities. High blast radius.
+- `missing_summary` — hot function with no agent summary. Document it.
+- `low_cohesion` — community with too many external dependencies. Refactor candidate.
 
-## Storing understanding (do this every time)
+---
 
-After reading any function:
+## Storing Understanding (Do This Every Time)
+
+After reading any function source:
 ```
 store_understanding(
     node_id="function:src/auth.py:validate_token",
     summary="Validates JWT tokens, returns False if expired or signature invalid."
 )
 ```
-Good summary: what it does + why it exists. One sentence. Under 120 chars.
-Bad: "handles auth" (vague), "calls jwt.decode()" (describes HOW not WHY).
 
-Batch version for efficiency:
+**Good summary:** what + why, one sentence, ≤120 chars.
+- "Validates JWT tokens, returns False if expired or malformed."
+- "Entry point for /api/users — authenticates, then delegates to UserService."
+
+**Bad summary:**
+- "Handles auth." — too vague, doesn't help next agent
+- "Calls jwt.decode() then checks exp claim." — describes HOW, not WHAT/WHY
+
+**Batch version** (after reading multiple files):
 ```
 store_understanding_batch([
-    {"node_id": "...", "summary": "..."},
-    ...
+    {"node_id": "function:src/auth.py:validate_token", "summary": "..."},
+    {"node_id": "function:src/auth.py:refresh_token", "summary": "..."},
 ])
 ```
-Max 50 per call. `store_understanding` is idempotent — skips write if content_hash
-unchanged. Pass `force=True` to overwrite a stale summary.
+Max 50 per call.
 
-## Node ID format
+**Idempotency:** `store_understanding` is content-hash-aware.
+- Same summary + unchanged source → `{skipped: true}` — no write, no cost.
+- Source changed since last summary → use `force=True` to overwrite.
+- Node not found → `{ok: false, error: "node not found"}` — check ID with `search_code`.
+
+---
+
+## Error Handling Reference
+
+| Tool | Returns on "not found" | What to do |
+|------|----------------------|------------|
+| `get_node(id)` | `None` | ID is wrong — use `search_code` |
+| `get_context(id)` | `None` | ID is wrong — use `search_code` |
+| `get_callers(id)` | `[]` | No callers exist (dead code or entry point) |
+| `get_callees(id)` | `[]` | Leaf function — no outgoing calls |
+| `shortest_path(a, b)` | `None` | No path exists between these nodes |
+| `store_understanding(id)` | `{ok: false}` | Node not found — verify ID |
+| `get_delta(session_id)` | `{error: "session_not_found"}` | Session expired — skip delta |
+| `get_delta()` (no args) | `{error: "missing_args"}` | Pass `previous_session_id` or `agent_id` |
+
+---
+
+## Node ID Format
 
 `{kind}:{path}:{symbol}`
-Examples:
-- `function:src/auth.py:validate_token`
-- `class:src/models/user.py:User`
-- `method:src/models/user.py:User.save`
-- `file:src/auth.py`
 
-## DB path
+| Kind | Example |
+|------|---------|
+| `function` | `function:src/auth.py:validate_token` |
+| `method` | `method:src/models/user.py:User.save` |
+| `class` | `class:src/models/user.py:User` |
+| `file` | `file:src/auth.py` |
 
-Resolved in order: `LOOM_DB_PATH` env → `~/.loom/projects/{git-root-name}.db` → `~/.loom/loom.db`
+Path is always relative to repo root. When in doubt, use `search_code` to find exact ID.
 
-## Key tools
+---
 
-| Tool | Use when |
-|------|----------|
-| `search_code(query)` | Finding symbols by name/keyword |
-| `get_node(node_id)` | Single node lookup by exact ID |
-| `get_context(node_id)` | Full picture: summary + callers + callees + staleness |
-| `get_blast_radius(node_id)` | Transitive callers — each result includes summary |
-| `get_callers(node_id)` | Direct callers — each result includes summary |
-| `get_callees(node_id)` | Direct callees — each result includes summary |
-| `get_neighbors(node_id)` | All connected nodes (any edge type) — includes summary |
-| `get_community(community_id)` | All members of a cluster — includes summary |
-| `shortest_path(from_id, to_id)` | Dependency path — each hop includes summary |
-| `store_understanding(node_id, summary)` | After understanding any function |
-| `store_understanding_batch(updates)` | Batch summaries — up to 50 at once |
-| `start_session(agent_id)` | Session start — get session_id |
-| `get_delta(previous_session_id)` | Session start — only what changed |
-| `graph_stats()` | Repo overview: counts by kind |
-| `god_nodes()` | Most-called functions (entry points) |
-| `suggest_questions()` | Investigation priorities from graph topology |
-| `get_surprising_connections()` | Hidden coupling — returns caller/callee summaries |
-| `get_community_cohesion()` | Cluster cohesion scores |
-| `get_savings()` | Token savings from cache hits |
+## DB Path
+
+Resolved in order:
+1. `LOOM_DB_PATH` env var (explicit override)
+2. `~/.loom/projects/{git-root-name}.db` (per-project, automatic)
+3. `~/.loom/loom.db` (fallback for non-git repos)
+
+---
+
+## Quick Reference
+
+| Tool | Use When | Cost |
+|------|----------|------|
+| `start_session(agent_id)` | Session start — always first | ~20 tok |
+| `get_delta(prev_session_id)` | Session start — see what changed | ~50-500 tok |
+| `search_code(query)` | Finding symbols by name/keyword | ~100 tok |
+| `get_node(node_id)` | Quick existence check / basic info | ~50 tok |
+| `get_context(node_id)` | Full picture: summary + callers + callees + staleness | ~200 tok |
+| `get_blast_radius(node_id)` | Transitive callers — impact of a change | ~500-2000 tok |
+| `get_callers(node_id)` | Direct callers with summaries | ~100-300 tok |
+| `get_callees(node_id)` | Direct callees with summaries | ~100-300 tok |
+| `get_neighbors(node_id)` | All connected nodes (any edge type) | ~100-300 tok |
+| `get_community(community_id)` | All members of a cluster | ~200-500 tok |
+| `shortest_path(from, to)` | Dependency chain between two functions | ~100-300 tok |
+| `store_understanding(id, summary)` | After reading any function — always do this | ~20 tok |
+| `store_understanding_batch(updates)` | Batch summaries — up to 50 at once | ~20 tok |
+| `graph_stats()` | Repo overview: node/edge counts by kind | ~50 tok |
+| `god_nodes()` | Most-called functions (entry points) | ~100-200 tok |
+| `suggest_questions()` | Investigation priorities from graph topology | ~100-200 tok |
+| `get_surprising_connections()` | Hidden coupling with caller/callee summaries | ~200-500 tok |
+| `get_community_cohesion()` | Cluster quality scores for refactoring | ~100-200 tok |
+| `get_savings()` | Token savings report from cache hits | ~50 tok |

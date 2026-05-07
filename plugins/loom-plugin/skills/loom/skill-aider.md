@@ -20,13 +20,16 @@ trigger: >
 ## Session start
 
 ```
-suggest_questions()                  # what to investigate this session
 start_session(agent_id="aider")      # store session_id for next time
 ```
 
 If you have a previous session_id:
 ```
 get_delta(previous_session_id="<id>")
+```
+
+```
+suggest_questions()                  # what to investigate this session
 ```
 
 ## Finding code
