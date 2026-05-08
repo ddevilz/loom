@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
-import time as _time
+import time
 from typing import Any
 
 from loom.analysis.code.extractor import extract_summary
@@ -17,7 +17,7 @@ def _humanize_ago(ts: int | None) -> str | None:
     """Convert unix timestamp to human-readable age string."""
     if ts is None:
         return None
-    ago = int(_time.time()) - ts
+    ago = int(time.time()) - ts
     if ago < 60:
         return "just now"
     if ago < 3600:
@@ -42,7 +42,7 @@ def _compute_suggestion(
         return "High-traffic function with only auto-summary — write agent summary"
     if isinstance(edge_coverage, (int, float)) and edge_coverage < 0.5:
         return "Call graph incomplete (dynamic dispatch) — callers list may be missing entries"
-    if updated_at is not None and (_time.time() - updated_at) > 48 * 3600:
+    if updated_at is not None and (time.time() - updated_at) > 48 * 3600:
         return "Index is 2+ days old — run: loom analyze ."
     return None
 
@@ -62,7 +62,7 @@ def _build_packet(
     node = row_to_node(node_row)
     metadata = json.loads(node_row["metadata"]) if node_row["metadata"] else {}
 
-    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM118, SIM401
+    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM118
     content_hash = node_row["content_hash"]
     stale = bool(summary_hash and content_hash and summary_hash != content_hash)
 
@@ -114,7 +114,7 @@ def _build_members_packet(
     members_total: int,
 ) -> dict[str, Any]:
     node = row_to_node(node_row)
-    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM118, SIM401
+    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM118
     auto_summary = extract_summary(node)
 
     _keys = node_row.keys()
