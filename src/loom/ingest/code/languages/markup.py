@@ -102,7 +102,7 @@ from loom.ingest.code.languages.constants import (
 logger = logging.getLogger(__name__)
 
 
-def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     """Extract metadata from HTML files: title, forms, script tags, template variables."""
     p = Path(path)
     src = p.read_bytes()
@@ -158,7 +158,7 @@ def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:
     return [node]
 
 
-def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     """Extract metadata from XML files: root tag, namespaces, key attributes."""
     p = Path(path)
     src = p.read_bytes()
@@ -211,7 +211,7 @@ def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:
     return [node]
 
 
-def parse_json(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_json(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     """Extract metadata from JSON files: schema hints, top-level keys."""
     p = Path(path)
     src = p.read_bytes()
@@ -262,7 +262,7 @@ def parse_json(path: str, *, exclude_tests: bool = False) -> list[Node]:
     return [node]
 
 
-def parse_css(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_css(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     """Extract metadata from CSS files: selector count, class names, media queries."""
     p = Path(path)
     src = p.read_bytes()
@@ -304,7 +304,7 @@ def parse_css(path: str, *, exclude_tests: bool = False) -> list[Node]:
     return [node]
 
 
-def parse_yaml(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_yaml(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     """Extract metadata from YAML files: top-level keys, detect config type."""
     p = Path(path)
     src = p.read_bytes()
@@ -356,7 +356,7 @@ def _parse_kv_file(content: str, *, skip_bang_comments: bool = False) -> dict[st
     return values
 
 
-def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     """Extract metadata from Java .properties files: keys, Spring profiles, database config."""
     p = Path(path)
     src = p.read_bytes()
@@ -404,7 +404,7 @@ def parse_properties(path: str, *, exclude_tests: bool = False) -> list[Node]:
     return [node]
 
 
-def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     """Extract metadata from .env files: environment variables, sensitive keys."""
     logger.warning(
         "Indexing .env file: %s — variable names (not values) will be stored in the graph. "
@@ -457,7 +457,7 @@ def parse_env(path: str, *, exclude_tests: bool = False) -> list[Node]:
     return [node]
 
 
-def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     """Extract metadata from TOML files: dependencies, project info."""
     p = Path(path)
     src = p.read_bytes()
@@ -563,7 +563,7 @@ def parse_toml(path: str, *, exclude_tests: bool = False) -> list[Node]:
     return [node]
 
 
-def parse_ini(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_ini(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     """Extract metadata from INI configuration files."""
     p = Path(path)
     src = p.read_bytes()

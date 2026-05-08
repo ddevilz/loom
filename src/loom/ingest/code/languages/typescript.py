@@ -409,7 +409,7 @@ def _walk(
                 _walk(path=path, src=src, n=child, ctx=ctx, out=out, language=language)
 
 
-def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     p = Path(path)
     src = p.read_bytes()
 
