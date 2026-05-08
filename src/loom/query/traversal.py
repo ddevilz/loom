@@ -73,11 +73,26 @@ async def neighbors(
     return await asyncio.to_thread(_run)
 
 
-async def blast_radius(db: DB, node_id: str, depth: int = 3) -> list[Node]:
-    def _run() -> list[Node]:
+async def blast_radius(
+    db: DB,
+    node_id: str,
+    depth: int = 3,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[Node], int]:
+    """Return paginated callers up to `depth` hops.
+
+    Returns (nodes_slice, total_count).
+    Two-pass: IDs-only CTE first (no joins), then full rows for slice only.
+    """
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    def _run() -> tuple[list[Node], int]:
         with db._lock:
             conn = db.connect()
-            rows = conn.execute(
+            # Pass 1: IDs only — cheap, no node joins
+            id_rows = conn.execute(
                 """
                 WITH RECURSIVE impacted(id, d) AS (
                     SELECT ?, 0
@@ -87,15 +102,25 @@ async def blast_radius(db: DB, node_id: str, depth: int = 3) -> list[Node]:
                       JOIN impacted i ON e.to_id = i.id
                      WHERE e.kind = ? AND i.d < ?
                 )
-                SELECT n.*, i.d AS _depth
-                  FROM impacted i JOIN nodes n ON n.id = i.id
-                 WHERE i.id != ?
-                   AND n.deleted_at IS NULL
-                 ORDER BY i.d, n.name
+                SELECT id FROM impacted WHERE id != ?
                 """,
                 (node_id, EdgeType.CALLS.value, depth, node_id),
             ).fetchall()
-            return [row_to_node(r) for r in rows]
+            all_ids = [r["id"] for r in id_rows]
+            total = len(all_ids)
+
+            # Pass 2: full rows for slice only
+            slice_ids = all_ids[offset : offset + limit]
+            if not slice_ids:
+                return [], total
+
+            ph = ",".join("?" * len(slice_ids))
+            rows = conn.execute(
+                f"SELECT * FROM nodes WHERE id IN ({ph}) AND deleted_at IS NULL",
+                slice_ids,
+            ).fetchall()
+            nodes = [row_to_node(r) for r in rows]
+            return nodes, total
 
     return await asyncio.to_thread(_run)
 

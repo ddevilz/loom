@@ -1,24 +1,16 @@
-"""Standalone MCP server entry point.
-
-Usable via uvx without the full CLI context:
-    uvx loom-tool
-    # or as explicit entry point:
-    uvx --from loom-tool loom-mcp
-"""
-
 from __future__ import annotations
 
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Module-level progress dict — written by background index thread, read by get_status()
+# GIL protects simple dict reads/writes in CPython; no extra lock needed.
+_index_progress: dict = {}
+
 
 def _auto_index_if_empty(db: object) -> None:
-    """Spawn background thread to index cwd if DB has no nodes.
-
-    Args:
-        db: DB instance already connected to the project database.
-    """
+    """Spawn background thread to index cwd if DB has no nodes."""
     import asyncio
     import threading
     from pathlib import Path
@@ -36,25 +28,28 @@ def _auto_index_if_empty(db: object) -> None:
     repo = Path.cwd()
     logger.info("[auto-index] DB empty — indexing %s in background", repo)
 
+    def _on_progress(phase: str, done: int, total: int) -> None:
+        _index_progress.update(
+            {"phase": phase, "files_processed": done, "files_total": total, "indexing": True}
+        )
+
     def _bg() -> None:
         from loom.ingest.pipeline import index_repo
 
+        _index_progress["indexing"] = True
         try:
-            asyncio.run(index_repo(repo, db=db_typed))
+            asyncio.run(index_repo(repo, db=db_typed, progress_cb=_on_progress))
             logger.info("[auto-index] done")
         except Exception as exc:
             logger.warning("[auto-index] failed: %s", exc)
+        finally:
+            _index_progress["indexing"] = False
 
     threading.Thread(target=_bg, daemon=True, name="loom-auto-index").start()
 
 
 def run_stdio() -> None:
-    """Start Loom MCP server in stdio transport mode.
-
-    Resolves DB from LOOM_DB_PATH env var, then git-root-based project DB,
-    then falls back to ~/.loom/loom.db.
-    Auto-indexes the current directory in background if DB is empty.
-    """
+    """Start Loom MCP server in stdio transport mode."""
     from loom.core.context import DB, resolve_db_path
     from loom.mcp.server import build_server
 

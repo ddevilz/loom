@@ -47,7 +47,11 @@ async def test_blast_radius_payload_shape(db: DB) -> None:
     assert result["node_id"] == b.id
     assert result["depth"] == 3
     assert result["count"] == 1
-    assert result["results"][0]["name"] == "caller"
+    assert result["total"] == 1
+    assert result["truncated"] is False
+    assert result["next_offset"] is None
+    assert result["nodes"][0]["name"] == "caller"
+    assert "results" not in result  # field renamed to "nodes" in 0.4.1
 
 
 @pytest.mark.asyncio
@@ -56,7 +60,7 @@ async def test_blast_radius_empty_returns_zero_count(db: DB) -> None:
     await node_store.bulk_upsert_nodes(db, [a])
     result = await build_blast_radius_payload(db, node_id=a.id, depth=3)
     assert result["count"] == 0
-    assert result["results"] == []
+    assert result["nodes"] == []
 
 
 @pytest.mark.asyncio
@@ -66,3 +70,25 @@ async def test_blast_radius_default_depth_is_three(db: DB) -> None:
     await edge_store.bulk_upsert_edges(db, [Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)])
     result = await build_blast_radius_payload(db, node_id=b.id)
     assert result["depth"] == 3
+
+
+@pytest.mark.asyncio
+async def test_blast_radius_pagination(db: DB) -> None:
+    """limit/offset slice the result correctly."""
+    target = _fn("t.py", "target")
+    callers = [_fn(f"c{i}.py", f"caller{i}") for i in range(5)]
+    all_nodes = [target] + callers
+    await node_store.bulk_upsert_nodes(db, all_nodes)
+    edges = [Edge(from_id=c.id, to_id=target.id, kind=EdgeType.CALLS) for c in callers]
+    await edge_store.bulk_upsert_edges(db, edges)
+
+    result = await build_blast_radius_payload(db, node_id=target.id, depth=1, limit=2, offset=0)
+    assert result["total"] == 5
+    assert len(result["nodes"]) == 2
+    assert result["truncated"] is True
+    assert result["next_offset"] == 2
+
+    result2 = await build_blast_radius_payload(db, node_id=target.id, depth=1, limit=2, offset=4)
+    assert len(result2["nodes"]) == 1
+    assert result2["truncated"] is False
+    assert result2["next_offset"] is None
