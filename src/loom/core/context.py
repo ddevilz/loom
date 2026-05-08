@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 import subprocess
 import threading
@@ -17,16 +18,13 @@ def resolve_db_path(repo_path: Path | None = None) -> Path:
     """Auto-resolve DB path for the current project.
 
     Resolution order:
-    1. ``~/.loom/projects/{git-root-name}.db`` — detected from git root of repo_path
-    2. ``~/.loom/loom.db`` — legacy global fallback
+    1. LOOM_DB_PATH env var — explicit override
+    2. ~/.loom/projects/{git-root-name}.db — from git root
+    3. ~/.loom/projects/{cwd-name}.db — non-git fallback (auto-detect)
 
-    Args:
-        repo_path: Directory to resolve from. Defaults to ``Path.cwd()``.
-
-    Returns:
-        Path to the SQLite database for this project.
+    For tier 3: if new DB does not exist and legacy ~/.loom/loom.db exists,
+    copies it once (silent migration). Skips copy if .migrated marker present.
     """
-    # Explicit env var always wins
     env_override = os.getenv("LOOM_DB_PATH")
     if env_override:
         return Path(env_override)
@@ -47,7 +45,23 @@ def resolve_db_path(repo_path: Path | None = None) -> Path:
             return _PROJECTS_DIR / f"{project_name}.db"
     except Exception:
         pass
-    return DEFAULT_DB_PATH
+
+    # Non-git fallback: use cwd folder name
+    project_name = Path.cwd().name
+    _PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    new_path = _PROJECTS_DIR / f"{project_name}.db"
+
+    # One-time silent migration from legacy flat DB
+    if not new_path.exists():
+        marker = DEFAULT_DB_PATH.with_suffix(".migrated")
+        if DEFAULT_DB_PATH.exists() and not marker.exists():
+            try:
+                shutil.copy2(DEFAULT_DB_PATH, new_path)
+                marker.touch()
+            except Exception:
+                pass  # migration failure is non-fatal
+
+    return new_path
 
 
 @dataclass
