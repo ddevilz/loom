@@ -61,7 +61,7 @@ async def test_neighbors_out(db_with_graph: DB) -> None:
 async def test_blast_radius(db_with_graph: DB) -> None:
     db = db_with_graph
     # c is called by b which is called by a — blast radius of c = [b, a]
-    results = await traversal.blast_radius(db, _fn("c.py", "h").id, depth=3)
+    results, _total = await traversal.blast_radius(db, _fn("c.py", "h").id, depth=3)
     names = {n.name for n in results}
     assert "g" in names
     assert "f" in names

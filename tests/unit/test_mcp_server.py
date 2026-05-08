@@ -118,8 +118,8 @@ def db(tmp_path: Path) -> DB:
 
 
 @pytest.mark.asyncio
-async def test_blast_radius_payload_uses_results_key(db: DB) -> None:
-    """In 0.4.0 the field is still 'results' — rename to 'nodes' happens in 0.4.1."""
+async def test_blast_radius_payload_uses_nodes_key(db: DB) -> None:
+    """In 0.4.1 the field was renamed from 'results' to 'nodes'."""
     from loom.query.blast_radius import build_blast_radius_payload
 
     a, b = _fn("a.py", "caller"), _fn("b.py", "target")
@@ -127,8 +127,9 @@ async def test_blast_radius_payload_uses_results_key(db: DB) -> None:
     await edge_store.bulk_upsert_edges(db, [Edge(from_id=a.id, to_id=b.id, kind=EdgeType.CALLS)])
 
     payload = await build_blast_radius_payload(db, node_id=b.id, depth=3)
-    assert "results" in payload
-    assert payload["results"][0]["name"] == "caller"
+    assert "nodes" in payload
+    assert "results" not in payload
+    assert payload["nodes"][0]["name"] == "caller"
 
 
 @pytest.mark.asyncio

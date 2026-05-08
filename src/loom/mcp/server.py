@@ -166,10 +166,15 @@ def build_server(
         ])
 
     @mcp.tool()
-    async def get_blast_radius(node_id: str, depth: int = 3) -> dict:
-        """Transitive callers via SQLite recursive CTE."""
+    async def get_blast_radius(
+        node_id: str, depth: int = 3, limit: int = 50, offset: int = 0
+    ) -> dict:
+        """Transitive callers via SQLite recursive CTE. Paginated."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
-        return _ok(await build_blast_radius_payload(db, node_id=nid, depth=_clamp_depth(depth)))
+        limit = max(1, min(limit, 200))
+        return _ok(await build_blast_radius_payload(
+            db, node_id=nid, depth=_clamp_depth(depth), limit=limit, offset=offset
+        ))
 
     @mcp.tool()
     async def get_neighbors(node_id: str, depth: int = 1) -> dict:
