@@ -139,7 +139,7 @@ Returns:
 - `callers` — top 10 by frequency (same-file first), each with `summary`
 - `callees` — top 10, each with `summary`
 - `summary_stale` — `true` if source changed since summary was written
-- `summary_source` — `"agent"` (verified) or `"auto"` (tree-sitter metadata)
+- `summary_source` — `"AGENT"` (verified by agent) or `"AUTO"` (tree-sitter metadata)
 - `auto_summary` — tree-sitter-extracted metadata (always present as baseline)
 - `edge_coverage` — 0.0–1.0 confidence in call graph completeness
 - `has_dynamic_dispatch` — `true` if callers/callees may be incomplete
