@@ -17,7 +17,7 @@ def _humanize_ago(ts: int | None) -> str | None:
     """Convert unix timestamp to human-readable age string."""
     if ts is None:
         return None
-    ago = int(time.time()) - ts
+    ago = max(0, int(time.time()) - ts)
     if ago < 60:
         return "just now"
     if ago < 3600:
