@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+import time as _time
 from typing import Any
 
 from loom.analysis.code.extractor import extract_summary
@@ -10,6 +11,41 @@ from loom.core.context import DB
 from loom.core.edge import EdgeType
 from loom.core.enums import SummarySource
 from loom.store.nodes import row_to_node
+
+
+def _humanize_ago(ts: int | None) -> str | None:
+    """Convert unix timestamp to human-readable age string."""
+    if ts is None:
+        return None
+    ago = int(_time.time()) - ts
+    if ago < 60:
+        return "just now"
+    if ago < 3600:
+        return f"{ago // 60}m"
+    if ago < 86400:
+        return f"{ago // 3600}h"
+    return f"{ago // 86400}d"
+
+
+def _compute_suggestion(
+    *,
+    stale: bool,
+    summary_source: SummarySource,
+    in_degree: int,
+    edge_coverage: object,
+    updated_at: int | None,
+) -> str | None:
+    """Return highest-priority actionable suggestion, or None."""
+    if stale:
+        return "Source changed — re-read and call store_understanding(force=True)"
+    if summary_source == SummarySource.AUTO and in_degree > 5:
+        return "High-traffic function with only auto-summary — write agent summary"
+    if isinstance(edge_coverage, (int, float)) and edge_coverage < 0.5:
+        return "Call graph incomplete (dynamic dispatch) — callers list may be missing entries"
+    if updated_at is not None and (_time.time() - updated_at) > 48 * 3600:
+        return "Index is 2+ days old — run: loom analyze ."
+    return None
+
 
 _CALLER_LIMIT = 10
 _CALLEE_LIMIT = 10
@@ -26,11 +62,22 @@ def _build_packet(
     node = row_to_node(node_row)
     metadata = json.loads(node_row["metadata"]) if node_row["metadata"] else {}
 
-    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM401
+    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM118, SIM401
     content_hash = node_row["content_hash"]
     stale = bool(summary_hash and content_hash and summary_hash != content_hash)
 
     auto_summary = extract_summary(node)
+
+    _keys = node_row.keys()
+    _updated_at: int | None = node_row["updated_at"] if "updated_at" in _keys else None
+    last_analyzed_ago = _humanize_ago(_updated_at)
+    suggestion = _compute_suggestion(
+        stale=stale,
+        summary_source=SummarySource.AGENT if summary_hash else SummarySource.AUTO,
+        in_degree=callers_total,
+        edge_coverage=metadata.get("edge_coverage", "unknown"),
+        updated_at=_updated_at,
+    )
 
     return {
         "id": node.id,
@@ -56,6 +103,8 @@ def _build_packet(
         "community_id": node.community_id,
         "has_dynamic_dispatch": metadata.get("has_dynamic_dispatch", False),
         "edge_coverage": metadata.get("edge_coverage", "unknown"),
+        "last_analyzed_ago": last_analyzed_ago,
+        "suggestion": suggestion,
     }
 
 
@@ -65,8 +114,20 @@ def _build_members_packet(
     members_total: int,
 ) -> dict[str, Any]:
     node = row_to_node(node_row)
-    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM401
+    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM118, SIM401
     auto_summary = extract_summary(node)
+
+    _keys = node_row.keys()
+    _updated_at: int | None = node_row["updated_at"] if "updated_at" in _keys else None
+    last_analyzed_ago = _humanize_ago(_updated_at)
+    suggestion = _compute_suggestion(
+        stale=False,
+        summary_source=SummarySource.AGENT if summary_hash else SummarySource.AUTO,
+        in_degree=0,
+        edge_coverage="unknown",
+        updated_at=_updated_at,
+    )
+
     return {
         "id": node.id,
         "name": node.name,
@@ -86,6 +147,8 @@ def _build_members_packet(
         "community_id": node.community_id,
         "has_dynamic_dispatch": False,
         "edge_coverage": "none",
+        "last_analyzed_ago": last_analyzed_ago,
+        "suggestion": suggestion,
     }
 
 
