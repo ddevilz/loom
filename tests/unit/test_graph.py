@@ -58,7 +58,7 @@ async def test_blast_radius_transitive(tmp_path: Path):
             Edge(from_id=b.id, to_id=c.id, kind=EdgeType.CALLS),
         ],
     )
-    result = await traversal.blast_radius(db, c.id, depth=3)
+    result, _total = await traversal.blast_radius(db, c.id, depth=3)
     ids = {n.id for n in result}
     assert a.id in ids and b.id in ids
 

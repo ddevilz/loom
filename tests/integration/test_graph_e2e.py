@@ -33,8 +33,9 @@ async def test_graph_e2e_foundation(tmp_path: Path) -> None:
     s = await traversal.stats(db)
     assert s["nodes"] == 15
 
-    blast = await traversal.blast_radius(db, fid["x"], depth=3)
+    blast, total = await traversal.blast_radius(db, fid["x"], depth=3)
     assert isinstance(blast, list)
+    assert isinstance(total, int)
 
     callers_k = await traversal.neighbors(db, fid["k"], depth=1, edge_types=None, direction="in")
     caller_names = {n.name for n in callers_k}

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import json
 import logging
 import sqlite3
 import time
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from multiprocessing import cpu_count
@@ -200,10 +202,16 @@ async def index_repo(
     db: DB,
     *,
     workers: int | None = None,
+    progress_cb: Callable[[str, int, int], None] | None = None,
 ) -> IndexResult:
     t0 = time.perf_counter()
     repo_path = repo_path.resolve()
     max_workers = workers or min(cpu_count(), 8)
+
+    def _emit(phase: str, done: int, total: int) -> None:
+        if progress_cb is not None:
+            with contextlib.suppress(Exception):
+                progress_cb(phase, done, total)
 
     # --- Phase 1: scan ---
     logger.info("[scan] discovering files in %s (workers=%d)", repo_path, max_workers)
@@ -246,6 +254,7 @@ async def index_repo(
         len(changed),
         skipped,
     )
+    _emit("scan", len(changed), len(all_files))
 
     nodes_all: list[Node] = []
     edges_all: list[Edge] = []
@@ -274,8 +283,10 @@ async def index_repo(
             len(nodes_all),
             len(edges_all),
         )
+        _emit("parse", len(changed), len(changed))
     else:
         logger.info("[parse] nothing to parse (all %d files unchanged)", skipped)
+        _emit("parse", 0, 0)
 
     # --- Phase 3: resolve cross-file calls ---
     if nodes_all:
@@ -307,6 +318,7 @@ async def index_repo(
         for path, (fn, fe) in by_path.items():
             await node_store.replace_file(db, path, fn, fe)
         logger.info("[write] done in %.1fs", time.perf_counter() - t)
+    _emit("write", len(by_path), len(by_path))
 
     if not changed:
         logger.info("[skip] no files changed — skipping analysis phases")
@@ -319,6 +331,7 @@ async def index_repo(
             logger.info("[communities] done in %.1fs", time.perf_counter() - t)
         except Exception as exc:
             logger.warning("[communities] failed in %.1fs: %s", time.perf_counter() - t, exc)
+        _emit("communities", 1, 1)
 
         # --- Phase 6: coupling ---
         logger.info("[coupling] computing git co-change coupling")
@@ -388,6 +401,7 @@ async def index_repo(
         len(nodes_all),
         len(edges_all),
     )
+    _emit("done", len(changed), len(all_files))
 
     return IndexResult(
         repo_path=repo_path,
