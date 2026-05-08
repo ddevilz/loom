@@ -15,6 +15,7 @@ from loom.analysis.graph_insights import (
 from loom.core.context import DB, DEFAULT_DB_PATH
 from loom.core.edge import EdgeType
 from loom.core.enums import SummarySource
+from loom.mcp import run as _run_mod
 from loom.mcp.enums import ErrorCode
 from loom.query import traversal
 from loom.query.blast_radius import build_blast_radius_payload
@@ -70,7 +71,7 @@ def build_server(
     *,
     db: DB | None = None,
 ) -> FastMCP:
-    """Build and return the FastMCP server with all 19 tools registered."""
+    """Build and return the FastMCP server with all 20 tools registered."""
     if FastMCP is None:
         raise RuntimeError("fastmcp not installed — run: uv add fastmcp")
     mcp = FastMCP("loom")
@@ -390,6 +391,65 @@ def build_server(
         """
         return _ok(await _get_community_cohesion(db))
 
+    @mcp.tool()
+    async def get_status() -> dict:
+        """Live indexing progress + DB stats.
+
+        Call at session start to check if auto-index is still running.
+        Also returns node count, FTS5 availability, and DB path.
+        """
+        import datetime
+        import time
+
+        def _query() -> dict:
+            with db._lock:
+                conn = db.connect()
+                node_count = conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL"
+                ).fetchone()[0]
+                last_row = conn.execute(
+                    "SELECT MAX(updated_at) AS ts FROM nodes WHERE deleted_at IS NULL"
+                ).fetchone()
+                last_ts = last_row["ts"] if last_row else None
+            return {"node_count": node_count, "last_ts": last_ts}
+
+        import asyncio as _asyncio
+        stats = await _asyncio.to_thread(_query)
+        progress = _run_mod._index_progress
+
+        last_analyzed: str | None = None
+        last_analyzed_ago: str | None = None
+        if stats["last_ts"]:
+            ts = stats["last_ts"]
+            dt = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+            last_analyzed = dt.isoformat()
+            ago_s = int(time.time() - ts)
+            if ago_s < 60:
+                last_analyzed_ago = "just now"
+            elif ago_s < 3600:
+                last_analyzed_ago = f"{ago_s // 60}m"
+            elif ago_s < 86400:
+                last_analyzed_ago = f"{ago_s // 3600}h"
+            else:
+                last_analyzed_ago = f"{ago_s // 86400}d"
+
+        fts5 = db._fts5 if db._fts5 is not None else False
+
+        data: dict = {
+            "indexing": progress.get("indexing", False),
+            "node_count": stats["node_count"],
+            "last_analyzed": last_analyzed,
+            "last_analyzed_ago": last_analyzed_ago,
+            "fts5_available": fts5,
+            "db_path": str(db.path),
+        }
+        if progress.get("indexing"):
+            data["files_processed"] = progress.get("files_processed", 0)
+            data["files_total"] = progress.get("files_total", 0)
+            data["phase"] = progress.get("phase", "unknown")
+
+        return _ok(data)
+
     @mcp.resource("loom://savings")
     async def savings_resource() -> str:
         """Token savings report — how much Loom has saved across all sessions."""
@@ -421,5 +481,53 @@ def build_server(
         """
         result = await build_primer(db)
         return str(result)
+
+    @mcp.resource("loom://status")
+    async def status_resource() -> str:
+        """Live DB status — node count, indexing state, last analyzed."""
+        import asyncio as _asyncio
+        import time
+
+        def _query() -> dict:
+            with db._lock:
+                conn = db.connect()
+                node_count = conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL"
+                ).fetchone()[0]
+                last_row = conn.execute(
+                    "SELECT MAX(updated_at) AS ts FROM nodes WHERE deleted_at IS NULL"
+                ).fetchone()
+                last_ts = last_row["ts"] if last_row else None
+            return {"node_count": node_count, "last_ts": last_ts}
+
+        stats = await _asyncio.to_thread(_query)
+        progress = _run_mod._index_progress
+        indexing = progress.get("indexing", False)
+
+        last_analyzed_ago = "never"
+        if stats["last_ts"]:
+            ago_s = int(time.time() - stats["last_ts"])
+            if ago_s < 60:
+                last_analyzed_ago = "just now"
+            elif ago_s < 3600:
+                last_analyzed_ago = f"{ago_s // 60}m ago"
+            elif ago_s < 86400:
+                last_analyzed_ago = f"{ago_s // 3600}h ago"
+            else:
+                last_analyzed_ago = f"{ago_s // 86400}d ago"
+
+        lines = [
+            "# Loom Status",
+            f"Nodes       : {stats['node_count']:,}",
+            f"Last indexed: {last_analyzed_ago}",
+            f"Indexing    : {'yes (background)' if indexing else 'no'}",
+            f"FTS5        : {'yes' if db._fts5 else 'no'}",
+            f"DB          : {db.path}",
+        ]
+        if indexing:
+            done = progress.get("files_processed", 0)
+            total = progress.get("files_total", 0)
+            lines.append(f"Progress    : {done}/{total} files ({progress.get('phase', '')})")
+        return "\n".join(lines)
 
     return mcp

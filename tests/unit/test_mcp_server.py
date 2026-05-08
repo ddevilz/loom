@@ -53,6 +53,7 @@ async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
         "get_surprising_connections",
         "suggest_questions",
         "get_community_cohesion",
+        "get_status",
     }
     db = DB(path=tmp_path / "loom.db")
     try:
