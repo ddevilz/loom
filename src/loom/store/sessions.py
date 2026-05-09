@@ -85,7 +85,7 @@ async def get_latest_session_for_agent(db: DB, agent_id: str) -> dict[str, Any] 
     return await asyncio.to_thread(_run)
 
 
-async def prune_sessions(db: DB, *, keep: int = 20) -> int:
+async def prune_sessions(db: DB, *, keep: int = 20) -> int:  # noqa: PLR0912
     """Delete old sessions, keeping the most recent N per agent.
 
     Args:
@@ -120,6 +120,10 @@ async def prune_sessions(db: DB, *, keep: int = 20) -> int:
                     (agent_id, *keep_ids),
                 )
                 deleted += cur.rowcount
+            # Cascade-delete visits whose sessions were just pruned
+            conn.execute(
+                "DELETE FROM node_visits WHERE session_id NOT IN (SELECT id FROM sessions)"
+            )
             conn.commit()
             return deleted
 

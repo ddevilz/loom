@@ -70,6 +70,16 @@ CREATE TABLE IF NOT EXISTS savings (
 );
 CREATE INDEX IF NOT EXISTS idx_savings_ts ON savings(ts DESC);
 
+CREATE TABLE IF NOT EXISTS node_visits (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT    NOT NULL,
+    node_id     TEXT    NOT NULL,
+    tool        TEXT    NOT NULL,
+    visited_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_visits_session ON node_visits(session_id, visited_at DESC);
+CREATE INDEX IF NOT EXISTS idx_visits_node    ON node_visits(node_id);
+
 -- ── FTS5 (loaded only when SQLite was compiled with fts5) ─────────────────────
 
 -- @fts5

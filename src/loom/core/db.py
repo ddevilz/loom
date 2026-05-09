@@ -78,4 +78,16 @@ def init_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "nodes", "token_count", "INTEGER")
     # Index on deleted_at must be created after the column migration
     conn.execute("CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at)")
+    # node_visits table — added in 0.4.3
+    conn.execute("""CREATE TABLE IF NOT EXISTS node_visits (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id  TEXT    NOT NULL,
+        node_id     TEXT    NOT NULL,
+        tool        TEXT    NOT NULL,
+        visited_at  INTEGER NOT NULL
+    )""")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visits_session ON node_visits(session_id, visited_at DESC)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_visits_node ON node_visits(node_id)")
     conn.commit()
