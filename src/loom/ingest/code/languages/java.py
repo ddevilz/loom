@@ -73,7 +73,7 @@ def _extract_annotations(src: bytes, n: TSNode) -> list[str]:
     return annotations
 
 
-def _extract_modifiers(src: bytes, n: TSNode) -> list[str]:
+def _extract_modifiers(_src: bytes, n: TSNode) -> list[str]:
     """Extract modifiers like public, private, static, abstract, etc."""
     modifiers = []
     for child in n.children:
@@ -139,7 +139,7 @@ def _method_metadata(src: bytes, n: TSNode, *, name: str) -> dict:
     }
 
 
-def _count_lambdas_and_refs(src: bytes, n: TSNode) -> dict[str, int]:
+def _count_lambdas_and_refs(_src: bytes, n: TSNode) -> dict[str, int]:
     """Count lambda expressions and method references in a node tree."""
     counts = {"lambda_count": 0, "method_ref_count": 0}
     stack = [n]
@@ -326,7 +326,7 @@ def _extract_package(src: bytes, root: TSNode) -> str:
     return ""
 
 
-def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     p = Path(path)
     src = p.read_bytes()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from loom.analysis.graph_insights import (
@@ -22,8 +23,9 @@ from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.context import get_context_packet
 from loom.query.delta import get_delta_payload
 from loom.query.primer import build_primer
-from loom.query.search import search
+from loom.query.search import find_replacement_candidates, search
 from loom.store import nodes as node_store
+from loom.store.node_visits import get_annotation_gaps, get_unannotated_reads, log_visit
 from loom.store.savings import get_recent_savings, get_savings_stats, log_saving
 from loom.store.sessions import create_session, get_latest_session_for_agent, get_session
 
@@ -78,26 +80,81 @@ def build_server(
     if db is None:
         db = DB(path=db_path or DEFAULT_DB_PATH)
 
+    # ── Session tracking ──────────────────────────────────────────────────────
+    _session: dict[str, str] = {}  # holds {"id": session_id} when start_session called
+
+    # ── In-process memo cache ─────────────────────────────────────────────────
+    _MEMO_TTL = 300.0  # 5 min — matches Anthropic prompt-cache TTL
+    _memo: dict[str, tuple[float, dict]] = {}  # key → (expires_at, result)
+
+    def _mk(tool: str, node_id: str, **extra: object) -> str:
+        key = f"{tool}:{node_id}"
+        if extra:
+            key += ":" + ":".join(f"{k}={v}" for k, v in sorted(extra.items()))
+        return key
+
+    def _memo_get(key: str) -> dict | None:
+        entry = _memo.get(key)
+        if entry and entry[0] > time.monotonic():
+            return entry[1]
+        _memo.pop(key, None)
+        return None
+
+    def _memo_set(key: str, result: dict) -> None:
+        _memo[key] = (time.monotonic() + _MEMO_TTL, result)
+
+    def _memo_invalidate(node_id: str) -> None:
+        needle_mid = f":{node_id}:"
+        needle_end = f":{node_id}"
+        for k in [k for k in _memo if needle_mid in k or k.endswith(needle_end)]:
+            del _memo[k]
+
+    def _is_test_path(path: str) -> bool:
+        p = path.lower()
+        return "/test" in p or p.startswith("test")
+
+    async def _log(node_id: str, tool: str) -> None:
+        sid = _session.get("id")
+        if sid:
+            await log_visit(db, session_id=sid, node_id=node_id, tool=tool)
+
     @mcp.tool()
     async def search_code(query: str, limit: int = 10) -> dict:
         """Search nodes by name/summary/path via FTS5 or LIKE.
 
-        Returns summary and signature when available — if summary exists,
-        you may not need to read the source file at all.
-        The tokens_saved field shows how many tokens Loom saved by returning
-        a cached summary instead of requiring you to read the source file.
+        Results include caller_count, community_id, and is_dead_code for disambiguation.
+        Dead nodes are ranked last with replacement_candidates where detectable.
+        Test-file nodes are deprioritised (score penalty applied).
+        Nodes that are dead but have a live replacement are injected with suggested_instead=true.
         """
         q = _req_text(query, field="query", max_length=_MAX_QUERY)
-        results = await search(q, db, limit=_clamp_limit(limit))
+        raw = await search(q, db, limit=_clamp_limit(limit))
 
-        output = []
-        for r in results:
-            node = r.node
+        # Apply test-path score penalty
+        for r in raw:
+            if _is_test_path(r.node.path):
+                r.score *= 0.3
+
+        live = sorted(
+            [r for r in raw if not r.node.is_dead_code],
+            key=lambda r: r.score,
+            reverse=True,
+        )
+        dead = sorted(
+            [r for r in raw if r.node.is_dead_code],
+            key=lambda r: r.caller_count,
+            reverse=True,
+        )
+
+        seen_ids: set[str] = set()
+        output: list[dict] = []
+
+        async def _build_entry(r: object, *, suggested_instead: bool = False) -> dict:  # type: ignore[type-arg]
+            node = r.node  # type: ignore[attr-defined]
             tokens_saved = 0
             summary_type = None
 
             if node.summary:
-                # summary_hash set → store_understanding wrote it → agent-verified
                 summary_type = SummarySource.AGENT if node.summary_hash else SummarySource.AUTO
                 src_tokens = node.token_count or 0
                 summary_tokens = len(node.summary) // 4
@@ -111,20 +168,55 @@ def build_server(
                         summary_type=summary_type,
                     )
 
-            result: dict = {
+            entry: dict = {
                 "id": node.id,
                 "name": node.name,
                 "path": node.path,
                 "kind": node.kind.value,
                 "line": node.start_line,
-                "score": r.score,
+                "score": round(r.score, 4),  # type: ignore[attr-defined]
+                "caller_count": r.caller_count,  # type: ignore[attr-defined]
+                "community_id": node.community_id,
+                "is_dead_code": node.is_dead_code,
                 "summary": node.summary,
                 "signature": node.metadata.get("signature"),
             }
+            if suggested_instead:
+                entry["suggested_instead"] = True
             if tokens_saved > 0:
-                result["tokens_saved"] = tokens_saved
-                result["summary_type"] = summary_type
-            output.append(result)
+                entry["tokens_saved"] = tokens_saved
+                entry["summary_type"] = summary_type
+            return entry
+
+        for r in live:
+            seen_ids.add(r.node.id)
+            output.append(await _build_entry(r))
+
+        for r in dead:
+            seen_ids.add(r.node.id)
+            entry = await _build_entry(r)
+            candidates = await find_replacement_candidates(
+                db, node_id=r.node.id, path=r.node.path
+            )
+            if candidates:
+                entry["replacement_candidates"] = [
+                    {"id": c.id, "name": c.name, "path": c.path, "caller_count": c.caller_count}
+                    for c in candidates
+                ]
+                # Inject top replacement as a suggested_instead entry if not already present
+                top = candidates[0]
+                if top.id not in seen_ids:
+                    seen_ids.add(top.id)
+                    # Build a lightweight suggested entry without a full SearchResult
+                    output.append({
+                        "id": top.id,
+                        "name": top.name,
+                        "path": top.path,
+                        "caller_count": top.caller_count,
+                        "suggested_instead": True,
+                        "suggested_for": r.node.id,
+                    })
+            output.append(entry)
 
         return _ok(output)
 
@@ -148,23 +240,35 @@ def build_server(
     async def get_callers(node_id: str) -> dict:
         """One-hop incoming CALLS — functions that call this node."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+        await _log(nid, "get_callers")
+        key = _mk("get_callers", nid)
+        if (hit := _memo_get(key)) is not None:
+            return hit
         nodes = await traversal.neighbors(
             db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="in"
         )
-        return _ok([
+        result = _ok([
             {"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes
         ])
+        _memo_set(key, result)
+        return result
 
     @mcp.tool()
     async def get_callees(node_id: str) -> dict:
         """One-hop outgoing CALLS — functions this node calls."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+        await _log(nid, "get_callees")
+        key = _mk("get_callees", nid)
+        if (hit := _memo_get(key)) is not None:
+            return hit
         nodes = await traversal.neighbors(
             db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="out"
         )
-        return _ok([
+        result = _ok([
             {"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes
         ])
+        _memo_set(key, result)
+        return result
 
     @mcp.tool()
     async def get_blast_radius(
@@ -172,20 +276,34 @@ def build_server(
     ) -> dict:
         """Transitive callers via SQLite recursive CTE. Paginated."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
-        limit = max(1, min(limit, 200))
-        return _ok(await build_blast_radius_payload(
-            db, node_id=nid, depth=_clamp_depth(depth), limit=limit, offset=offset
-        ))
+        await _log(nid, "get_blast_radius")
+        d = _clamp_depth(depth)
+        lim = max(1, min(limit, 200))
+        key = _mk("get_blast_radius", nid, depth=d, limit=lim, offset=offset)
+        if (hit := _memo_get(key)) is not None:
+            return hit
+        result = _ok(
+            await build_blast_radius_payload(db, node_id=nid, depth=d, limit=lim, offset=offset)
+        )
+        _memo_set(key, result)
+        return result
 
     @mcp.tool()
     async def get_neighbors(node_id: str, depth: int = 1) -> dict:
         """Generic neighbor traversal across all edge kinds, both directions."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
-        nodes = await traversal.neighbors(db, nid, depth=_clamp_depth(depth))
-        return _ok([
+        await _log(nid, "get_neighbors")
+        d = _clamp_depth(depth)
+        key = _mk("get_neighbors", nid, depth=d)
+        if (hit := _memo_get(key)) is not None:
+            return hit
+        nodes = await traversal.neighbors(db, nid, depth=d)
+        result = _ok([
             {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value, "summary": n.summary}
             for n in nodes
         ])
+        _memo_set(key, result)
+        return result
 
     @mcp.tool()
     async def get_community(community_id: str) -> dict:
@@ -242,6 +360,7 @@ def build_server(
             if not r["found"]:
                 errors.append({"node_id": nid, "error_code": ErrorCode.NODE_NOT_FOUND})
             elif r["updated"]:
+                _memo_invalidate(nid)
                 stored += 1
             else:
                 skipped += 1
@@ -266,6 +385,8 @@ def build_server(
                 f"Node '{nid}' not found.",
                 "Use search_code() to find the correct ID.",
             )
+        if result["updated"]:
+            _memo_invalidate(nid)
         return _ok({"skipped": result["skipped"], "node_id": nid})
 
     @mcp.tool()
@@ -296,22 +417,57 @@ def build_server(
                      Example: 'function:src/auth.py:validate_token'
         """
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
+        await _log(nid, "get_context")
+        key = _mk("get_context", nid)
+        if (hit := _memo_get(key)) is not None:
+            return hit
         packet = await get_context_packet(db, nid)
-        return _ok(packet)
+        if packet and packet.get("summary_source") == SummarySource.AUTO:
+            packet["_nudge"] = (
+                f"No agent understanding stored for '{nid}'. "
+                f"After reading, call store_understanding(node_id='{nid}', "
+                f"summary='your interpretation')."
+            )
+        result = _ok(packet)
+        _memo_set(key, result)
+        return result
 
     @mcp.tool()
     async def start_session(agent_id: str = "default") -> dict:
         """Register start of agent session. Call once at session beginning.
 
-        Returns session_id — store it and pass to get_delta in your NEXT session.
+        Returns:
+          - session_id: pass to get_delta() next session.
+          - unannotated_reads: nodes you read last session without storing understanding
+            (no agent summary, or summary stale because code changed). Annotate these first.
+          - annotation_gaps: top nodes by total visit count across all sessions still lacking
+            agent understanding — highest value annotation targets.
 
         Args:
             agent_id: Consistent identifier for your agent type.
                       Use: 'claude-code', 'cursor', 'codex', 'windsurf', or custom.
         """
         aid = _req_text(agent_id, field="agent_id", max_length=64)
+
+        # Fetch previous session before creating the new one
+        prev = await get_latest_session_for_agent(db, aid)
+
         result = await create_session(db, agent_id=aid)
-        result["tip"] = "Store session_id and pass to get_delta() in your next session."
+        _session["id"] = result["session_id"]
+
+        unannotated: list[dict] = []
+        if prev:
+            unannotated = await get_unannotated_reads(db, prev["id"])
+
+        gaps = await get_annotation_gaps(db, limit=5)
+
+        result["unannotated_reads"] = unannotated
+        result["annotation_gaps"] = gaps
+        if unannotated:
+            result["_note"] = (
+                f"{len(unannotated)} node(s) read last session without stored understanding. "
+                "Annotate via store_understanding() before proceeding."
+            )
         return _ok(result)
 
     @mcp.tool()

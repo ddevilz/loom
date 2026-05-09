@@ -97,7 +97,7 @@ def _is_test_path(path: str) -> bool:
     return "tests" in parts or "test" in parts
 
 
-def _is_async_function(src: bytes, n: TSNode) -> bool:
+def _is_async_function(_src: bytes, n: TSNode) -> bool:
     """Check if a function is async."""
     # Check for 'async' keyword before 'def'
     return any(child.type == "async" for child in n.children)

@@ -18,7 +18,7 @@ def _version_callback(value: bool) -> None:
 @app.callback(invoke_without_command=True)
 def _root(
     ctx: typer.Context,
-    version: bool = typer.Option(
+    version: bool = typer.Option(  # noqa: ARG001
         False,
         "--version",
         "-V",

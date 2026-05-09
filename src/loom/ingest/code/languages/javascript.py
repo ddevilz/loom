@@ -222,7 +222,7 @@ def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node
                 _walk(path=path, src=src, n=child, ctx=ctx, out=out)
 
 
-def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:
+def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     p = Path(path)
     src = p.read_bytes()
 
