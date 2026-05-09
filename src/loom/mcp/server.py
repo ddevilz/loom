@@ -17,7 +17,7 @@ from loom.core.context import DB, DEFAULT_DB_PATH
 from loom.core.edge import EdgeType
 from loom.core.enums import SummarySource
 from loom.mcp import run as _run_mod
-from loom.mcp.enums import ErrorCode
+from loom.mcp.enums import Confidence, ConfidenceSignal, ErrorCode, WorkPlanPriority
 from loom.query import traversal
 from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.context import get_context_packet
@@ -113,6 +113,34 @@ def build_server(
         p = path.lower()
         return "/test" in p or p.startswith("test")
 
+    def _compute_confidence(
+        query: str, node_name: str, node_path: str, score: float, max_score: float,
+        has_agent_summary: bool, caller_count: int,
+    ) -> tuple[Confidence, list[ConfidenceSignal]]:
+        signals: list[ConfidenceSignal] = []
+        composite = 0.0
+        if query.lower() == node_name.lower():
+            composite += 0.40
+            signals.append(ConfidenceSignal.EXACT_NAME_MATCH)
+        norm_bm25 = (score / max_score) if max_score > 0 else 0.0
+        composite += 0.25 * norm_bm25
+        if norm_bm25 >= 0.7:
+            signals.append(ConfidenceSignal.HIGH_BM25)
+        if has_agent_summary:
+            composite += 0.15
+            signals.append(ConfidenceSignal.HAS_AGENT_SUMMARY)
+        if caller_count > 5:
+            composite += 0.12
+            signals.append(ConfidenceSignal.HOT_NODE)
+        if query.lower() in node_path.lower():
+            composite += 0.08
+            signals.append(ConfidenceSignal.PATH_MATCH)
+        if composite >= 0.65:
+            return Confidence.HIGH, signals
+        if composite >= 0.35:
+            return Confidence.MEDIUM, signals
+        return Confidence.LOW, signals
+
     async def _log(node_id: str, tool: str) -> None:
         sid = _session.get("id")
         if sid:
@@ -148,6 +176,7 @@ def build_server(
 
         seen_ids: set[str] = set()
         output: list[dict] = []
+        max_score = max((r.score for r in raw), default=1.0) or 1.0
 
         async def _build_entry(r: object, *, suggested_instead: bool = False) -> dict:  # type: ignore[type-arg]
             node = r.node  # type: ignore[attr-defined]
@@ -168,6 +197,14 @@ def build_server(
                         summary_type=summary_type,
                     )
 
+            confidence, signals = _compute_confidence(
+                q, node.name, node.path,
+                score=r.score,  # type: ignore[attr-defined]
+                max_score=max_score,
+                has_agent_summary=bool(node.summary_hash),
+                caller_count=r.caller_count,  # type: ignore[attr-defined]
+            )
+
             entry: dict = {
                 "id": node.id,
                 "name": node.name,
@@ -175,6 +212,8 @@ def build_server(
                 "kind": node.kind.value,
                 "line": node.start_line,
                 "score": round(r.score, 4),  # type: ignore[attr-defined]
+                "confidence": confidence,
+                "confidence_signals": signals,
                 "caller_count": r.caller_count,  # type: ignore[attr-defined]
                 "community_id": node.community_id,
                 "is_dead_code": node.is_dead_code,
@@ -356,7 +395,11 @@ def build_server(
                     "error_code": ErrorCode.VALIDATION_ERROR,
                 })
                 continue
-            r = await node_store.update_summary(db, nid, s, force=force)
+            r = await node_store.update_summary(
+                db, nid, s, force=force,
+                author=_session.get("agent_id"),
+                session_id=_session.get("id"),
+            )
             if not r["found"]:
                 errors.append({"node_id": nid, "error_code": ErrorCode.NODE_NOT_FOUND})
             elif r["updated"]:
@@ -378,7 +421,11 @@ def build_server(
         """
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         s = _req_text(summary, field="summary", max_length=4000)
-        result = await node_store.update_summary(db, nid, s, force=force)
+        result = await node_store.update_summary(
+            db, nid, s, force=force,
+            author=_session.get("agent_id"),
+            session_id=_session.get("id"),
+        )
         if not result["found"]:
             return _err(
                 ErrorCode.NODE_NOT_FOUND,
@@ -454,6 +501,7 @@ def build_server(
 
         result = await create_session(db, agent_id=aid)
         _session["id"] = result["session_id"]
+        _session["agent_id"] = aid
 
         unannotated: list[dict] = []
         if prev:
@@ -546,6 +594,105 @@ def build_server(
         Low cohesion (<0.2) communities are refactor candidates.
         """
         return _ok(await _get_community_cohesion(db))
+
+    @mcp.tool()
+    async def get_work_plan() -> dict:
+        """One-call session bootstrap — priority, reason, and concrete annotation tasks.
+
+        Combines suggest_questions + annotation_gaps + live graph stats to compute
+        the highest-value action for this session.
+
+        priority values:
+        - DOCUMENT: high-traffic functions with no agent summary — annotate first
+        - INVESTIGATE: structural issues (dead code, low cohesion, bridge nodes)
+        - EXPLORE: graph is healthy — use suggest_questions to pick exploration targets
+        - NOTHING: graph is fully annotated and structurally sound
+
+        Replaces the primer → suggest_questions → god_nodes orientation sequence
+        with a single call (~200 tokens).
+        """
+        questions = await _suggest_questions(db, limit=7)
+        gaps = await get_annotation_gaps(db, limit=5)
+
+        def _stats() -> dict:
+            with db._lock:
+                conn = db.connect()
+                total = conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL "
+                    "AND kind IN ('function','method')"
+                ).fetchone()[0]
+                annotated = conn.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL "
+                    "AND kind IN ('function','method') AND summary_hash IS NOT NULL"
+                ).fetchone()[0]
+                return {"total": total, "annotated": annotated}
+
+        import asyncio as _asyncio
+        stats = await _asyncio.to_thread(_stats)
+        total = stats["total"]
+        annotated = stats["annotated"]
+        coverage = round(annotated / total, 2) if total else 1.0
+
+        missing_summary_qs = [q for q in questions if q.get("type") == "MISSING_SUMMARY"]
+        structural_qs = [q for q in questions if q.get("type") != "MISSING_SUMMARY"]
+
+        tasks: list[dict] = []
+        if gaps:
+            priority = WorkPlanPriority.DOCUMENT
+            reason = (
+                f"Summary coverage {int(coverage * 100)}% — "
+                f"{len(gaps)} high-traffic function(s) re-read every session without stored understanding."  # noqa: E501
+            )
+            for g in gaps:
+                tasks.append({
+                    "action": "store_understanding",
+                    "node_id": g["node_id"],
+                    "name": g["name"],
+                    "path": g["path"],
+                    "reason": f"{g['visit_count']} total reads, no agent summary",
+                })
+        elif missing_summary_qs:
+            priority = WorkPlanPriority.DOCUMENT
+            reason = (
+                f"Summary coverage {int(coverage * 100)}% — "
+                f"{len(missing_summary_qs)} hot function(s) with only auto-summary."
+            )
+            for q in missing_summary_qs[:5]:
+                tasks.append({
+                    "action": "store_understanding",
+                    "node_id": q.get("node_id"),
+                    "name": q.get("name"),
+                    "path": q.get("path"),
+                    "reason": q.get("reason", "high in-degree, no agent summary"),
+                })
+        elif structural_qs:
+            priority = WorkPlanPriority.INVESTIGATE
+            reason = f"{len(structural_qs)} structural issue(s) worth investigating."
+            for q in structural_qs[:5]:
+                tasks.append({
+                    "action": "investigate",
+                    "type": q.get("type"),
+                    "node_id": q.get("node_id"),
+                    "name": q.get("name"),
+                    "reason": q.get("reason"),
+                })
+        elif coverage < 1.0:
+            priority = WorkPlanPriority.EXPLORE
+            reason = (
+                f"Graph healthy — {int(coverage * 100)}% annotated. "
+                "Use suggest_questions for exploration targets."
+            )
+        else:
+            priority = WorkPlanPriority.NOTHING
+            reason = "Graph fully annotated and structurally sound."
+
+        return _ok({
+            "priority": priority,
+            "reason": reason,
+            "summary_coverage": coverage,
+            "tasks": tasks,
+            "session_id": _session.get("id"),
+        })
 
     @mcp.tool()
     async def get_status() -> dict:

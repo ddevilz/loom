@@ -76,6 +76,9 @@ def init_schema(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "nodes", "deleted_at", "INTEGER")
     _add_column_if_missing(conn, "nodes", "file_mtime", "REAL")
     _add_column_if_missing(conn, "nodes", "token_count", "INTEGER")
+    # Multi-agent authorship — added in 0.5.0
+    _add_column_if_missing(conn, "nodes", "summary_author", "TEXT")
+    _add_column_if_missing(conn, "nodes", "summary_session", "TEXT")
     # Index on deleted_at must be created after the column migration
     conn.execute("CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at)")
     # node_visits table — added in 0.4.3
