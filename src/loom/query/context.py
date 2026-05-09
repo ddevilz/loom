@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sqlite3
+import subprocess
 import time
 from typing import Any
 
@@ -52,6 +54,51 @@ _CALLEE_LIMIT = 10
 _MEMBER_LIMIT = 20
 
 
+def _git_diff_hint(path: str, start_line: int | None, end_line: int | None) -> str | None:
+    """Summarise what changed in a node's line range since the last commit."""
+    if start_line is None or end_line is None:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "diff", "HEAD", "--", path],
+            capture_output=True, text=True, timeout=3,
+        )
+        diff = result.stdout
+        if not diff:
+            return None
+        added = deleted = 0
+        in_range = False
+        hunk_re = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+        new_line = 0
+        for line in diff.splitlines():
+            m = hunk_re.match(line)
+            if m:
+                new_line = int(m.group(2))
+                in_range = new_line <= end_line
+                continue
+            if line.startswith(("+++", "---", "@@")):
+                continue
+            if in_range and start_line <= new_line <= end_line:
+                if line.startswith("+"):
+                    added += 1
+                elif line.startswith("-"):
+                    deleted += 1
+            if not line.startswith("-"):
+                new_line += 1
+            if new_line > end_line:
+                break
+        if added == 0 and deleted == 0:
+            return None
+        parts = []
+        if added:
+            parts.append(f"+{added} line{'s' if added != 1 else ''}")
+        if deleted:
+            parts.append(f"-{deleted} line{'s' if deleted != 1 else ''}")
+        return ", ".join(parts)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _build_packet(
     node_row: sqlite3.Row,
     callers: list[sqlite3.Row],
@@ -62,13 +109,14 @@ def _build_packet(
     node = row_to_node(node_row)
     metadata = json.loads(node_row["metadata"]) if node_row["metadata"] else {}
 
-    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM118
+    _keys = node_row.keys()
+    summary_hash = node_row["summary_hash"] if "summary_hash" in _keys else None  # noqa: SIM118
     content_hash = node_row["content_hash"]
     stale = bool(summary_hash and content_hash and summary_hash != content_hash)
+    summary_author: str | None = node_row["summary_author"] if "summary_author" in _keys else None  # noqa: SIM118
 
     auto_summary = extract_summary(node)
 
-    _keys = node_row.keys()
     _updated_at: int | None = node_row["updated_at"] if "updated_at" in _keys else None
     last_analyzed_ago = _humanize_ago(_updated_at)
     suggestion = _compute_suggestion(
@@ -78,6 +126,7 @@ def _build_packet(
         edge_coverage=metadata.get("edge_coverage", "unknown"),
         updated_at=_updated_at,
     )
+    diff_hint = _git_diff_hint(node.path, node.start_line, node.end_line) if stale else None
 
     return {
         "id": node.id,
@@ -89,6 +138,8 @@ def _build_packet(
         "summary": node.summary,
         "summary_source": SummarySource.AGENT if summary_hash else SummarySource.AUTO,
         "summary_stale": stale,
+        "summary_author": summary_author,
+        "diff_hint": diff_hint,
         "auto_summary": auto_summary if (not node.summary or stale) else None,
         "callers": [
             {"id": r["id"], "name": r["name"], "path": r["path"], "line": r["start_line"]}
@@ -114,10 +165,11 @@ def _build_members_packet(
     members_total: int,
 ) -> dict[str, Any]:
     node = row_to_node(node_row)
-    summary_hash = node_row["summary_hash"] if "summary_hash" in node_row.keys() else None  # noqa: SIM118
+    _keys = node_row.keys()
+    summary_hash = node_row["summary_hash"] if "summary_hash" in _keys else None  # noqa: SIM118
+    summary_author: str | None = node_row["summary_author"] if "summary_author" in _keys else None  # noqa: SIM118
     auto_summary = extract_summary(node)
 
-    _keys = node_row.keys()
     _updated_at: int | None = node_row["updated_at"] if "updated_at" in _keys else None
     last_analyzed_ago = _humanize_ago(_updated_at)
     suggestion = _compute_suggestion(
@@ -138,6 +190,8 @@ def _build_members_packet(
         "summary": node.summary,
         "summary_source": SummarySource.AGENT if summary_hash else SummarySource.AUTO,
         "summary_stale": False,
+        "summary_author": summary_author,
+        "diff_hint": None,
         "auto_summary": auto_summary if not node.summary else None,
         "members": [
             {"id": r["id"], "name": r["name"], "path": r["path"], "kind": r["kind"]}

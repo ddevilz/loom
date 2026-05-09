@@ -100,7 +100,13 @@ _UpdateResult = dict  # {"updated": bool, "skipped": bool, "found": bool}
 
 
 async def update_summary(
-    db: DB, node_id: str, summary: str, *, force: bool = False
+    db: DB,
+    node_id: str,
+    summary: str,
+    *,
+    force: bool = False,
+    author: str | None = None,
+    session_id: str | None = None,
 ) -> _UpdateResult:
     """Write agent summary for a node.
 
@@ -112,6 +118,8 @@ async def update_summary(
         node_id: Exact node id.
         summary: One-sentence description of what the function does and why.
         force: Overwrite even if summary is fresh.
+        author: Agent identifier that wrote this summary (e.g. 'claude-code').
+        session_id: Session UUID from start_session, for authorship tracking.
 
     Returns:
         Dict with keys: found (bool), updated (bool), skipped (bool).
@@ -135,9 +143,11 @@ async def update_summary(
                 """UPDATE nodes
                       SET summary = ?,
                           summary_hash = content_hash,
-                          updated_at = ?
+                          updated_at = ?,
+                          summary_author = ?,
+                          summary_session = ?
                     WHERE id = ?""",
-                (summary.strip(), int(time.time()), node_id),
+                (summary.strip(), int(time.time()), author, session_id, node_id),
             )
             conn.commit()
             return {"found": True, "updated": True, "skipped": False}
