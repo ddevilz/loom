@@ -13,6 +13,7 @@ from loom.store import nodes as node_store
 
 # ── _humanize_ago ────────────────────────────────────────────────────────────
 
+
 def test_humanize_ago_just_now() -> None:
     assert _humanize_ago(int(time.time()) - 10) == "just now"
 
@@ -34,6 +35,7 @@ def test_humanize_ago_none_when_no_ts() -> None:
 
 
 # ── _compute_suggestion ──────────────────────────────────────────────────────
+
 
 def test_suggestion_stale_wins_over_all() -> None:
     """summary_stale is highest priority."""

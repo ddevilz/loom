@@ -17,6 +17,7 @@ _CLAUDE_SKILL_PATH = Path.home() / ".claude" / "skills" / "loom.md"
 _CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 _SKILL_SRC = Path(__file__).parent.parent / "data" / "loom-skill.md"
 
+
 # SessionStart hook: re-index changed files in background on every Claude Code session.
 # Only fires if we're in a git repo and uvx is available. Non-blocking (&).
 def _session_hook_cmd() -> str:

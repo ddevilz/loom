@@ -9,7 +9,12 @@ from loom.core.context import DB
 _LEGACY_SUFFIXES = ("_old", "_legacy", "_deprecated", "_v1", "_v2_old", "_bak", "_backup")
 # Keywords in summary/docstring that signal deprecation
 _DEPRECATION_KEYWORDS = (
-    "deprecated", "use instead", "replaced by", "use ", "do not use", "obsolete"
+    "deprecated",
+    "use instead",
+    "replaced by",
+    "use ",
+    "do not use",
+    "obsolete",
 )
 
 
@@ -89,8 +94,12 @@ async def mark_dead_code(db: DB) -> int:
 
                     metadata["dead_reason"] = dead_reason
                     metadata["replacement_candidates"] = [
-                        {"id": c["id"], "name": c["name"], "path": c["path"],
-                         "caller_count": c["caller_count"]}
+                        {
+                            "id": c["id"],
+                            "name": c["name"],
+                            "path": c["path"],
+                            "caller_count": c["caller_count"],
+                        }
                         for c in candidates
                     ]
 

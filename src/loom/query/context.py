@@ -61,7 +61,9 @@ def _git_diff_hint(path: str, start_line: int | None, end_line: int | None) -> s
     try:
         result = subprocess.run(
             ["git", "diff", "HEAD", "--", path],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
         )
         diff = result.stdout
         if not diff:

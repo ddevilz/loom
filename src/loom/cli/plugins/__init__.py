@@ -56,9 +56,7 @@ class Plugin:
     name: str
     config_path: Path
     config_key: str = "mcpServers"
-    server_entry: dict = field(
-        default_factory=_default_server_entry
-    )
+    server_entry: dict = field(default_factory=_default_server_entry)
 
 
 _registry: list[Plugin] = []

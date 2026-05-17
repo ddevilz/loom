@@ -27,6 +27,8 @@ allowed-tools:
   - mcp__loom__get_delta
   - mcp__loom__get_surprising_connections
   - mcp__loom__suggest_questions
+  - mcp__loom__get_status
+  - mcp__loom__get_work_plan
   - Read
   - Glob
 ---
@@ -43,9 +45,12 @@ accumulate. Zero LLM cost — all data from tree-sitter + your own stored summar
 ### Step 1 — Register session
 
 ```
-start_session(agent_id="claude-code")   → { session_id, agent_id, started_at }
+start_session(agent_id="claude-code")   → { session_id, agent_id, started_at, unannotated_reads, annotation_gaps }
 ```
 Save `session_id` — pass to `get_delta()` at start of **next** session.
+
+`unannotated_reads` lists nodes you visited last session but never annotated — prioritize `store_understanding` on these.
+`annotation_gaps` lists high-value nodes with no summary — good targets for documentation.
 
 ### Step 2 — Check delta (if you have a prior session_id)
 
@@ -292,3 +297,5 @@ Resolved in order:
 | `get_surprising_connections()` | Hidden coupling with caller/callee summaries | ~200-500 tok |
 | `get_community_cohesion()` | Cluster quality scores for refactoring | ~100-200 tok |
 | `get_savings()` | Token savings report from cache hits | ~50 tok |
+| `get_status()` | Node count + DB health check | ~20 tok |
+| `get_work_plan()` | Prioritized task list: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING | ~100 tok |

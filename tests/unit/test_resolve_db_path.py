@@ -32,10 +32,12 @@ def test_non_git_migration_copies_legacy_db(tmp_path: Path) -> None:
     project_dir.mkdir()
     expected_db = projects_dir / "myproject.db"
 
-    with patch("loom.core.context.subprocess.run") as mock_run, \
-         patch("loom.core.context._PROJECTS_DIR", projects_dir), \
-         patch("loom.core.context.DEFAULT_DB_PATH", legacy), \
-         patch("loom.core.context.Path.cwd", return_value=project_dir):
+    with (
+        patch("loom.core.context.subprocess.run") as mock_run,
+        patch("loom.core.context._PROJECTS_DIR", projects_dir),
+        patch("loom.core.context.DEFAULT_DB_PATH", legacy),
+        patch("loom.core.context.Path.cwd", return_value=project_dir),
+    ):
         mock_run.return_value.returncode = 1
 
         result = resolve_db_path()
@@ -58,10 +60,12 @@ def test_non_git_no_migration_if_marker_exists(tmp_path: Path) -> None:
     project_dir.mkdir()
     expected_db = projects_dir / "myproject.db"
 
-    with patch("loom.core.context.subprocess.run") as mock_run, \
-         patch("loom.core.context._PROJECTS_DIR", projects_dir), \
-         patch("loom.core.context.DEFAULT_DB_PATH", legacy), \
-         patch("loom.core.context.Path.cwd", return_value=project_dir):
+    with (
+        patch("loom.core.context.subprocess.run") as mock_run,
+        patch("loom.core.context._PROJECTS_DIR", projects_dir),
+        patch("loom.core.context.DEFAULT_DB_PATH", legacy),
+        patch("loom.core.context.Path.cwd", return_value=project_dir),
+    ):
         mock_run.return_value.returncode = 1
 
         result = resolve_db_path()

@@ -14,7 +14,7 @@ trigger: >
 > **Setup:** If Loom tools are not available, add Loom MCP server manually in
 > VS Code Settings → MCP Servers, or create `.vscode/mcp.json` in the workspace:
 > ```json
-> {"servers": {"loom": {"type": "stdio", "command": "loom", "args": ["serve"]}}}
+> {"servers": {"loom": {"type": "stdio", "command": "uvx", "args": ["--from", "loom-tool", "loom-mcp"]}}}
 > ```
 > Reload the VS Code window after (`Developer: Reload Window`).
 
@@ -74,6 +74,7 @@ store_understanding_batch([{"node_id": "...", "summary": "..."}, ...])
 suggest_questions()           # dead code, bridge nodes, missing summaries
 get_surprising_connections()  # cross-module hidden coupling
 get_community_cohesion()      # cluster cohesion — low (<0.2) = refactor
+get_work_plan()               # prioritized next actions: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING
 ```
 
 ## Node ID format

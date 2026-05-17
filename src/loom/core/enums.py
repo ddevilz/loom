@@ -17,7 +17,7 @@ class SummarySource(StrEnum):
 
 
 class QuestionType(StrEnum):
-    DEAD_CODE       = "DEAD_CODE"
-    BRIDGE_NODE     = "BRIDGE_NODE"
+    DEAD_CODE = "DEAD_CODE"
+    BRIDGE_NODE = "BRIDGE_NODE"
     MISSING_SUMMARY = "MISSING_SUMMARY"
-    LOW_COHESION    = "LOW_COHESION"
+    LOW_COHESION = "LOW_COHESION"

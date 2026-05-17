@@ -51,10 +51,26 @@ Anyone can install directly from GitHub:
 
 Installs the MCP server (`uvx --from loom-tool loom-mcp`) and the `/loom` skill automatically.
 
+**Prerequisite:** [uv](https://astral.sh/uv) must be installed before the plugin can start the MCP server.
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+winget install astral-sh.uv
+```
+
+**Recommended setup order:**
+1. Install uv (above)
+2. `/plugin marketplace add ddevilz/loom && /plugin install loom@loom-tool`
+3. `loom install` — writes absolute `uvx` path into your MCP config (solves PATH issues on macOS/Linux)
+4. Restart Claude Code — tools appear
+
 ## Quick start
 
 ```bash
-cd my-repo
+cd loom
 loom analyze .      # index the repo (~10s for 500 files)
 loom install        # configure Claude Code, Cursor, Windsurf, Codex + git hook
 loom serve          # start MCP stdio server

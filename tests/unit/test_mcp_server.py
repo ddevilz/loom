@@ -69,18 +69,21 @@ async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
 
 def test_ok_wraps_data() -> None:
     from loom.mcp.server import _ok
+
     result = _ok({"foo": "bar"})
     assert result == {"ok": True, "data": {"foo": "bar"}}
 
 
 def test_ok_wraps_none() -> None:
     from loom.mcp.server import _ok
+
     result = _ok(None)
     assert result == {"ok": True, "data": None}
 
 
 def test_ok_wraps_list() -> None:
     from loom.mcp.server import _ok
+
     result = _ok([1, 2, 3])
     assert result == {"ok": True, "data": [1, 2, 3]}
 
@@ -88,6 +91,7 @@ def test_ok_wraps_list() -> None:
 def test_err_shape_with_suggestion() -> None:
     from loom.mcp.enums import ErrorCode
     from loom.mcp.server import _err
+
     result = _err(ErrorCode.NODE_NOT_FOUND, "Not found.", "Try search_code.")
     assert result["ok"] is False
     assert result["error_code"] == "NODE_NOT_FOUND"
@@ -98,6 +102,7 @@ def test_err_shape_with_suggestion() -> None:
 def test_err_shape_without_suggestion() -> None:
     from loom.mcp.enums import ErrorCode
     from loom.mcp.server import _err
+
     result = _err(ErrorCode.MISSING_ARGS, "Provide args.")
     assert result["ok"] is False
     assert "suggestion" not in result
