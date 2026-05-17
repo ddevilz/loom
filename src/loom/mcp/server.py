@@ -73,7 +73,7 @@ def build_server(
     *,
     db: DB | None = None,
 ) -> FastMCP:
-    """Build and return the FastMCP server with all 20 tools registered."""
+    """Build and return the FastMCP server with all 21 tools registered."""
     if FastMCP is None:
         raise RuntimeError("fastmcp not installed — run: uv add fastmcp")
     mcp = FastMCP("loom")
@@ -114,8 +114,13 @@ def build_server(
         return "/test" in p or p.startswith("test")
 
     def _compute_confidence(
-        query: str, node_name: str, node_path: str, score: float, max_score: float,
-        has_agent_summary: bool, caller_count: int,
+        query: str,
+        node_name: str,
+        node_path: str,
+        score: float,
+        max_score: float,
+        has_agent_summary: bool,
+        caller_count: int,
     ) -> tuple[Confidence, list[ConfidenceSignal]]:
         signals: list[ConfidenceSignal] = []
         composite = 0.0
@@ -198,7 +203,9 @@ def build_server(
                     )
 
             confidence, signals = _compute_confidence(
-                q, node.name, node.path,
+                q,
+                node.name,
+                node.path,
                 score=r.score,  # type: ignore[attr-defined]
                 max_score=max_score,
                 has_agent_summary=bool(node.summary_hash),
@@ -234,9 +241,7 @@ def build_server(
         for r in dead:
             seen_ids.add(r.node.id)
             entry = await _build_entry(r)
-            candidates = await find_replacement_candidates(
-                db, node_id=r.node.id, path=r.node.path
-            )
+            candidates = await find_replacement_candidates(db, node_id=r.node.id, path=r.node.path)
             if candidates:
                 entry["replacement_candidates"] = [
                     {"id": c.id, "name": c.name, "path": c.path, "caller_count": c.caller_count}
@@ -247,14 +252,16 @@ def build_server(
                 if top.id not in seen_ids:
                     seen_ids.add(top.id)
                     # Build a lightweight suggested entry without a full SearchResult
-                    output.append({
-                        "id": top.id,
-                        "name": top.name,
-                        "path": top.path,
-                        "caller_count": top.caller_count,
-                        "suggested_instead": True,
-                        "suggested_for": r.node.id,
-                    })
+                    output.append(
+                        {
+                            "id": top.id,
+                            "name": top.name,
+                            "path": top.path,
+                            "caller_count": top.caller_count,
+                            "suggested_instead": True,
+                            "suggested_for": r.node.id,
+                        }
+                    )
             output.append(entry)
 
         return _ok(output)
@@ -264,16 +271,20 @@ def build_server(
         """Return a single node by id."""
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         n = await node_store.get_node(db, nid)
-        return _ok(None if n is None else {
-            "id": n.id,
-            "name": n.name,
-            "path": n.path,
-            "kind": n.kind.value,
-            "language": n.language,
-            "summary": n.summary,
-            "start_line": n.start_line,
-            "end_line": n.end_line,
-        })
+        return _ok(
+            None
+            if n is None
+            else {
+                "id": n.id,
+                "name": n.name,
+                "path": n.path,
+                "kind": n.kind.value,
+                "language": n.language,
+                "summary": n.summary,
+                "start_line": n.start_line,
+                "end_line": n.end_line,
+            }
+        )
 
     @mcp.tool()
     async def get_callers(node_id: str) -> dict:
@@ -286,9 +297,9 @@ def build_server(
         nodes = await traversal.neighbors(
             db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="in"
         )
-        result = _ok([
-            {"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes
-        ])
+        result = _ok(
+            [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
+        )
         _memo_set(key, result)
         return result
 
@@ -303,9 +314,9 @@ def build_server(
         nodes = await traversal.neighbors(
             db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="out"
         )
-        result = _ok([
-            {"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes
-        ])
+        result = _ok(
+            [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
+        )
         _memo_set(key, result)
         return result
 
@@ -337,10 +348,18 @@ def build_server(
         if (hit := _memo_get(key)) is not None:
             return hit
         nodes = await traversal.neighbors(db, nid, depth=d)
-        result = _ok([
-            {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value, "summary": n.summary}
-            for n in nodes
-        ])
+        result = _ok(
+            [
+                {
+                    "id": n.id,
+                    "name": n.name,
+                    "path": n.path,
+                    "kind": n.kind.value,
+                    "summary": n.summary,
+                }
+                for n in nodes
+            ]
+        )
         _memo_set(key, result)
         return result
 
@@ -349,10 +368,18 @@ def build_server(
         """Return all member nodes of a community cluster."""
         cid = _req_text(community_id, field="community_id", max_length=_MAX_ID)
         nodes = await traversal.community_members(db, cid)
-        return _ok([
-            {"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value, "summary": n.summary}
-            for n in nodes
-        ])
+        return _ok(
+            [
+                {
+                    "id": n.id,
+                    "name": n.name,
+                    "path": n.path,
+                    "kind": n.kind.value,
+                    "summary": n.summary,
+                }
+                for n in nodes
+            ]
+        )
 
     @mcp.tool()
     async def shortest_path(from_id: str, to_id: str) -> dict:
@@ -361,7 +388,8 @@ def build_server(
         tid = _req_text(to_id, field="to_id", max_length=_MAX_ID)
         path = await traversal.shortest_path(db, fid, tid)
         return _ok(
-            None if path is None
+            None
+            if path is None
             else [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in path]
         )
 
@@ -374,10 +402,12 @@ def build_server(
     async def god_nodes(limit: int = 20) -> dict:
         """Highest in-degree on CALLS subgraph (most-called functions)."""
         pairs = await traversal.god_nodes(db, _clamp_limit(limit))
-        return _ok([
-            {"id": n.id, "name": n.name, "path": n.path, "in_degree": deg, "summary": n.summary}
-            for n, deg in pairs
-        ])
+        return _ok(
+            [
+                {"id": n.id, "name": n.name, "path": n.path, "in_degree": deg, "summary": n.summary}
+                for n, deg in pairs
+            ]
+        )
 
     @mcp.tool()
     async def store_understanding_batch(updates: list[dict]) -> dict:
@@ -390,13 +420,18 @@ def build_server(
             s = str(item.get("summary", "")).strip()
             force = bool(item.get("force", False))
             if not nid or not s:
-                errors.append({
-                    "node_id": nid or "(blank)",
-                    "error_code": ErrorCode.VALIDATION_ERROR,
-                })
+                errors.append(
+                    {
+                        "node_id": nid or "(blank)",
+                        "error_code": ErrorCode.VALIDATION_ERROR,
+                    }
+                )
                 continue
             r = await node_store.update_summary(
-                db, nid, s, force=force,
+                db,
+                nid,
+                s,
+                force=force,
                 author=_session.get("agent_id"),
                 session_id=_session.get("id"),
             )
@@ -422,7 +457,10 @@ def build_server(
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         s = _req_text(summary, field="summary", max_length=4000)
         result = await node_store.update_summary(
-            db, nid, s, force=force,
+            db,
+            nid,
+            s,
+            force=force,
             author=_session.get("agent_id"),
             session_id=_session.get("id"),
         )
@@ -445,11 +483,13 @@ def build_server(
         """
         stats = await get_savings_stats(db)
         recent = await get_recent_savings(db, limit=10)
-        return _ok({
-            **stats,
-            "recent": recent,
-            "note": "tokens_saved estimated from source line counts (15 tokens/line avg)",
-        })
+        return _ok(
+            {
+                **stats,
+                "recent": recent,
+                "note": "tokens_saved estimated from source line counts (15 tokens/line avg)",
+            }
+        )
 
     @mcp.tool()
     async def get_context(node_id: str) -> dict:
@@ -628,6 +668,7 @@ def build_server(
                 return {"total": total, "annotated": annotated}
 
         import asyncio as _asyncio
+
         stats = await _asyncio.to_thread(_stats)
         total = stats["total"]
         annotated = stats["annotated"]
@@ -644,13 +685,15 @@ def build_server(
                 f"{len(gaps)} high-traffic function(s) re-read every session without stored understanding."  # noqa: E501
             )
             for g in gaps:
-                tasks.append({
-                    "action": "store_understanding",
-                    "node_id": g["node_id"],
-                    "name": g["name"],
-                    "path": g["path"],
-                    "reason": f"{g['visit_count']} total reads, no agent summary",
-                })
+                tasks.append(
+                    {
+                        "action": "store_understanding",
+                        "node_id": g["node_id"],
+                        "name": g["name"],
+                        "path": g["path"],
+                        "reason": f"{g['visit_count']} total reads, no agent summary",
+                    }
+                )
         elif missing_summary_qs:
             priority = WorkPlanPriority.DOCUMENT
             reason = (
@@ -658,24 +701,28 @@ def build_server(
                 f"{len(missing_summary_qs)} hot function(s) with only auto-summary."
             )
             for q in missing_summary_qs[:5]:
-                tasks.append({
-                    "action": "store_understanding",
-                    "node_id": q.get("node_id"),
-                    "name": q.get("name"),
-                    "path": q.get("path"),
-                    "reason": q.get("reason", "high in-degree, no agent summary"),
-                })
+                tasks.append(
+                    {
+                        "action": "store_understanding",
+                        "node_id": q.get("node_id"),
+                        "name": q.get("name"),
+                        "path": q.get("path"),
+                        "reason": q.get("reason", "high in-degree, no agent summary"),
+                    }
+                )
         elif structural_qs:
             priority = WorkPlanPriority.INVESTIGATE
             reason = f"{len(structural_qs)} structural issue(s) worth investigating."
             for q in structural_qs[:5]:
-                tasks.append({
-                    "action": "investigate",
-                    "type": q.get("type"),
-                    "node_id": q.get("node_id"),
-                    "name": q.get("name"),
-                    "reason": q.get("reason"),
-                })
+                tasks.append(
+                    {
+                        "action": "investigate",
+                        "type": q.get("type"),
+                        "node_id": q.get("node_id"),
+                        "name": q.get("name"),
+                        "reason": q.get("reason"),
+                    }
+                )
         elif coverage < 1.0:
             priority = WorkPlanPriority.EXPLORE
             reason = (
@@ -686,13 +733,15 @@ def build_server(
             priority = WorkPlanPriority.NOTHING
             reason = "Graph fully annotated and structurally sound."
 
-        return _ok({
-            "priority": priority,
-            "reason": reason,
-            "summary_coverage": coverage,
-            "tasks": tasks,
-            "session_id": _session.get("id"),
-        })
+        return _ok(
+            {
+                "priority": priority,
+                "reason": reason,
+                "summary_coverage": coverage,
+                "tasks": tasks,
+                "session_id": _session.get("id"),
+            }
+        )
 
     @mcp.tool()
     async def get_status() -> dict:
@@ -717,6 +766,7 @@ def build_server(
             return {"node_count": node_count, "last_ts": last_ts}
 
         import asyncio as _asyncio
+
         stats = await _asyncio.to_thread(_query)
         progress = _run_mod._index_progress
 

@@ -23,9 +23,7 @@ async def log_visit(db: DB, *, session_id: str, node_id: str, tool: str) -> None
     await asyncio.to_thread(_run)
 
 
-async def get_unannotated_reads(
-    db: DB, session_id: str
-) -> list[dict[str, Any]]:
+async def get_unannotated_reads(db: DB, session_id: str) -> list[dict[str, Any]]:
     """Nodes read in session_id that have no AGENT summary or a stale one.
 
     A summary is stale when summary_hash != content_hash (code changed since written).

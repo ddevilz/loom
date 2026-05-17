@@ -19,6 +19,8 @@ tools:
   - mcp__loom__get_community_cohesion
   - mcp__loom__start_session
   - mcp__loom__get_delta
+  - mcp__loom__get_status
+  - mcp__loom__get_work_plan
   - Read
   - Glob
 ---

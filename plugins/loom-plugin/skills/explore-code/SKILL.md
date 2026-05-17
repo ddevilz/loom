@@ -19,6 +19,7 @@ allowed-tools:
   - mcp__loom__start_session
   - mcp__loom__get_delta
   - mcp__loom__store_understanding
+  - mcp__loom__get_work_plan
   - Read
   - Glob
 ---
@@ -38,6 +39,8 @@ If you have a previous `session_id`, call `get_delta(previous_session_id=<id>)` 
 ### 2. Orient to the codebase
 
 Call `graph_stats()` — understand the repo shape (how many functions, files, classes, communities).
+
+Call `get_work_plan()` — get a prioritized action list (`DOCUMENT` / `INVESTIGATE` / `EXPLORE` / `NOTHING`) based on annotation coverage and graph topology.
 
 Call `suggest_questions(limit=5)` — get the graph topology's suggested investigation priorities.
 

@@ -19,7 +19,7 @@ echo "=== Loom Plugin Smoke Test ==="
 echo "Plugin dir: $PLUGIN_DIR"
 echo ""
 
-# 1. plugin.json declares version 0.3.6 with required keywords
+# 1. plugin.json declares version 0.5.0 with required keywords
 echo "[1] plugin.json version + keywords"
 MANIFEST="$PLUGIN_DIR/.claude-plugin/plugin.json"
 if [ ! -f "$MANIFEST" ]; then
@@ -27,7 +27,7 @@ if [ ! -f "$MANIFEST" ]; then
 else
   VERSION=$(python3 -c "import json; d=json.load(open('$MANIFEST')); print(d.get('version',''))" 2>/dev/null)
   KEYWORDS=$(python3 -c "import json; d=json.load(open('$MANIFEST')); print(' '.join(d.get('keywords',[])))" 2>/dev/null)
-  if [[ "$VERSION" == "0.3.6" ]]; then pass "version is 0.3.6"; else fail "version is '$VERSION', expected 0.3.6"; fi
+  if [[ "$VERSION" == "0.5.0" ]]; then pass "version is 0.5.0"; else fail "version is '$VERSION', expected 0.5.0"; fi
   if echo "$KEYWORDS" | grep -q "loom"; then pass "keyword 'loom' present"; else fail "keyword 'loom' missing"; fi
 fi
 

@@ -80,6 +80,7 @@ Chunk the node list (20–25 per worker), spawn all workers in one message.
 suggest_questions()           # dead code, bridge nodes, missing summaries
 get_surprising_connections()  # cross-module hidden coupling
 get_community_cohesion()      # cluster cohesion — low (<0.2) = refactor
+get_work_plan()               # prioritized next actions: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING
 ```
 
 ## Node ID format

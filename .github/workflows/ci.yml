@@ -61,3 +61,23 @@ jobs:
           uv run python -c "from loom.core.context import resolve_db_path; print('resolve_db_path ok')"
           uv run python -c "from loom.cli.plugins import get_plugins; ps=get_plugins(); print(f'plugins ok: {len(ps)} registered')"
         shell: bash
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Smoke test — MCP startup
+        run: uv run pytest tests/e2e/test_startup.py -v
+
+      - name: E2E — MCP protocol suite
+        run: uv run pytest tests/e2e/test_mcp_e2e.py -v

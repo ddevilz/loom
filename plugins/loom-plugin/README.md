@@ -4,7 +4,17 @@ Persistent symbol index for AI coding agents. Tree-sitter indexes your repo into
 
 ## Install
 
-No pip install required. The MCP server installs on demand via `uvx`:
+**Prerequisite:** [uv](https://astral.sh/uv) must be installed first.
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+winget install astral-sh.uv
+```
+
+The MCP server installs on demand via `uvx` (no pip install required):
 
 ```json
 {
@@ -42,12 +52,13 @@ Both `loom analyze` and `loom-mcp` use the same resolution logic via `resolve_db
 
 If the resolved DB is empty, `loom-mcp` auto-indexes the current directory in the background before serving. You don't need to run `loom analyze` manually on first use.
 
-## MCP Tools (19)
+## MCP Tools (21)
 
 | Tool | Purpose |
 |------|---------|
 | `search_code(query)` | FTS5 — returns summary + signature if cached |
 | `get_context(node_id)` | Full context: summary, signature, callers, callees, staleness |
+| `get_node(node_id)` | Lightweight existence check + basic metadata |
 | `get_blast_radius(node_id, depth)` | Transitive callers — what breaks if this changes |
 | `get_callers(node_id)` | Direct callers (one-hop incoming CALLS) |
 | `get_callees(node_id)` | Direct callees (one-hop outgoing CALLS) |
@@ -59,11 +70,13 @@ If the resolved DB is empty, `loom-mcp` auto-indexes the current directory in th
 | `store_understanding(node_id, summary)` | Write agent-generated summary to SQLite |
 | `store_understanding_batch(updates)` | Batch summary writes (max 50) |
 | `get_savings()` | Token savings from cache hits |
-| `start_session(agent_id)` | Register session start, returns session_id |
+| `get_status()` | Node count + DB health check |
+| `start_session(agent_id)` | Register session, returns unannotated_reads + annotation_gaps |
 | `get_delta(previous_session_id)` | Changed nodes since last session |
 | `get_surprising_connections(limit)` | Non-obvious cross-module CALLS edges |
 | `suggest_questions(limit)` | Graph-topology investigation priorities |
 | `get_community_cohesion()` | Cohesion score per cluster (< 0.2 = refactor candidate) |
+| `get_work_plan()` | Prioritized next actions: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING |
 
 ## MCP Resources
 
@@ -105,7 +118,7 @@ If the resolved DB is empty, `loom-mcp` auto-indexes the current directory in th
 
 ```
 # Session start
-start_session(agent_id="claude-code")   # → session_id (save for next time)
+start_session(agent_id="claude-code")   # → session_id, unannotated_reads, annotation_gaps
 get_delta(previous_session_id=<id>)      # only what changed
 
 # Finding code

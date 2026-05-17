@@ -24,7 +24,7 @@ This ADR defines the plugin contract: what surfaces Loom exposes, what namespace
 **DB path:** auto-resolved: `LOOM_DB_PATH` env → `~/.loom/projects/{git-root-name}.db` (inside a git repo) → `~/.loom/loom.db` (global fallback)  
 **Auto-index:** if DB is empty, `loom-mcp` indexes the current directory in background before serving
 
-**Tools (19):**
+**Tools (21):**
 
 | Tool | Purpose |
 |------|---------|
@@ -42,11 +42,13 @@ This ADR defines the plugin contract: what surfaces Loom exposes, what namespace
 | `store_understanding(node_id, summary, force)` | Write agent summary to SQLite |
 | `store_understanding_batch(updates)` | Batch summary writes (max 50) |
 | `get_savings()` | Token savings report |
-| `start_session(agent_id)` | Register session start, get session_id |
+| `get_status()` | Node count + DB health check |
+| `start_session(agent_id)` | Register session, returns session_id + unannotated_reads + annotation_gaps |
 | `get_delta(previous_session_id, agent_id)` | Changed nodes since last session |
 | `get_surprising_connections(limit)` | Non-obvious cross-module CALLS edges |
 | `suggest_questions(limit)` | Graph-topology-based investigation priorities |
 | `get_community_cohesion()` | Cohesion scores per cluster |
+| `get_work_plan()` | Prioritized action list: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING |
 
 **Resources (2):**
 - `loom://primer` — 200-token compressed codebase overview (session start)
@@ -88,7 +90,7 @@ Does NOT claim:
 ### Smoke Test Contract
 
 `scripts/smoke.sh` verifies:
-1. `plugin.json` declares version 0.3.6 with required keywords
+1. `plugin.json` declares version 0.5.0 with required keywords
 2. `mcpServers.loom` entry uses `uvx --from loom-tool loom-mcp`
 3. All 3 agents present with valid YAML frontmatter
 4. All 4 skills present with `allowed-tools` explicitly defined

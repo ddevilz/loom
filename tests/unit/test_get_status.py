@@ -40,8 +40,10 @@ async def test_get_status_data_fields(tmp_path: Path) -> None:
 
     # Verify DB query works (empty DB)
     node_count_result = await asyncio.to_thread(
-        lambda: db.connect().execute(
-            "SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL"
-        ).fetchone()[0]
+        lambda: (
+            db.connect()
+            .execute("SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL")
+            .fetchone()[0]
+        )
     )
     assert node_count_result == 0  # empty DB
