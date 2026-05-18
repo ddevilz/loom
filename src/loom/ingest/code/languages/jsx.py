@@ -31,11 +31,11 @@ def _tag_name(opening: TSNode, src: bytes) -> tuple[str, bool]:
     """Return (tag_name, is_component). is_component=True for PascalCase or member exprs."""
     for child in opening.children:
         if child.type == "identifier":
-            name = src[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
+            name = src[child.start_byte : child.end_byte].decode("utf-8", errors="replace")
             return name, name[0].isupper()
         if child.type in ("member_expression", "nested_identifier"):
             # e.g. <Icons.Star>, <UI.Button>
-            raw = src[child.start_byte:child.end_byte].decode("utf-8", errors="replace")
+            raw = src[child.start_byte : child.end_byte].decode("utf-8", errors="replace")
             return raw, True
     return "", False
 
@@ -54,14 +54,14 @@ def _attr_values(opening: TSNode, src: bytes) -> dict[str, str]:
             elif c.type == "string":
                 for inner in c.children:
                     if inner.type == "string_fragment":
-                        val_text = src[inner.start_byte:inner.end_byte].decode(
+                        val_text = src[inner.start_byte : inner.end_byte].decode(
                             "utf-8", errors="replace"
                         )
                         break
             elif c.type == TS_JSX_EXPRESSION:
-                val_text = src[c.start_byte:c.end_byte].decode("utf-8", errors="replace")
+                val_text = src[c.start_byte : c.end_byte].decode("utf-8", errors="replace")
         if name_node is not None:
-            name = src[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="replace")
+            name = src[name_node.start_byte : name_node.end_byte].decode("utf-8", errors="replace")
             attrs[name] = val_text
     return attrs
 
@@ -145,19 +145,21 @@ def extract_jsx_nodes(
         }
         if props:
             meta[META_JSX_PROPS] = props[:20]
-        nodes.append(Node(
-            id=node_id,
-            kind=NodeKind.FUNCTION,
-            source=NodeSource.CODE,
-            name=f"<{comp_name}>",
-            path=path,
-            content_hash=content_hash_for_line_span(src, first_line, last_line),
-            language=language,
-            start_line=first_line,
-            end_line=last_line,
-            parent_id=file_node_id,
-            metadata=meta,
-        ))
+        nodes.append(
+            Node(
+                id=node_id,
+                kind=NodeKind.FUNCTION,
+                source=NodeSource.CODE,
+                name=f"<{comp_name}>",
+                path=path,
+                content_hash=content_hash_for_line_span(src, first_line, last_line),
+                language=language,
+                start_line=first_line,
+                end_line=last_line,
+                parent_id=file_node_id,
+                metadata=meta,
+            )
+        )
 
     # One node per unique id= value in this file
     # Prefix with jsx_id_ to avoid collision with TS/JS function nodes (e.g. function header()
@@ -172,18 +174,20 @@ def extract_jsx_nodes(
             el_meta[META_DATA_ATTRIBUTES] = data["data_attrs"]
         if data["aria_attrs"]:
             el_meta[META_ARIA_ATTRIBUTES] = data["aria_attrs"]
-        nodes.append(Node(
-            id=node_id,
-            kind=NodeKind.FUNCTION,
-            source=NodeSource.CODE,
-            name=element_id,
-            path=path,
-            content_hash=content_hash_for_line_span(src, line, line),
-            language=language,
-            start_line=line,
-            end_line=line,
-            parent_id=file_node_id,
-            metadata=el_meta,
-        ))
+        nodes.append(
+            Node(
+                id=node_id,
+                kind=NodeKind.FUNCTION,
+                source=NodeSource.CODE,
+                name=element_id,
+                path=path,
+                content_hash=content_hash_for_line_span(src, line, line),
+                language=language,
+                start_line=line,
+                end_line=line,
+                parent_id=file_node_id,
+                metadata=el_meta,
+            )
+        )
 
     return nodes

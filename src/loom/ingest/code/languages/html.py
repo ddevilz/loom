@@ -111,9 +111,9 @@ def _attr_map(start_tag: TSNode, src: bytes) -> dict[str, str]:
             elif c.type == TS_HTML_ATTRIBUTE_VALUE:
                 val_node = c
         if name_node is not None:
-            name = src[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="replace")
+            name = src[name_node.start_byte : name_node.end_byte].decode("utf-8", errors="replace")
             val = (
-                src[val_node.start_byte:val_node.end_byte].decode("utf-8", errors="replace")
+                src[val_node.start_byte : val_node.end_byte].decode("utf-8", errors="replace")
                 if val_node is not None
                 else ""
             )
@@ -124,7 +124,7 @@ def _attr_map(start_tag: TSNode, src: bytes) -> dict[str, str]:
 def _get_tag_name(start_tag: TSNode, src: bytes) -> str:
     for child in start_tag.children:
         if child.type == TS_HTML_TAG_NAME:
-            return src[child.start_byte:child.end_byte].decode("utf-8", errors="replace").lower()
+            return src[child.start_byte : child.end_byte].decode("utf-8", errors="replace").lower()
     return ""
 
 
@@ -207,7 +207,7 @@ def _walk(
             if tag == HTML_TAG_TITLE and META_TITLE not in meta:
                 for c in child.children:
                     if c.type == TS_HTML_TEXT:
-                        raw = src[c.start_byte:c.end_byte].decode("utf-8", errors="replace")
+                        raw = src[c.start_byte : c.end_byte].decode("utf-8", errors="replace")
                         cleaned = _TEMPLATE_STRIP_RE.sub("", raw).strip()
                         if cleaned:
                             meta[META_TITLE] = cleaned[:200]
@@ -228,9 +228,8 @@ def _walk(
 
             # ── Angular/Vue framework directives ─────────────────────
             for attr_name in attrs:
-                if (
-                    attr_name.startswith(HTML_ANGULAR_STRUCTURAL_PREFIX)
-                    or attr_name.startswith(HTML_VUE_DIRECTIVE_PREFIX)
+                if attr_name.startswith(HTML_ANGULAR_STRUCTURAL_PREFIX) or attr_name.startswith(
+                    HTML_VUE_DIRECTIVE_PREFIX
                 ):
                     meta.setdefault(META_FRAMEWORK_DIRECTIVES, []).append(attr_name)
 
@@ -244,22 +243,24 @@ def _walk(
                         seen_node_ids.add(ref_node_id)
                         sl = start_tag.start_point[0] + 1
                         el = child.end_point[0] + 1
-                        nodes.append(Node(
-                            id=ref_node_id,
-                            kind=NodeKind.FUNCTION,
-                            source=NodeSource.CODE,
-                            name=f"#{ref_name}",
-                            path=path,
-                            content_hash=content_hash_for_line_span(src, sl, el),
-                            language=LANG_HTML,
-                            start_line=sl,
-                            end_line=el,
-                            parent_id=file_node_id,
-                            metadata={
-                                META_HTML_ELEMENT_TYPE: tag,
-                                "angular_ref": True,
-                            },
-                        ))
+                        nodes.append(
+                            Node(
+                                id=ref_node_id,
+                                kind=NodeKind.FUNCTION,
+                                source=NodeSource.CODE,
+                                name=f"#{ref_name}",
+                                path=path,
+                                content_hash=content_hash_for_line_span(src, sl, el),
+                                language=LANG_HTML,
+                                start_line=sl,
+                                end_line=el,
+                                parent_id=file_node_id,
+                                metadata={
+                                    META_HTML_ELEMENT_TYPE: tag,
+                                    "angular_ref": True,
+                                },
+                            )
+                        )
 
             # ── Angular event bindings (click)="handler()" ──────────
             for attr_name, attr_val in attrs.items():
@@ -292,24 +293,26 @@ def _walk(
                         comp_meta["inputs"] = inputs
                     if outputs:
                         comp_meta["outputs"] = outputs
-                    nodes.append(Node(
-                        id=comp_node_id,
-                        kind=NodeKind.FUNCTION,
-                        source=NodeSource.CODE,
-                        name=tag,
-                        path=path,
-                        content_hash=content_hash_for_line_span(src, sl, el),
-                        language=LANG_HTML,
-                        start_line=sl,
-                        end_line=el,
-                        parent_id=file_node_id,
-                        metadata=comp_meta,
-                    ))
+                    nodes.append(
+                        Node(
+                            id=comp_node_id,
+                            kind=NodeKind.FUNCTION,
+                            source=NodeSource.CODE,
+                            name=tag,
+                            path=path,
+                            content_hash=content_hash_for_line_span(src, sl, el),
+                            language=LANG_HTML,
+                            start_line=sl,
+                            end_line=el,
+                            parent_id=file_node_id,
+                            metadata=comp_meta,
+                        )
+                    )
 
             # ── Text nodes: Jinja2 blocks + Angular @control-flow ────
             for c in child.children:
                 if c.type in (TS_HTML_TEXT, TS_HTML_RAW_TEXT):
-                    text = src[c.start_byte:c.end_byte].decode("utf-8", errors="replace")
+                    text = src[c.start_byte : c.end_byte].decode("utf-8", errors="replace")
                     # Jinja2 {% block name %}
                     for m in _BLOCK_RE.finditer(text):
                         block_name = m.group(1)
@@ -321,19 +324,21 @@ def _walk(
                             seen_node_ids.add(block_node_id)
                             sl = c.start_point[0] + 1
                             el = c.end_point[0] + 1
-                            nodes.append(Node(
-                                id=block_node_id,
-                                kind=NodeKind.FUNCTION,
-                                source=NodeSource.CODE,
-                                name=f"block:{block_name}",
-                                path=path,
-                                content_hash=content_hash_for_line_span(src, sl, el),
-                                language=LANG_HTML,
-                                start_line=sl,
-                                end_line=el,
-                                parent_id=file_node_id,
-                                metadata={META_HTML_ELEMENT_TYPE: "template_block"},
-                            ))
+                            nodes.append(
+                                Node(
+                                    id=block_node_id,
+                                    kind=NodeKind.FUNCTION,
+                                    source=NodeSource.CODE,
+                                    name=f"block:{block_name}",
+                                    path=path,
+                                    content_hash=content_hash_for_line_span(src, sl, el),
+                                    language=LANG_HTML,
+                                    start_line=sl,
+                                    end_line=el,
+                                    parent_id=file_node_id,
+                                    metadata={META_HTML_ELEMENT_TYPE: "template_block"},
+                                )
+                            )
                     # Angular v17+ @if / @for / @switch
                     for m in _NG_CONTROL_FLOW_RE.finditer(text):
                         cf_name = m.group(1)
@@ -355,7 +360,8 @@ def _walk(
                 if form_node_id in seen_node_ids:
                     logger.debug(
                         "html: duplicate form action %r in %s — extra form node skipped",
-                        action or "(unnamed)", path,
+                        action or "(unnamed)",
+                        path,
                     )
                 else:
                     seen_node_ids.add(form_node_id)
@@ -377,19 +383,21 @@ def _walk(
                     inputs = _collect_form_inputs(child, src)
                     if inputs:
                         form_meta[META_INPUT_NAMES] = inputs
-                    nodes.append(Node(
-                        id=form_node_id,
-                        kind=NodeKind.FUNCTION,
-                        source=NodeSource.CODE,
-                        name=f"form[{action}]" if action else f"form_{meta[META_FORM_COUNT]}",
-                        path=path,
-                        content_hash=content_hash_for_line_span(src, sl, el),
-                        language=LANG_HTML,
-                        start_line=sl,
-                        end_line=el,
-                        parent_id=file_node_id,
-                        metadata=form_meta,
-                    ))
+                    nodes.append(
+                        Node(
+                            id=form_node_id,
+                            kind=NodeKind.FUNCTION,
+                            source=NodeSource.CODE,
+                            name=f"form[{action}]" if action else f"form_{meta[META_FORM_COUNT]}",
+                            path=path,
+                            content_hash=content_hash_for_line_span(src, sl, el),
+                            language=LANG_HTML,
+                            start_line=sl,
+                            end_line=el,
+                            parent_id=file_node_id,
+                            metadata=form_meta,
+                        )
+                    )
 
             # ── Element with id ──────────────────────────────────────
             element_id = attrs.get(HTML_ATTR_ID)
@@ -415,19 +423,21 @@ def _walk(
                         el_meta[META_ARIA_ATTRIBUTES] = aria_attrs
                     if tag == HTML_TAG_TEMPLATE:
                         el_meta["web_component"] = True
-                    nodes.append(Node(
-                        id=node_id,
-                        kind=NodeKind.FUNCTION,
-                        source=NodeSource.CODE,
-                        name=element_id,
-                        path=path,
-                        content_hash=content_hash_for_line_span(src, sl, el),
-                        language=LANG_HTML,
-                        start_line=sl,
-                        end_line=el,
-                        parent_id=file_node_id,
-                        metadata=el_meta,
-                    ))
+                    nodes.append(
+                        Node(
+                            id=node_id,
+                            kind=NodeKind.FUNCTION,
+                            source=NodeSource.CODE,
+                            name=element_id,
+                            path=path,
+                            content_hash=content_hash_for_line_span(src, sl, el),
+                            language=LANG_HTML,
+                            start_line=sl,
+                            end_line=el,
+                            parent_id=file_node_id,
+                            metadata=el_meta,
+                        )
+                    )
 
             _walk(child, src, path, file_node_id, nodes, seen_node_ids, seen_element_ids, meta)
 
