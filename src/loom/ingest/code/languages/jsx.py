@@ -11,14 +11,13 @@ from loom.ingest.code.languages.constants import (
     HTML_ATTR_CLASS,
     HTML_ATTR_ID,
     HTML_DATA_PREFIX,
-    LANG_HTML,
     META_ARIA_ATTRIBUTES,
     META_DATA_ATTRIBUTES,
     META_HTML_ELEMENT_TYPE,
     META_JSX_PROPS,
+    META_JSX_USAGE,
     META_JSX_USE_COUNT,
     META_JSX_USE_LINES,
-    META_JSX_USAGE,
     TS_JSX_ATTRIBUTE,
     TS_JSX_EXPRESSION,
     TS_JSX_OPENING_ELEMENT,
@@ -91,8 +90,9 @@ def _walk(
                     components[tag] = {"lines": [], "props": set()}
                 components[tag]["lines"].append(line)
                 # Collect non-event, non-key input props (skip children=, key=, ref=)
+                _skip = ("key", "ref", "children")
                 for attr_name in attrs:
-                    if not attr_name.startswith("on") and attr_name not in ("key", "ref", "children"):
+                    if not attr_name.startswith("on") and attr_name not in _skip:
                         components[tag]["props"].add(attr_name)
 
             # id= on any element (including components that forward id)
@@ -112,7 +112,13 @@ def _walk(
         _walk(child, src, path, language, components, id_nodes)
 
 
-def extract_jsx_nodes(path: str, src: bytes, tree_root: TSNode, language: str, file_node_id: str | None = None) -> list[Node]:
+def extract_jsx_nodes(
+    path: str,
+    src: bytes,
+    tree_root: TSNode,
+    language: str,
+    file_node_id: str | None = None,
+) -> list[Node]:
     """Walk a TSX/JSX AST and return extra nodes for custom components and id= elements.
 
     Call this after the main TS/JS parse walk. The returned nodes use the same

@@ -5,8 +5,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 import tree_sitter_html as _ts_html
 from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
@@ -74,6 +72,8 @@ from loom.ingest.code.languages.constants import (
     TS_HTML_TAG_NAME,
     TS_HTML_TEXT,
 )
+
+logger = logging.getLogger(__name__)
 
 _HTML_LANGUAGE = _Language(_ts_html.language())
 
@@ -167,7 +167,11 @@ def _inputs_recursive(node: TSNode, src: bytes, acc: list[str], depth: int = 0) 
                 tag = _get_tag_name(inner_start, src)
                 if tag in _FORM_INPUT_TAGS:
                     attrs = _attr_map(inner_start, src)
-                    name = attrs.get(HTML_ATTR_NAME) or attrs.get("[name]") or attrs.get("formControlName")
+                    name = (
+                        attrs.get(HTML_ATTR_NAME)
+                        or attrs.get("[name]")
+                        or attrs.get("formControlName")
+                    )
                     if name:
                         acc.append(name)
             _inputs_recursive(child, src, acc, depth + 1)
@@ -216,16 +220,18 @@ def _walk(
                     meta.setdefault(META_SCRIPTS, []).append(src_val)
 
             # ── Stylesheet href ──────────────────────────────────────
-            if tag == HTML_TAG_LINK and attrs.get(HTML_ATTR_REL, "").lower() == HTML_ATTR_REL_STYLESHEET:
+            is_stylesheet = attrs.get(HTML_ATTR_REL, "").lower() == HTML_ATTR_REL_STYLESHEET
+            if tag == HTML_TAG_LINK and is_stylesheet:
                 href = attrs.get(HTML_ATTR_HREF)
                 if href:
                     meta.setdefault(META_STYLESHEETS, []).append(href)
 
             # ── Angular/Vue framework directives ─────────────────────
             for attr_name in attrs:
-                if attr_name.startswith(HTML_ANGULAR_STRUCTURAL_PREFIX):
-                    meta.setdefault(META_FRAMEWORK_DIRECTIVES, []).append(attr_name)
-                elif attr_name.startswith(HTML_VUE_DIRECTIVE_PREFIX):
+                if (
+                    attr_name.startswith(HTML_ANGULAR_STRUCTURAL_PREFIX)
+                    or attr_name.startswith(HTML_VUE_DIRECTIVE_PREFIX)
+                ):
                     meta.setdefault(META_FRAMEWORK_DIRECTIVES, []).append(attr_name)
 
             # ── Angular template reference variables (#ref) ───────────
@@ -308,7 +314,9 @@ def _walk(
                     for m in _BLOCK_RE.finditer(text):
                         block_name = m.group(1)
                         meta.setdefault(META_BLOCK_NAMES, []).append(block_name)
-                        block_node_id = Node.make_code_id(NodeKind.FUNCTION, path, f"block_{block_name}")
+                        block_node_id = Node.make_code_id(
+                            NodeKind.FUNCTION, path, f"block_{block_name}"
+                        )
                         if block_node_id not in seen_node_ids:
                             seen_node_ids.add(block_node_id)
                             sl = c.start_point[0] + 1
@@ -359,7 +367,11 @@ def _walk(
                     }
                     if action:
                         form_meta[META_FORM_ACTIONS] = [action]
-                    fg = attrs.get("formGroup") or attrs.get("[formGroup]") or attrs.get("(ngSubmit)")
+                    fg = (
+                        attrs.get("formGroup")
+                        or attrs.get("[formGroup]")
+                        or attrs.get("(ngSubmit)")
+                    )
                     if fg:
                         form_meta["angular_form_group"] = fg
                     inputs = _collect_form_inputs(child, src)
