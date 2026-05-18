@@ -18,10 +18,10 @@ from pathlib import Path
 import pytest
 
 from loom.core import NodeKind
+from loom.ingest.code.languages.html import parse_html
 from loom.ingest.code.languages.markup import (
     parse_css,
     parse_env,
-    parse_html,
     parse_json,
     parse_properties,
 )
@@ -173,7 +173,7 @@ def test_html_file_parsing():
     try:
         nodes = parse_html(str(temp_html))
 
-        assert len(nodes) == 1, "Should extract exactly one node for HTML file"
+        assert len(nodes) >= 1, "Should extract at least the file node for HTML"
         node = nodes[0]
 
         # Test basic node properties

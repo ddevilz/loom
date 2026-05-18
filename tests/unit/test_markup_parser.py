@@ -4,9 +4,9 @@ from pathlib import Path
 
 from loom.analysis.code.parser import parse_repo
 from loom.core import NodeKind
+from loom.ingest.code.languages.html import parse_html
 from loom.ingest.code.languages.markup import (
     parse_css,
-    parse_html,
     parse_json,
     parse_xml,
     parse_yaml,
@@ -22,10 +22,10 @@ def test_parse_html_extracts_title(tmp_path: Path):
         encoding="utf-8",
     )
     nodes = parse_html(str(p))
-    assert len(nodes) == 1
-    assert nodes[0].kind == NodeKind.FILE
-    assert nodes[0].language == "html"
-    assert nodes[0].metadata["title"] == "Login Page"
+    file_node = nodes[0]
+    assert file_node.kind == NodeKind.FILE
+    assert file_node.language == "html"
+    assert file_node.metadata["title"] == "Login Page"
 
 
 def test_parse_html_detects_forms(tmp_path: Path):
@@ -36,9 +36,13 @@ def test_parse_html_detects_forms(tmp_path: Path):
         encoding="utf-8",
     )
     nodes = parse_html(str(p))
-    assert nodes[0].metadata["form_count"] == 2
-    assert "/login" in nodes[0].metadata["form_actions"]
-    assert "/signup" in nodes[0].metadata["form_actions"]
+    file_node = nodes[0]
+    assert file_node.metadata["form_count"] == 2
+    assert "/login" in file_node.metadata["form_actions"]
+    assert "/signup" in file_node.metadata["form_actions"]
+    # Two distinct form actions → two form nodes + file node
+    form_nodes = [n for n in nodes if n.kind == NodeKind.FUNCTION]
+    assert len(form_nodes) == 2
 
 
 def test_parse_html_detects_jinja2_template(tmp_path: Path):
