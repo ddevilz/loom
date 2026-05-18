@@ -201,10 +201,10 @@ def _register_defaults(reg: LanguageRegistry) -> None:
     )
     from loom.ingest.code.languages.java import parse_java
     from loom.ingest.code.languages.javascript import parse_javascript
+    from loom.ingest.code.languages.html import parse_html
     from loom.ingest.code.languages.markup import (
         parse_css,
         parse_env,
-        parse_html,
         parse_ini,
         parse_json,
         parse_properties,

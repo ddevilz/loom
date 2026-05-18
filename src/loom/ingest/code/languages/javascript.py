@@ -223,18 +223,25 @@ def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node
 
 
 def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
+    from loom.ingest.code.languages.jsx import extract_jsx_nodes
+
     p = Path(path)
     src = p.read_bytes()
 
+    is_jsx = p.suffix.lower() == ".jsx"
     parser = Parser(_JS_LANGUAGE)
     tree = parser.parse(src)
 
     out: list[Node] = []
+    norm_path = path.replace("\\", "/")
     _walk(
-        path=path.replace("\\", "/"),
+        path=norm_path,
         src=src,
         n=tree.root_node,
         ctx=_BaseContext(),
         out=out,
     )
+    if is_jsx:
+        file_node_id = f"file:{norm_path}"
+        out.extend(extract_jsx_nodes(norm_path, src, tree.root_node, LANG_JAVASCRIPT, file_node_id))
     return out

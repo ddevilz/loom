@@ -38,7 +38,6 @@ from loom.ingest.code.languages.constants import (
     JSON_KEY_VERSION,
     LANG_CSS,
     LANG_ENV,
-    LANG_HTML,
     LANG_INI,
     LANG_JSON,
     LANG_PROPERTIES,
@@ -54,8 +53,6 @@ from loom.ingest.code.languages.constants import (
     META_DEV_DEPENDENCIES,
     META_ELEMENT_COUNT,
     META_FILE_TYPE,
-    META_FORM_ACTIONS,
-    META_FORM_COUNT,
     META_ID_COUNT,
     META_IS_ARRAY,
     META_ITEM_COUNT,
@@ -68,12 +65,8 @@ from loom.ingest.code.languages.constants import (
     META_PROPERTY_KEYS,
     META_ROOT_TAG,
     META_SCHEMA_URL,
-    META_SCRIPTS,
     META_SENSITIVE_KEYS,
     META_SPRING_PROFILE,
-    META_STYLESHEETS,
-    META_TEMPLATE_ENGINE,
-    META_TITLE,
     META_TOP_LEVEL_KEYS,
     META_VARIABLE_COUNT,
     META_VARIABLE_NAMES,
@@ -81,15 +74,7 @@ from loom.ingest.code.languages.constants import (
     RX_CSS_ID,
     RX_CSS_MEDIA,
     RX_CSS_VAR,
-    RX_HTML_ACTION,
-    RX_HTML_CSS_HREF,
-    RX_HTML_FORM,
-    RX_HTML_SCRIPT_SRC,
-    RX_HTML_TITLE,
     RX_YAML_TOP_KEY,
-    TEMPLATE_EJS,
-    TEMPLATE_JINJA2,
-    TEMPLATE_PHP,
     YAML_KEY_API_VERSION,
     YAML_KEY_JOBS,
     YAML_KEY_KIND,
@@ -100,62 +85,6 @@ from loom.ingest.code.languages.constants import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def parse_html(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
-    """Extract metadata from HTML files: title, forms, script tags, template variables."""
-    p = Path(path)
-    src = p.read_bytes()
-    content = src.decode("utf-8", errors="replace")
-
-    meta: dict[str, Any] = {}
-
-    # Extract title
-    title_match = re.search(RX_HTML_TITLE, content, re.IGNORECASE | re.DOTALL)
-    if title_match:
-        meta[META_TITLE] = title_match.group(1).strip()
-
-    # Count forms
-    forms = re.findall(RX_HTML_FORM, content, re.IGNORECASE)
-    if forms:
-        meta[META_FORM_COUNT] = len(forms)
-        # Extract form actions
-        actions = [m.group(1) for m in re.finditer(RX_HTML_ACTION, content, re.IGNORECASE)]
-        if actions:
-            meta[META_FORM_ACTIONS] = actions
-
-    # Detect template engine syntax
-    template_hints = []
-    if "{{" in content or "{%" in content:
-        template_hints.append(TEMPLATE_JINJA2)
-    if "<%=" in content or "<%%" in content:
-        template_hints.append(TEMPLATE_EJS)
-    if "<?php" in content:
-        template_hints.append(TEMPLATE_PHP)
-    if template_hints:
-        meta[META_TEMPLATE_ENGINE] = template_hints[0]
-
-    # Extract script src references
-    scripts = re.findall(RX_HTML_SCRIPT_SRC, content, re.IGNORECASE)
-    if scripts:
-        meta[META_SCRIPTS] = scripts[:10]
-
-    # Extract CSS href references
-    styles = re.findall(RX_HTML_CSS_HREF, content, re.IGNORECASE)
-    if styles:
-        meta[META_STYLESHEETS] = styles[:10]
-
-    node = Node(
-        id=f"{NodeKind.FILE.value}:{path}",
-        kind=NodeKind.FILE,
-        source=NodeSource.CODE,
-        name=p.name,
-        path=path.replace("\\", "/"),
-        content_hash=content_hash_bytes(src),
-        language=LANG_HTML,
-        metadata=meta,
-    )
-    return [node]
 
 
 def parse_xml(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
