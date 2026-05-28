@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 import tree_sitter_javascript as _ts_javascript
 from tree_sitter import Language as _Language
@@ -9,7 +10,7 @@ from tree_sitter import Parser
 
 from loom.graph.models import Node, NodeKind, NodeSource
 from loom.graph.content_hash import content_hash_for_line_span
-from loom.indexer.languages._base import _BaseContext
+from loom.indexer.languages._base import BaseLanguageHandler, _BaseContext
 from loom.indexer.languages._ts_utils import (
     get_name as _get_name,
 )
@@ -30,6 +31,10 @@ from loom.indexer.languages.constants import (
 
 _JS_LANGUAGE = _Language(_ts_javascript.language())
 
+# Type aliases for callables threaded through walk functions
+_MakeIdFn = Callable[[NodeKind, str, str], str]
+_BuildNodeFn = Callable[..., Node]
+
 
 def _qualname(ctx: _BaseContext, name: str) -> str:
     parts: list[str] = []
@@ -48,32 +53,22 @@ def _extract_from_def(
     n: TSNode,
     ctx: _BaseContext,
     out: list[Node],
+    build_node: _BuildNodeFn,
+    make_id: _MakeIdFn,
 ) -> None:
     if n.type == TS_JS_CLASS_DECL:
         name = _get_name(src, n)
         if not name:
             return
 
-        start_line, end_line = _lines(n)
         out.append(
-            Node(
-                id=f"{NodeKind.CLASS.value}:{path}:{name}",
-                kind=NodeKind.CLASS,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=LANG_JAVASCRIPT,
-                metadata={},
-            )
+            build_node(n, src, path, kind=NodeKind.CLASS, name=name, symbol=name, metadata={})
         )
 
         body = n.child_by_field_name("body")
         if body is not None:
             ctx.push_class(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
             ctx.pop_class()
         return
 
@@ -82,29 +77,17 @@ def _extract_from_def(
         if not name:
             return
 
-        start_line, end_line = _lines(n)
         kind = NodeKind.FUNCTION
         symbol = name
 
         out.append(
-            Node(
-                id=f"{kind.value}:{path}:{symbol}",
-                kind=kind,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=LANG_JAVASCRIPT,
-                metadata={},
-            )
+            build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata={})
         )
 
         body = n.child_by_field_name("body")
         if body is not None:
             ctx.push_fn(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
             ctx.pop_fn()
         return
 
@@ -113,28 +96,16 @@ def _extract_from_def(
         if not name:
             return
 
-        start_line, end_line = _lines(n)
         symbol = _qualname(ctx, name)
 
         out.append(
-            Node(
-                id=f"{NodeKind.METHOD.value}:{path}:{symbol}",
-                kind=NodeKind.METHOD,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=LANG_JAVASCRIPT,
-                metadata={},
-            )
+            build_node(n, src, path, kind=NodeKind.METHOD, name=name, symbol=symbol, metadata={})
         )
 
         body = n.child_by_field_name("body")
         if body is not None:
             ctx.push_fn(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
             ctx.pop_fn()
         return
 
@@ -146,6 +117,8 @@ def _try_extract_const_function(
     n: TSNode,
     ctx: _BaseContext,
     out: list[Node],
+    build_node: _BuildNodeFn,
+    make_id: _MakeIdFn,
 ) -> bool:
     """Handle `const name = () => {}` and `const name = function() {}`."""
     if n.type != "lexical_declaration":
@@ -170,7 +143,6 @@ def _try_extract_const_function(
             continue
 
         name = _node_text(src, name_node)
-        start_line, end_line = _lines(n)
         metadata: dict = {}
 
         if value_node.type == TS_JS_ARROW_FUNCTION:
@@ -181,31 +153,29 @@ def _try_extract_const_function(
                 break
 
         out.append(
-            Node(
-                id=f"{NodeKind.FUNCTION.value}:{path}:{name}",
-                kind=NodeKind.FUNCTION,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=LANG_JAVASCRIPT,
-                metadata=metadata,
-            )
+            build_node(n, src, path, kind=NodeKind.FUNCTION, name=name, symbol=name, metadata=metadata)
         )
 
         body = value_node.child_by_field_name("body")
         if body is not None:
             ctx.push_fn(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
             ctx.pop_fn()
         found = True
 
     return found
 
 
-def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node]) -> None:
+def _walk(
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _BaseContext,
+    out: list[Node],
+    build_node: _BuildNodeFn,
+    make_id: _MakeIdFn,
+) -> None:
     for child in n.children:
         if child.type in {
             TS_JS_FUNCTION_DECL,
@@ -214,12 +184,43 @@ def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node
             TS_JS_FUNCTION,
             TS_JS_ARROW_FUNCTION,
         }:
-            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
-        elif _try_extract_const_function(path=path, src=src, n=child, ctx=ctx, out=out):
+            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
+        elif _try_extract_const_function(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id):
             pass
         else:
             if child.child_count:
-                _walk(path=path, src=src, n=child, ctx=ctx, out=out)
+                _walk(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
+
+
+class JavaScriptHandler(BaseLanguageHandler):
+    """Handler for JavaScript/JSX source files."""
+
+    @property
+    def language_name(self) -> str:
+        return LANG_JAVASCRIPT
+
+    def parse(self, source: bytes, rel_path: str) -> list[Node]:
+        from loom.indexer.languages.jsx import extract_jsx_nodes
+
+        is_jsx = rel_path.endswith(".jsx")
+        parser = Parser(_JS_LANGUAGE)
+        tree = parser.parse(source)
+
+        out: list[Node] = []
+        make_id: _MakeIdFn = lambda kind, path, symbol: f"{kind.value}:{self.repo_name}:{path}:{symbol}"
+        _walk(
+            path=rel_path,
+            src=source,
+            n=tree.root_node,
+            ctx=_BaseContext(),
+            out=out,
+            build_node=self._build_node,
+            make_id=make_id,
+        )
+        if is_jsx:
+            file_node_id = f"file:{rel_path}"
+            out.extend(extract_jsx_nodes(rel_path, source, tree.root_node, LANG_JAVASCRIPT, file_node_id))
+        return out
 
 
 def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
@@ -232,14 +233,20 @@ def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:  
     parser = Parser(_JS_LANGUAGE)
     tree = parser.parse(src)
 
+    handler = JavaScriptHandler()
+    handler.repo_name = "unknown"
+
     out: list[Node] = []
     norm_path = path.replace("\\", "/")
+    make_id: _MakeIdFn = lambda kind, file_path, symbol: f"{kind.value}:{handler.repo_name}:{file_path}:{symbol}"
     _walk(
         path=norm_path,
         src=src,
         n=tree.root_node,
         ctx=_BaseContext(),
         out=out,
+        build_node=handler._build_node,
+        make_id=make_id,
     )
     if is_jsx:
         file_node_id = f"file:{norm_path}"

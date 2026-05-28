@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 import tree_sitter_java as _ts_java
 from tree_sitter import Language as _Language
@@ -9,7 +10,7 @@ from tree_sitter import Parser
 
 from loom.graph.models import Node, NodeKind, NodeSource
 from loom.graph.content_hash import content_hash_for_line_span
-from loom.indexer.languages._base import _BaseContext
+from loom.indexer.languages._base import BaseLanguageHandler, _BaseContext
 from loom.indexer.languages._ts_utils import (
     get_name as _get_name,
 )
@@ -39,6 +40,10 @@ from loom.indexer.languages.constants import (
 )
 
 _JAVA_LANGUAGE = _Language(_ts_java.language())
+
+# Type aliases for callables threaded through walk functions
+_MakeIdFn = Callable[[NodeKind, str, str], str]
+_BuildNodeFn = Callable[..., Node]
 
 
 def _qualname(ctx: _BaseContext, name: str, package: str = "") -> str:
@@ -160,6 +165,8 @@ def _extract_from_def(
     n: TSNode,
     ctx: _BaseContext,
     out: list[Node],
+    build_node: _BuildNodeFn,
+    make_id: _MakeIdFn,
     package: str = "",
 ) -> None:
     # Java: class_declaration, interface_declaration, enum_declaration,
@@ -174,8 +181,6 @@ def _extract_from_def(
         name = _get_name(src, n)
         if not name:
             return
-
-        start_line, end_line = _lines(n)
 
         if n.type == TS_JAVA_INTERFACE_DECL:
             kind = NodeKind.INTERFACE
@@ -218,24 +223,13 @@ def _extract_from_def(
 
         symbol = _qualname(ctx, name, package)
         out.append(
-            Node(
-                id=f"{kind.value}:{path}:{symbol}",
-                kind=kind,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=LANG_JAVA,
-                metadata=metadata,
-            )
+            build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata=metadata)
         )
 
         body = n.child_by_field_name("body")
         if body is not None:
             ctx.push_class(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out, package=package)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id, package=package)
             ctx.pop_class()
         return
 
@@ -243,8 +237,6 @@ def _extract_from_def(
         name = _get_name(src, n)
         if not name:
             return
-
-        start_line, end_line = _lines(n)
 
         # Methods inside classes are METHOD, top-level would be FUNCTION (rare in Java)
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
@@ -272,22 +264,11 @@ def _extract_from_def(
                 metadata["method_ref_count"] = functional_counts["method_ref_count"]
 
         out.append(
-            Node(
-                id=f"{kind.value}:{path}:{symbol}",
-                kind=kind,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=LANG_JAVA,
-                metadata=metadata,
-            )
+            build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata=metadata)
         )
 
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out, package=package)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id, package=package)
         return
 
 
@@ -298,6 +279,8 @@ def _walk(
     n: TSNode,
     ctx: _BaseContext,
     out: list[Node],
+    build_node: _BuildNodeFn,
+    make_id: _MakeIdFn,
     package: str = "",
 ) -> None:
     for child in n.children:
@@ -310,10 +293,10 @@ def _walk(
             TS_JAVA_METHOD_DECL,
             TS_JAVA_CTOR_DECL,
         }:
-            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, package=package)
+            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id, package=package)
         else:
             if child.child_count:
-                _walk(path=path, src=src, n=child, ctx=ctx, out=out, package=package)
+                _walk(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id, package=package)
 
 
 def _extract_package(src: bytes, root: TSNode) -> str:
@@ -326,6 +309,32 @@ def _extract_package(src: bytes, root: TSNode) -> str:
     return ""
 
 
+class JavaHandler(BaseLanguageHandler):
+    """Handler for Java source files."""
+
+    @property
+    def language_name(self) -> str:
+        return LANG_JAVA
+
+    def parse(self, source: bytes, rel_path: str) -> list[Node]:
+        parser = Parser(_JAVA_LANGUAGE)
+        tree = parser.parse(source)
+        package = _extract_package(source, tree.root_node)
+        out: list[Node] = []
+        make_id: _MakeIdFn = lambda kind, path, symbol: f"{kind.value}:{self.repo_name}:{path}:{symbol}"
+        _walk(
+            path=rel_path,
+            src=source,
+            n=tree.root_node,
+            ctx=_BaseContext(),
+            out=out,
+            build_node=self._build_node,
+            make_id=make_id,
+            package=package,
+        )
+        return out
+
+
 def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
     p = Path(path)
     src = p.read_bytes()
@@ -333,14 +342,20 @@ def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa
     parser = Parser(_JAVA_LANGUAGE)
     tree = parser.parse(src)
 
+    handler = JavaHandler()
+    handler.repo_name = "unknown"
+
     package = _extract_package(src, tree.root_node)
     out: list[Node] = []
+    make_id: _MakeIdFn = lambda kind, file_path, symbol: f"{kind.value}:{handler.repo_name}:{file_path}:{symbol}"
     _walk(
         path=path.replace("\\", "/"),
         src=src,
         n=tree.root_node,
         ctx=_BaseContext(),
         out=out,
+        build_node=handler._build_node,
+        make_id=make_id,
         package=package,
     )
     return out

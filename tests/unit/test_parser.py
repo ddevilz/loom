@@ -342,6 +342,5 @@ def test_parse_python_nested_symbols_get_parent_id(tmp_path: Path):
     inner = _by_name(nodes, "inner")[0]
 
     assert outer.parent_id is None
-    assert inner.parent_id == Node.make_code_id(
-        NodeKind.FUNCTION, str(p).replace("\\", "/"), "outer"
-    )
+    # parent_id now uses 4-part format: kind:repo:path:symbol (repo="unknown" when not set)
+    assert inner.parent_id == f"function:unknown:{str(p).replace(chr(92), '/')}:outer"
