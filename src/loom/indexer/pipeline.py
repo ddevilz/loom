@@ -5,7 +5,7 @@ Moved from ingest/pipeline.py with the following changes:
 - Internal store calls converted: await async_fn(db, ...) → await asyncio.to_thread(repo.method, ...)
 - Signature changed: index_repo(repo_path, *, repo: Repository, ...) instead of (repo_path, db: DB, ...)
 - index_repo() stays async def — callers already use asyncio.run() or await
-- Communities/coupling/dead_code stay on old paths until Phase 3 (intelligence/) moves them
+- Communities/coupling stay on old paths until Phase 3 (intelligence/) moves them
 """
 from __future__ import annotations
 
@@ -200,6 +200,146 @@ def resolve_calls(
     return nodes, filtered + global_call_edges
 
 
+def _read_import_lines(path: str) -> list[str]:
+    """Read first 60 lines of a file and return lines that look like imports."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = []
+            for i, line in enumerate(f):
+                if i >= 60:
+                    break
+                stripped = line.strip()
+                if stripped.startswith(("import ", "from ", "require(", "#include", "using ")):
+                    lines.append(stripped)
+            return lines
+    except OSError:
+        return []
+
+
+def _file_merge(
+    repo: Repository,
+    rel_path: str,
+    nodes: list[Node],
+    edges: list[Edge],
+) -> None:
+    """Delete old nodes/edges/tags for a path, then insert new nodes+edges.
+
+    Differs from nodes.upsert: hard-deletes old nodes (matching current upsert behavior)
+    and also hard-deletes system tags. Agent summaries for re-appearing node IDs are
+    preserved.
+    """
+    import time as _time
+    now = int(_time.time())
+
+    node_rows = [
+        (
+            n.id,
+            n.kind.value,
+            n.source.value,
+            n.name,
+            n.path,
+            n.start_line,
+            n.end_line,
+            n.language,
+            n.content_hash,
+            n.file_hash,
+            n.file_mtime,
+            n.summary,
+            # token_count
+            (max(1, n.end_line - n.start_line + 1) * 15
+             if n.start_line is not None and n.end_line is not None
+                and n.kind.value not in ("file", "community")
+             else None),
+            n.community_id,
+            json.dumps(n.metadata, default=str) if n.metadata else "{}",
+            now,
+        )
+        for n in nodes
+    ]
+    edge_rows = [
+        (
+            e.from_id,
+            e.to_id,
+            e.kind.value,
+            e.confidence,
+            e.confidence_tier.value,
+            json.dumps(e.metadata, default=str) if e.metadata else "{}",
+        )
+        for e in edges
+    ]
+
+    with repo.db._lock:
+        conn = repo.db.connect()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            # Save agent summaries for nodes that survive re-parse
+            saved: dict[str, tuple[str | None, str | None]] = {
+                r["id"]: (r["summary"], r["summary_hash"])
+                for r in conn.execute(
+                    "SELECT id, summary, summary_hash FROM nodes "
+                    "WHERE path = ? AND summary IS NOT NULL",
+                    (rel_path,),
+                ).fetchall()
+            }
+
+            # Collect old node IDs (for tag cleanup before deleting nodes)
+            old_ids = [r["id"] for r in conn.execute(
+                "SELECT id FROM nodes WHERE path = ?",
+                (rel_path,),
+            ).fetchall()]
+
+            if old_ids:
+                placeholders = ",".join("?" * len(old_ids))
+                # Hard-delete old edges
+                conn.execute(
+                    f"DELETE FROM edges WHERE from_id IN ({placeholders}) "
+                    f"OR to_id IN ({placeholders})",
+                    old_ids + old_ids,
+                )
+                # Hard-delete system tags for old nodes
+                conn.execute(
+                    f"DELETE FROM node_tags WHERE node_id IN ({placeholders}) AND source = 'system'",
+                    old_ids,
+                )
+
+            # Hard-delete old nodes for this path
+            conn.execute("DELETE FROM nodes WHERE path = ?", (rel_path,))
+
+            # Insert new nodes
+            if node_rows:
+                conn.executemany(
+                    """INSERT OR IGNORE INTO nodes
+                         (id, kind, source, name, path, start_line, end_line,
+                          language, content_hash, file_hash, file_mtime, summary,
+                          token_count, community_id, metadata, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    node_rows,
+                )
+
+            # Insert new edges
+            if edge_rows:
+                conn.executemany(
+                    """INSERT OR REPLACE INTO edges
+                         (from_id, to_id, kind, confidence, confidence_tier, metadata)
+                       VALUES (?,?,?,?,?,?)""",
+                    edge_rows,
+                )
+
+            # Restore agent summaries for surviving node IDs
+            for node_id, (summary, summary_hash) in saved.items():
+                if summary and any(n.id == node_id for n in nodes):
+                    conn.execute(
+                        "UPDATE nodes SET summary = ?, summary_hash = ? "
+                        "WHERE id = ? AND summary IS NULL",
+                        (summary, summary_hash, node_id),
+                    )
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+
 async def index_repo(
     repo_path: Path,
     repo: Repository,
@@ -223,38 +363,32 @@ async def index_repo(
             with contextlib.suppress(Exception):
                 progress_cb(phase, done, total)
 
-    # --- Phase 1: scan ---
+    # --- Phase 1: discover files ---
     logger.info("[scan] discovering files in %s (workers=%d)", repo_path, max_workers)
     t = time.perf_counter()
     files_by_lang = walk_repo(str(repo_path))
-    all_files: list[Path] = [Path(fp) for fps in files_by_lang.values() for fp in fps]
-    existing = await asyncio.to_thread(repo.nodes.get_content_hashes)
+    all_files_str: list[str] = [fp for fps in files_by_lang.values() for fp in fps]
+    all_files: list[Path] = [Path(fp) for fp in all_files_str]
 
-    needs_hash: list[Path] = []
-    changed: list[Path] = []
-    skipped = 0
-    for f in all_files:
-        rel = f.relative_to(repo_path).as_posix()
-        stored = existing.get(rel)
-        if stored is not None:
-            stored_hash, stored_mtime = stored
-            if stored_mtime is not None and f.stat().st_mtime == stored_mtime:
-                skipped += 1
-                continue
-        needs_hash.append(f)
+    # --- Phase 2: classify changes with IncrementalSync ---
+    from loom.indexer.incremental import IncrementalSync, ChangeReport  # noqa: PLC0415
 
-    mtime_map: dict[str, float] = {}
-    if needs_hash:
-        with ProcessPoolExecutor(max_workers=max_workers) as pool:
-            for f, h, mtime in pool.map(_hash_file, needs_hash, chunksize=50):
-                rel = f.relative_to(repo_path).as_posix()
-                mtime_map[rel] = mtime
-                stored = existing.get(rel)
-                stored_hash = stored[0] if stored else None
-                if h == stored_hash:
-                    skipped += 1
-                else:
-                    changed.append(f)
+    sync = IncrementalSync(repo)
+    report: ChangeReport = await asyncio.to_thread(sync.classify_changes, all_files_str)
+    changed: list[Path] = [Path(p) for p in report.files_to_index]
+    skipped: int = len(report.unchanged) + len(report.mtime_only)
+
+    # Update mtime-only fingerprints (content unchanged, just mtime differs)
+    if report.mtime_only:
+        def _update_mtimes() -> None:
+            for p in report.mtime_only:
+                try:
+                    mtime_ns = os.stat(p).st_mtime_ns
+                    repo.fingerprints.update_mtime(p, mtime_ns)
+                except OSError:
+                    pass
+        await asyncio.to_thread(_update_mtimes)
+
     logger.info(
         "[scan] done in %.1fs — %d total, %d changed, %d skipped",
         time.perf_counter() - t,
@@ -268,7 +402,7 @@ async def index_repo(
     edges_all: list[Edge] = []
     errors: list[str] = []
 
-    # --- Phase 2: parse ---
+    # --- Phase 3: parse ---
     if changed:
         logger.info("[parse] parsing %d files with %d workers", len(changed), max_workers)
         t = time.perf_counter()
@@ -296,7 +430,7 @@ async def index_repo(
         logger.info("[parse] nothing to parse (all %d files unchanged)", skipped)
         _emit("parse", 0, 0)
 
-    # --- Phase 3: resolve cross-file calls ---
+    # --- Phase 4: resolve cross-file calls ---
     if nodes_all:
         logger.info("[calls] resolving cross-file call edges")
         t = time.perf_counter()
@@ -304,7 +438,7 @@ async def index_repo(
         elapsed = time.perf_counter() - t
         logger.info("[calls] done in %.1fs — %d total edges", elapsed, len(edges_all))
 
-    # --- Phase 4: write to DB ---
+    # --- Phase 5: write to DB ---
     by_path: dict[str, tuple[list[Node], list[Edge]]] = {}
     for n in nodes_all:
         if n.path not in by_path:
@@ -324,14 +458,32 @@ async def index_repo(
         logger.info("[write] writing %d paths to DB", len(by_path))
         t = time.perf_counter()
         for path, (fn, fe) in by_path.items():
-            await asyncio.to_thread(repo.nodes.upsert, fn, fe, path)
+            await asyncio.to_thread(_file_merge, repo, path, fn, fe)
         logger.info("[write] done in %.1fs", time.perf_counter() - t)
     _emit("write", len(by_path), len(by_path))
+
+    # Update fingerprints for indexed files
+    if changed:
+        from loom.graph.repository.fingerprints import FileFingerprint  # noqa: PLC0415
+        fingerprints_to_write = []
+        for f in changed:
+            try:
+                st = os.stat(str(f))
+                fingerprints_to_write.append(FileFingerprint(
+                    file_path=str(f),
+                    content_sha=sha256_of_file(f),
+                    mtime_ns=st.st_mtime_ns,
+                    indexed_at=time.time(),
+                ))
+            except OSError:
+                pass
+        if fingerprints_to_write:
+            await asyncio.to_thread(repo.fingerprints.upsert, fingerprints_to_write)
 
     if not changed:
         logger.info("[skip] no files changed — skipping analysis phases")
     else:
-        # --- Phase 5: communities (still on old path until Phase 3) ---
+        # --- Phase 5b: communities (still on old path until Phase 3) ---
         logger.info("[communities] computing Louvain communities")
         t = time.perf_counter()
         try:
@@ -342,7 +494,7 @@ async def index_repo(
             logger.warning("[communities] failed in %.1fs: %s", time.perf_counter() - t, exc)
         _emit("communities", 1, 1)
 
-        # --- Phase 6: coupling ---
+        # --- Phase 5c: coupling ---
         logger.info("[coupling] computing git co-change coupling")
         t = time.perf_counter()
         try:
@@ -352,17 +504,28 @@ async def index_repo(
         except Exception as exc:
             logger.warning("[coupling] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
-        # --- Phase 7: dead code ---
-        logger.info("[dead_code] marking dead code")
+        # --- Phase 6: AutoTagger ---
+        logger.info("[tagger] applying auto-tags to %d files", len(by_path))
         t = time.perf_counter()
         try:
-            from loom.intelligence.dead_code import mark_dead_code  # noqa: PLC0415
-            await mark_dead_code(repo.db)
-            logger.info("[dead_code] done in %.1fs", time.perf_counter() - t)
+            from loom.indexer.tagger import AutoTagger  # noqa: PLC0415
+            tagger = AutoTagger()
+            def _run_tagger() -> int:
+                count = 0
+                for path, (fn, _) in by_path.items():
+                    imports = _read_import_lines(str(repo_path / path))
+                    tag_result = tagger.tag_file(fn, imports, path)
+                    for node_id, tags in tag_result.items():
+                        if tags:
+                            repo.tags.add_tags(node_id, tags, source="system")
+                            count += len(tags)
+                return count
+            tag_count = await asyncio.to_thread(_run_tagger)
+            logger.info("[tagger] done in %.1fs — %d tags applied", time.perf_counter() - t, tag_count)
         except Exception as exc:
-            logger.warning("[dead_code] failed in %.1fs: %s", time.perf_counter() - t, exc)
+            logger.warning("[tagger] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
-        # --- Phase 8: auto-summaries ---
+        # --- Phase 7: auto-summaries ---
         logger.info("[summaries] generating auto-summaries for unsummarized nodes")
         t = time.perf_counter()
         try:
@@ -372,7 +535,70 @@ async def index_repo(
         except Exception as exc:
             logger.warning("[summaries] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
-    # --- Phase 9: soft-delete removed files ---
+        # --- Phase 10: TestLinker — TESTED_BY edges ---
+        logger.info("[test_linker] linking test nodes to production nodes")
+        t = time.perf_counter()
+        try:
+            from loom.indexer.test_linker import TestLinker  # noqa: PLC0415
+            def _run_test_linker() -> tuple[int, int]:
+                # Get all non-deleted function/method nodes for link_all
+                conn = repo.db.connect()
+                rows = conn.execute(
+                    "SELECT id, kind, name, path, language, source, content_hash, "
+                    "start_line, end_line, metadata "
+                    "FROM nodes WHERE kind IN ('function','method','class') "
+                    "AND deleted_at IS NULL"
+                ).fetchall()
+                nodes_for_linking = []
+                for r in rows:
+                    try:
+                        nodes_for_linking.append(Node(
+                            id=r["id"],
+                            kind=NodeKind(r["kind"]),
+                            source=NodeSource(r["source"]),
+                            name=r["name"],
+                            path=r["path"],
+                            language=r["language"],
+                            content_hash=r["content_hash"],
+                            start_line=r["start_line"],
+                            end_line=r["end_line"],
+                        ))
+                    except Exception:
+                        continue
+                linker = TestLinker(repo)
+                test_edges, test_tags = linker.link_all(nodes_for_linking)
+                repo.edges.upsert(test_edges)
+                for node_id, tags in test_tags.items():
+                    if tags:
+                        repo.tags.add_tags(node_id, tags, source="system")
+                return len(test_edges), sum(len(v) for v in test_tags.values())
+            edge_count, tag_count = await asyncio.to_thread(_run_test_linker)
+            logger.info(
+                "[test_linker] done in %.1fs — %d TESTED_BY edges, %d tags",
+                time.perf_counter() - t, edge_count, tag_count,
+            )
+        except Exception as exc:
+            logger.warning("[test_linker] failed in %.1fs: %s", time.perf_counter() - t, exc)
+
+        # --- Phase 11: GraphTagger — dead-code, entry-point, hub, bridge ---
+        logger.info("[graph_tagger] computing graph-derived tags")
+        t = time.perf_counter()
+        try:
+            from loom.indexer.graph_tagger import compute_graph_tags  # noqa: PLC0415
+            def _run_graph_tagger() -> int:
+                graph_tags = compute_graph_tags(repo)
+                count = 0
+                for node_id, tags in graph_tags.items():
+                    if tags:
+                        repo.tags.add_tags(node_id, tags, source="system")
+                        count += len(tags)
+                return count
+            gtag_count = await asyncio.to_thread(_run_graph_tagger)
+            logger.info("[graph_tagger] done in %.1fs — %d tags", time.perf_counter() - t, gtag_count)
+        except Exception as exc:
+            logger.warning("[graph_tagger] failed in %.1fs: %s", time.perf_counter() - t, exc)
+
+    # --- Phase 12: soft-delete removed files ---
     try:
         current_rel_paths: set[str] = {f.relative_to(repo_path).as_posix() for f in all_files}
 
@@ -394,11 +620,17 @@ async def index_repo(
                 deleted_count += 1
         if deleted_count:
             logger.info("[cleanup] soft-deleted %d removed files", deleted_count)
+
+        # After soft-deleting nodes, also delete fingerprints for removed files
+        deleted_abs = [str(repo_path / ip) for ip in indexed_paths if ip not in current_rel_paths]
+        if deleted_abs:
+            await asyncio.to_thread(repo.fingerprints.delete_paths, deleted_abs)
+
         await asyncio.to_thread(repo.nodes.prune_tombstones)
     except Exception as exc:
         logger.warning("[cleanup] deleted_file_detection failed: %s", exc)
 
-    # --- Phase 10: prune sessions ---
+    # --- Phase 13: prune sessions ---
     try:
         await asyncio.to_thread(repo.sessions.prune, 20)
     except Exception as exc:
