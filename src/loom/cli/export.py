@@ -31,13 +31,13 @@ _DEFAULT_COLOUR = "#aaaaaa"
 
 # ── edge colours ──────────────────────────────────────────────────────────────
 _EDGE_COLOURS: dict[str, str] = {
-    "calls": "#e74c3c",
-    "imports": "#3498db",
-    "extends": "#2ecc71",
-    "child_of": "#f39c12",
-    "contains": "#95a5a6",
-    "coupled_with": "#9b59b6",
-    "member_of": "#1abc9c",
+    "CALLS": "#e74c3c",
+    "IMPORTS": "#3498db",
+    "EXTENDS": "#2ecc71",
+    "CHILD_OF": "#f39c12",
+    "CONTAINS": "#95a5a6",
+    "COUPLED_WITH": "#9b59b6",
+    "MEMBER_OF": "#1abc9c",
 }
 _DEFAULT_EDGE_COLOUR = "#888888"
 
@@ -57,7 +57,6 @@ def _build_graph_data(db: DB) -> dict:
                     "kind": r["kind"],
                     "path": r["path"],
                     "language": r["language"] or "",
-                    "is_dead_code": bool(r["is_dead_code"]),
                     "colour": colour,
                 }
             }

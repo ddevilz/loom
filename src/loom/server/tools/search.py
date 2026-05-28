@@ -1,4 +1,5 @@
 """search.py — search_code MCP tool."""
+
 from __future__ import annotations
 
 
@@ -10,10 +11,15 @@ def _is_test_path(path: str) -> bool:
 def register(mcp: object, db: object, session: dict, cache: object) -> None:
     from loom.graph.models import SummarySource
     from loom.query.search import find_replacement_candidates, search
+    from loom.server.validation import (
+        MAX_QUERY,
+        clamp_limit,
+        compute_confidence,
+        err,
+        ok,
+        validate_text,
+    )
     from loom.store.savings import log_saving
-
-    from loom.server.enums import ErrorCode
-    from loom.server.validation import MAX_ID, MAX_QUERY, clamp_limit, compute_confidence, err, ok, validate_text
 
     async def _log(node_id: str, tool: str) -> None:
         from loom.store.node_visits import log_visit
@@ -26,12 +32,11 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
     async def search_code(query: str, limit: int = 10) -> dict:
         """Search nodes by name/summary/path via FTS5 or LIKE.
 
-        Results include caller_count, community_id, and is_dead_code for disambiguation.
+        Results include caller_count and community_id for disambiguation.
         Dead nodes are ranked last with replacement_candidates where detectable.
         Test-file nodes are deprioritised (score penalty applied).
         Nodes that are dead but have a live replacement are injected with suggested_instead=true.
         """
-        from loom.server.validation import err, ok
 
         try:
             q = validate_text(query, field="query", max_length=MAX_QUERY)
@@ -47,15 +52,11 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
                 r.score *= 0.3
 
         live = sorted(
-            [r for r in raw if not r.node.is_dead_code],
+            raw,
             key=lambda r: r.score,
             reverse=True,
         )
-        dead = sorted(
-            [r for r in raw if r.node.is_dead_code],
-            key=lambda r: r.caller_count,
-            reverse=True,
-        )
+        dead: list = []
 
         seen_ids: set[str] = set()
         output: list[dict] = []
@@ -101,7 +102,6 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
                 "confidence_signals": signals,
                 "caller_count": r.caller_count,  # type: ignore[attr-defined]
                 "community_id": node.community_id,
-                "is_dead_code": node.is_dead_code,
                 "summary": node.summary,
                 "signature": node.metadata.get("signature"),
             }

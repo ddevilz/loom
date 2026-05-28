@@ -35,7 +35,7 @@ async def test_bulk_upsert_edges(db: DB) -> None:
     def _check():
         with db._lock:
             conn = db.connect()
-            row = conn.execute("SELECT COUNT(*) as c FROM edges WHERE kind='calls'").fetchone()
+            row = conn.execute("SELECT COUNT(*) as c FROM edges WHERE kind='CALLS'").fetchone()
             return row["c"]
 
     count = await asyncio.to_thread(_check)

@@ -19,11 +19,12 @@ CREATE TABLE IF NOT EXISTS nodes (
     summary         TEXT,
     summary_hash    TEXT,
     token_count     INTEGER,
-    is_dead_code    INTEGER NOT NULL DEFAULT 0,
     community_id    TEXT,
     metadata        TEXT NOT NULL DEFAULT '{}',
     updated_at      INTEGER NOT NULL,
-    deleted_at      INTEGER
+    deleted_at      INTEGER,
+    complexity      TEXT DEFAULT NULL,
+    tags_normalized TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_name    ON nodes(name);
 CREATE INDEX IF NOT EXISTS idx_nodes_path    ON nodes(path);
@@ -80,25 +81,43 @@ CREATE TABLE IF NOT EXISTS node_visits (
 CREATE INDEX IF NOT EXISTS idx_visits_session ON node_visits(session_id, visited_at DESC);
 CREATE INDEX IF NOT EXISTS idx_visits_node    ON node_visits(node_id);
 
+-- New table: fingerprints for incremental indexing
+CREATE TABLE IF NOT EXISTS file_fingerprints (
+    file_path    TEXT PRIMARY KEY,
+    content_sha  TEXT NOT NULL,
+    mtime_ns     INTEGER NOT NULL,
+    indexed_at   REAL NOT NULL
+);
+
+-- New table: tag storage (system + agent tags)
+CREATE TABLE IF NOT EXISTS node_tags (
+    node_id  TEXT NOT NULL,
+    tag      TEXT NOT NULL,
+    source   TEXT NOT NULL DEFAULT 'system',
+    UNIQUE(node_id, tag, source)
+);
+CREATE INDEX IF NOT EXISTS idx_node_tags_tag  ON node_tags(tag, node_id);
+CREATE INDEX IF NOT EXISTS idx_node_tags_node ON node_tags(node_id);
+
 -- ── FTS5 (loaded only when SQLite was compiled with fts5) ─────────────────────
 
 -- @fts5
 CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
-    id UNINDEXED, name, summary, path,
+    id UNINDEXED, name, summary, path, tags_normalized,
     content='nodes', content_rowid='rowid',
     tokenize='porter unicode61'
 );
 CREATE TRIGGER IF NOT EXISTS nodes_ai AFTER INSERT ON nodes BEGIN
-    INSERT INTO nodes_fts(rowid, id, name, summary, path)
-    VALUES (new.rowid, new.id, new.name, new.summary, new.path);
+    INSERT INTO nodes_fts(rowid, id, name, summary, path, tags_normalized)
+    VALUES (new.rowid, new.id, new.name, new.summary, new.path, new.tags_normalized);
 END;
 CREATE TRIGGER IF NOT EXISTS nodes_ad AFTER DELETE ON nodes BEGIN
-    INSERT INTO nodes_fts(nodes_fts, rowid, id, name, summary, path)
-    VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.path);
+    INSERT INTO nodes_fts(nodes_fts, rowid, id, name, summary, path, tags_normalized)
+    VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.path, old.tags_normalized);
 END;
 CREATE TRIGGER IF NOT EXISTS nodes_au AFTER UPDATE ON nodes BEGIN
-    INSERT INTO nodes_fts(nodes_fts, rowid, id, name, summary, path)
-    VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.path);
-    INSERT INTO nodes_fts(rowid, id, name, summary, path)
-    VALUES (new.rowid, new.id, new.name, new.summary, new.path);
+    INSERT INTO nodes_fts(nodes_fts, rowid, id, name, summary, path, tags_normalized)
+    VALUES ('delete', old.rowid, old.id, old.name, old.summary, old.path, old.tags_normalized);
+    INSERT INTO nodes_fts(rowid, id, name, summary, path, tags_normalized)
+    VALUES (new.rowid, new.id, new.name, new.summary, new.path, new.tags_normalized);
 END;

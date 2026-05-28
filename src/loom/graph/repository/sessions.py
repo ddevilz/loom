@@ -7,6 +7,7 @@ Extracted from:
 
 All async wrappers removed; methods run synchronously under self._db._lock.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -343,6 +344,7 @@ class SessionRepository:
         node = row_to_node(row)
         metadata = json.loads(row["metadata"]) if row["metadata"] else {}
         from loom.indexer.extractor import extract_summary  # deferred to avoid circular import
+
         auto_summary = extract_summary(node) if not node.summary else None
 
         summary_hash = row["summary_hash"] if "summary_hash" in row.keys() else None  # noqa: SIM118

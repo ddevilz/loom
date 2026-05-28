@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -8,14 +9,10 @@ from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 
-from loom.graph.models import Node, NodeKind, NodeSource
-from loom.graph.content_hash import content_hash_for_line_span
-from loom.indexer.languages._base import _BaseContext
+from loom.graph.models import Node, NodeKind
+from loom.indexer.languages._base import BaseLanguageHandler, _BaseContext
 from loom.indexer.languages._ts_utils import (
     get_name as _get_name,
-)
-from loom.indexer.languages._ts_utils import (
-    lines as _lines,
 )
 from loom.indexer.languages._ts_utils import (
     node_text as _node_text,
@@ -64,6 +61,11 @@ from loom.indexer.languages.constants import (
 
 _PY_LANGUAGE = _Language(_ts_python.language())
 
+# Type alias for the make_id callable: (kind, path, symbol) -> str
+_MakeIdFn = Callable[[NodeKind, str, str], str]
+# Type alias for the build_node callable matching _build_node signature
+_BuildNodeFn = Callable[..., Node]
+
 
 def _qualname(ctx: _BaseContext, name: str) -> str:
     parts: list[str] = []
@@ -75,17 +77,17 @@ def _qualname(ctx: _BaseContext, name: str) -> str:
     return ".".join(parts)
 
 
-def _parent_id(ctx: _BaseContext, path: str) -> str | None:
+def _parent_id(ctx: _BaseContext, path: str, make_id: _MakeIdFn) -> str | None:
     if ctx.fn_stack:
         if ctx.class_stack:
-            return Node.make_code_id(
+            return make_id(
                 NodeKind.METHOD,
                 path,
                 ".".join((*ctx.class_stack, *ctx.fn_stack)),
             )
-        return Node.make_code_id(NodeKind.FUNCTION, path, ".".join(ctx.fn_stack))
+        return make_id(NodeKind.FUNCTION, path, ".".join(ctx.fn_stack))
     if ctx.class_stack:
-        return Node.make_code_id(NodeKind.CLASS, path, ".".join(ctx.class_stack))
+        return make_id(NodeKind.CLASS, path, ".".join(ctx.class_stack))
     return None
 
 
@@ -180,13 +182,24 @@ def _extract_from_def(
     n: TSNode,
     ctx: _BaseContext,
     out: list[Node],
+    build_node: _BuildNodeFn,
+    make_id: _MakeIdFn,
     decorators: list[str] | None = None,
 ) -> None:
     if n.type == TS_PY_DECORATED_DEF:
         decs = _get_decorators(src, n)
         inner = n.child_by_field_name("definition")
         if inner is not None:
-            _extract_from_def(path=path, src=src, n=inner, ctx=ctx, out=out, decorators=decs)
+            _extract_from_def(
+                path=path,
+                src=src,
+                n=inner,
+                ctx=ctx,
+                out=out,
+                build_node=build_node,
+                make_id=make_id,
+                decorators=decs,
+            )
         return
 
     if n.type == TS_PY_CLASS_DEF:
@@ -194,25 +207,21 @@ def _extract_from_def(
         if not name:
             return
 
-        start_line, end_line = _lines(n)
         meta: dict[str, Any] = {}
-        parent_id = _parent_id(ctx, path)
+        parent_id = _parent_id(ctx, path, make_id)
         if decorators:
             meta[META_DECORATORS] = decorators
             hint = _detect_framework_hint(decorators)
             if hint:
                 meta[META_FRAMEWORK_HINT] = hint
         out.append(
-            Node(
-                id=f"{NodeKind.CLASS.value}:{path}:{name}",
+            build_node(
+                n,
+                src,
+                path,
                 kind=NodeKind.CLASS,
-                source=NodeSource.CODE,
                 name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=LANG_PYTHON,
+                symbol=name,
                 parent_id=parent_id,
                 metadata=meta,
             )
@@ -221,7 +230,9 @@ def _extract_from_def(
         body = n.child_by_field_name("body")
         if body is not None:
             ctx.push_class(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            _walk(
+                path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id
+            )
             ctx.pop_class()
         return
 
@@ -230,9 +241,8 @@ def _extract_from_def(
         if not name:
             return
 
-        start_line, end_line = _lines(n)
         kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
-        parent_id = _parent_id(ctx, path)
+        parent_id = _parent_id(ctx, path, make_id)
         symbol = _qualname(ctx, name) if kind == NodeKind.METHOD or ctx.fn_stack else name
         meta: dict[str, Any] = {}
         meta.update(_function_metadata(src, n, name=name))
@@ -245,16 +255,13 @@ def _extract_from_def(
             meta["is_async"] = True
         body = n.child_by_field_name("body")
         out.append(
-            Node(
-                id=f"{kind.value}:{path}:{symbol}",
+            build_node(
+                n,
+                src,
+                path,
                 kind=kind,
-                source=NodeSource.CODE,
                 name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=LANG_PYTHON,
+                symbol=symbol,
                 parent_id=parent_id,
                 metadata=meta,
             )
@@ -262,7 +269,9 @@ def _extract_from_def(
 
         if body is not None:
             ctx.push_fn(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            _walk(
+                path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id
+            )
             ctx.pop_fn()
         return
 
@@ -278,6 +287,8 @@ def _try_extract_assignment(
     n: TSNode,
     ctx: _BaseContext,
     out: list[Node],
+    build_node: _BuildNodeFn,
+    make_id: _MakeIdFn,
 ) -> bool:
     """Handle `name = lambda ...` and `Name = TypedDict(...)` patterns.
 
@@ -300,24 +311,20 @@ def _try_extract_assignment(
             continue
 
         name = _node_text(src, lhs)
-        start_line, end_line = _lines(n)
-        parent_id = _parent_id(ctx, path)
+        parent_id = _parent_id(ctx, path, make_id)
 
         # named lambda: my_func = lambda x: ...
         if rhs.type == "lambda":
             symbol = _qualname(ctx, name) if ctx.class_stack else name
             kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
             out.append(
-                Node(
-                    id=f"{kind.value}:{path}:{symbol}",
+                build_node(
+                    n,
+                    src,
+                    path,
                     kind=kind,
-                    source=NodeSource.CODE,
                     name=name,
-                    path=path,
-                    content_hash=content_hash_for_line_span(src, start_line, end_line),
-                    start_line=start_line,
-                    end_line=end_line,
-                    language=LANG_PYTHON,
+                    symbol=symbol,
                     parent_id=parent_id,
                     metadata={"is_lambda": True},
                 )
@@ -331,16 +338,13 @@ def _try_extract_assignment(
                 func_name = _node_text(src, func_node)
                 if func_name in _CLASS_FACTORY_NAMES:
                     out.append(
-                        Node(
-                            id=f"{NodeKind.CLASS.value}:{path}:{name}",
+                        build_node(
+                            n,
+                            src,
+                            path,
                             kind=NodeKind.CLASS,
-                            source=NodeSource.CODE,
                             name=name,
-                            path=path,
-                            content_hash=content_hash_for_line_span(src, start_line, end_line),
-                            start_line=start_line,
-                            end_line=end_line,
-                            language=LANG_PYTHON,
+                            symbol=name,
                             parent_id=parent_id,
                             metadata={"class_factory": func_name},
                         )
@@ -350,16 +354,70 @@ def _try_extract_assignment(
     return False
 
 
-def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node]) -> None:
+def _walk(
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _BaseContext,
+    out: list[Node],
+    build_node: _BuildNodeFn,
+    make_id: _MakeIdFn,
+) -> None:
     # We walk all children and recursively extract definitions.
     for child in n.children:
         if child.type in {TS_PY_FUNCTION_DEF, TS_PY_CLASS_DEF, TS_PY_DECORATED_DEF}:
-            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
-        elif _try_extract_assignment(path=path, src=src, n=child, ctx=ctx, out=out):
+            _extract_from_def(
+                path=path,
+                src=src,
+                n=child,
+                ctx=ctx,
+                out=out,
+                build_node=build_node,
+                make_id=make_id,
+            )
+        elif _try_extract_assignment(
+            path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id
+        ):
             pass
         else:
             if child.child_count:
-                _walk(path=path, src=src, n=child, ctx=ctx, out=out)
+                _walk(
+                    path=path,
+                    src=src,
+                    n=child,
+                    ctx=ctx,
+                    out=out,
+                    build_node=build_node,
+                    make_id=make_id,
+                )
+
+
+class PythonHandler(BaseLanguageHandler):
+    """Handler for Python source files."""
+
+    @property
+    def language_name(self) -> str:
+        return LANG_PYTHON
+
+    def parse(self, source: bytes, rel_path: str) -> list[Node]:
+        parser = Parser(_PY_LANGUAGE)
+        tree = parser.parse(source)
+        out: list[Node] = []
+
+        def make_id(kind: object, path: str, symbol: str) -> str:
+            return f"{kind.value}:{self.repo_name}:{path}:{symbol}"
+
+        _walk(
+            path=rel_path,
+            src=source,
+            n=tree.root_node,
+            ctx=_BaseContext(),
+            out=out,
+            build_node=self._build_node,
+            make_id=make_id,
+        )
+        return out
 
 
 def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
@@ -369,15 +427,26 @@ def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
     p = Path(path)
     src = p.read_bytes()
 
+    from loom.indexer.languages._base import _default_repo_name
+
+    handler = PythonHandler()
+    handler.repo_name = _default_repo_name()
+
     parser = Parser(_PY_LANGUAGE)
     tree = parser.parse(src)
 
     out: list[Node] = []
+
+    def make_id(kind: object, file_path: str, symbol: str) -> str:
+        return f"{kind.value}:{handler.repo_name}:{file_path}:{symbol}"
+
     _walk(
         path=path.replace("\\", "/"),
         src=src,
         n=tree.root_node,
         ctx=_BaseContext(),
         out=out,
+        build_node=handler._build_node,
+        make_id=make_id,
     )
     return out

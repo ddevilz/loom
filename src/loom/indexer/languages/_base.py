@@ -2,20 +2,33 @@
 
 Contains:
     _BaseContext — parser state stack (class/function nesting)
-    BaseLanguageHandler — abstract interface for tree-sitter parsers (NEW)
+    BaseLanguageHandler — abstract interface for tree-sitter parsers
 
-Parsers are NOT refactored to extend BaseLanguageHandler yet — that happens
-in a follow-up PR. This module defines the interface only.
+All language handlers (python.py, typescript.py, javascript.py, java.py) extend
+BaseLanguageHandler and use _build_node for consistent 4-part node ID generation.
 """
+
 from __future__ import annotations
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Any
 
-from loom.graph.models import Node
+from tree_sitter import Node as TSNode
+
+from loom.graph.content_hash import content_hash_for_line_span
+from loom.graph.models import Node, NodeKind, NodeSource
+from loom.indexer.complexity import classify_complexity
+from loom.indexer.languages._ts_utils import lines as _lines
 
 logger = logging.getLogger(__name__)
+
+
+def _default_repo_name() -> str:
+    """Return the repo name from environment, defaulting to 'unknown'."""
+    return os.environ.get("LOOM_REPO_NAME", "unknown")
 
 
 @dataclass
@@ -65,10 +78,16 @@ class _BaseContext:
 class BaseLanguageHandler(ABC):
     """Template method interface for tree-sitter language parsers.
 
-    Defines the contract that all language handlers must fulfill.
-    Existing parsers (python.py, typescript.py, etc.) are NOT yet refactored
-    to extend this class — that happens in a follow-up PR.
+    All language handlers (python.py, typescript.py, javascript.py, java.py)
+    extend this class and use _build_node for consistent 4-part node ID generation
+    (kind:repo:path:symbol).
+
+    repo_name is injected after instantiation or read from LOOM_REPO_NAME env var.
     """
+
+    #: Repo name used in 4-part node IDs.  Defaults to LOOM_REPO_NAME env var
+    #: (or "unknown" if unset).  Callers may override after instantiation.
+    repo_name: str = "unknown"
 
     @property
     @abstractmethod
@@ -89,8 +108,57 @@ class BaseLanguageHandler(ABC):
         """
         ...
 
-    def _build_node_id(self, kind: str, path: str, name: str) -> str:
-        return f"{kind}:{path}:{name}"
+    @property
+    def _repo_name(self) -> str:
+        """Return the repo name for use in node IDs.
+
+        Falls back to LOOM_REPO_NAME environment variable if repo_name is still
+        at the class-level default of "unknown".
+        """
+        if self.repo_name != "unknown":
+            return self.repo_name
+        return _default_repo_name()
+
+    def _build_node(
+        self,
+        ts_node: TSNode,
+        src: bytes,
+        path: str,
+        *,
+        kind: NodeKind,
+        name: str,
+        symbol: str,
+        parent_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Node:
+        """Build a Node with complexity computed from ts_node.
+
+        Args:
+            ts_node: Tree-sitter AST node for the function/class.
+            src: Raw file source bytes.
+            path: Relative file path.
+            kind: NodeKind (FUNCTION, METHOD, CLASS, etc.).
+            name: Simple name (stored on Node.name).
+            symbol: Qualname used in ID — caller's responsibility.
+            parent_id: ID of containing node, if any.
+            metadata: Language-specific extras (decorators, signature, etc.).
+        """
+        start_line, end_line = _lines(ts_node)
+        repo_name = self._repo_name
+        return Node(
+            id=f"{kind.value}:{repo_name}:{path}:{symbol}",
+            kind=kind,
+            source=NodeSource.CODE,
+            name=name,
+            path=path,
+            language=self.language_name,
+            content_hash=content_hash_for_line_span(src, start_line, end_line),
+            start_line=start_line,
+            end_line=end_line,
+            parent_id=parent_id,
+            complexity=classify_complexity(ts_node, self.language_name),
+            metadata=metadata or {},
+        )
 
     def _extract_decorators(self, node: object) -> list[str]:
         """Common decorator extraction — override for language-specific behavior."""

@@ -2,13 +2,14 @@
 
 Moved from ingest/incremental.py with imports updated to graph.* and indexer.*.
 """
+
 from __future__ import annotations
 
 import functools
 import logging
 import subprocess
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from multiprocessing import cpu_count
 from pathlib import Path
 
@@ -120,3 +121,64 @@ async def sync_paths(
         nodes_written=len(all_nodes),
         edges_written=len(all_edges),
     )
+
+
+@dataclass
+class ChangeReport:
+    new: list[str] = field(default_factory=list)
+    changed: list[str] = field(default_factory=list)
+    mtime_only: list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    deleted: list[str] = field(default_factory=list)
+
+    @property
+    def files_to_index(self) -> list[str]:
+        """Files needing full parse — new + content-changed."""
+        return self.new + self.changed
+
+    @property
+    def files_to_update_mtime(self) -> list[str]:
+        """Files where only mtime changed; caller must update stored mtime to keep fast-path."""
+        return self.mtime_only
+
+
+class IncrementalSync:
+    def __init__(self, repo: Repository) -> None:
+        self.repo = repo
+
+    def classify_changes(self, discovered_files: list[str]) -> ChangeReport:
+        """Three-tier change detection: mtime → SHA-256 → re-index.
+
+        discovered_files: absolute paths returned by walk_repo().
+        Handles TOCTOU race: files may vanish between walk and stat.
+        """
+        stored = self.repo.fingerprints.get_all()
+        report = ChangeReport()
+        discovered_set = set(discovered_files)
+
+        for path in discovered_files:
+            try:
+                stat_result = Path(path).stat()
+            except FileNotFoundError:
+                report.deleted.append(path)
+                continue
+            mtime_ns = stat_result.st_mtime_ns
+            if path not in stored:
+                report.new.append(path)
+                continue
+            fp = stored[path]
+            if fp.mtime_ns == mtime_ns:
+                report.unchanged.append(path)
+                continue
+            try:
+                content_sha = sha256_of_file(Path(path))
+            except FileNotFoundError:
+                report.deleted.append(path)
+                continue
+            if fp.content_sha == content_sha:
+                report.mtime_only.append(path)
+                continue
+            report.changed.append(path)
+
+        report.deleted.extend([p for p in stored if p not in discovered_set])
+        return report

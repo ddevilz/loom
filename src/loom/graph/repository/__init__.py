@@ -9,15 +9,18 @@ Usage:
     repo = Repository(db)
     node = repo.nodes.get("function:src/auth.py:validate_token")
 """
+
 from __future__ import annotations
 
 from loom.graph.db import DB
 from loom.graph.repository.analytics import AnalyticsRepository
 from loom.graph.repository.context import ContextRepository
 from loom.graph.repository.edges import EdgeRepository
+from loom.graph.repository.fingerprints import FileFingerprint, FingerprintRepository
 from loom.graph.repository.nodes import NodeRepository
 from loom.graph.repository.search import SearchRepository
 from loom.graph.repository.sessions import SessionRepository
+from loom.graph.repository.tags import TagRepository
 from loom.graph.repository.traversal import TraversalRepository
 
 __all__ = [
@@ -29,13 +32,16 @@ __all__ = [
     "ContextRepository",
     "SessionRepository",
     "AnalyticsRepository",
+    "FingerprintRepository",
+    "FileFingerprint",
+    "TagRepository",
 ]
 
 
 class Repository:
     """Composed repository facade.
 
-    Eagerly constructs all 7 sub-repositories at instantiation time.
+    Eagerly constructs all 9 sub-repositories at instantiation time.
     Zero per-request overhead — all state is in the shared DB instance.
 
     Attributes:
@@ -46,9 +52,22 @@ class Repository:
         context: Context packets and session primer.
         sessions: Session tracking and delta queries.
         analytics: Token-saving analytics.
+        fingerprints: File-level change detection storage.
+        tags: Node tag storage with system/agent source tracking.
     """
 
-    __slots__ = ("db", "nodes", "edges", "search", "traversal", "context", "sessions", "analytics")
+    __slots__ = (
+        "db",
+        "nodes",
+        "edges",
+        "search",
+        "traversal",
+        "context",
+        "sessions",
+        "analytics",
+        "fingerprints",
+        "tags",
+    )
 
     def __init__(self, db: DB) -> None:
         self.db = db
@@ -59,3 +78,5 @@ class Repository:
         self.context = ContextRepository(db)
         self.sessions = SessionRepository(db)
         self.analytics = AnalyticsRepository(db)
+        self.fingerprints = FingerprintRepository(db)
+        self.tags = TagRepository(db)

@@ -65,7 +65,7 @@ def _get_hot_functions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         """SELECT n.name, n.path, COUNT(e.id) AS callers
            FROM nodes n
            JOIN edges e ON e.to_id = n.id
-           WHERE e.kind = 'calls'
+           WHERE e.kind = 'CALLS'
              AND n.kind IN ('function', 'method')
              AND n.deleted_at IS NULL
            GROUP BY n.id
@@ -138,7 +138,7 @@ def _build_module_detail(conn: sqlite3.Connection, module: str) -> dict[str, Any
     rows = conn.execute(
         """SELECT n.name, n.path, n.summary, n.metadata,
                   (SELECT COUNT(*) FROM edges e
-                   WHERE e.to_id = n.id AND e.kind = 'calls') AS callers
+                   WHERE e.to_id = n.id AND e.kind = 'CALLS') AS callers
            FROM nodes n
            WHERE n.kind IN ('function', 'method')
              AND n.deleted_at IS NULL

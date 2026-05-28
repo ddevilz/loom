@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import tree_sitter_typescript as _ts_typescript
@@ -7,14 +8,10 @@ from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 
-from loom.graph.models import Node, NodeKind, NodeSource
-from loom.graph.content_hash import content_hash_for_line_span
-from loom.indexer.languages._base import _BaseContext
+from loom.graph.models import Node, NodeKind
+from loom.indexer.languages._base import BaseLanguageHandler, _BaseContext
 from loom.indexer.languages._ts_utils import (
     get_name as _get_name,
-)
-from loom.indexer.languages._ts_utils import (
-    lines as _lines,
 )
 from loom.indexer.languages._ts_utils import (
     node_text as _node_text,
@@ -39,6 +36,9 @@ from loom.indexer.languages.constants import (
 
 _TS_LANGUAGE = _Language(_ts_typescript.language_typescript())
 _TSX_LANGUAGE = _Language(_ts_typescript.language_tsx())
+
+# Type alias for the build_node callable matching _build_node signature
+_BuildNodeFn = Callable[..., Node]
 
 
 def _qualname(ctx: _BaseContext, name: str) -> str:
@@ -94,6 +94,7 @@ def _extract_from_def(
     ctx: _BaseContext,
     out: list[Node],
     language: str,
+    build_node: _BuildNodeFn,
 ) -> None:
     # Handle export statements
     if n.type == TS_JS_EXPORT_STATEMENT:
@@ -102,11 +103,23 @@ def _extract_from_def(
         if declaration:
             # Try normal definition extraction first
             _extract_from_def(
-                path=path, src=src, n=declaration, ctx=ctx, out=out, language=language
+                path=path,
+                src=src,
+                n=declaration,
+                ctx=ctx,
+                out=out,
+                language=language,
+                build_node=build_node,
             )
             # Also try const function pattern (export const x = () => {})
             _try_extract_const_function(
-                path=path, src=src, n=declaration, ctx=ctx, out=out, language=language
+                path=path,
+                src=src,
+                n=declaration,
+                ctx=ctx,
+                out=out,
+                language=language,
+                build_node=build_node,
             )
         return
 
@@ -116,8 +129,6 @@ def _extract_from_def(
         if not name:
             return
 
-        start_line, end_line = _lines(n)
-
         # Extract decorators
         metadata = {}
         decorators = _extract_decorators(src, n)
@@ -125,18 +136,7 @@ def _extract_from_def(
             metadata["decorators"] = decorators
 
         out.append(
-            Node(
-                id=f"{NodeKind.CLASS.value}:{path}:{name}",
-                kind=NodeKind.CLASS,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=language,
-                metadata=metadata,
-            )
+            build_node(n, src, path, kind=NodeKind.CLASS, name=name, symbol=name, metadata=metadata)
         )
 
         body = n.child_by_field_name("body")
@@ -149,6 +149,7 @@ def _extract_from_def(
                 ctx=ctx,
                 out=out,
                 language=language,
+                build_node=build_node,
             )
             ctx.pop_class()
         return
@@ -159,7 +160,6 @@ def _extract_from_def(
             # arrow functions might not have names
             return
 
-        start_line, end_line = _lines(n)
         kind = NodeKind.FUNCTION
         symbol = name
 
@@ -176,20 +176,7 @@ def _extract_from_def(
                 metadata["is_async"] = True
                 break
 
-        out.append(
-            Node(
-                id=f"{kind.value}:{path}:{symbol}",
-                kind=kind,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=language,
-                metadata=metadata,
-            )
-        )
+        out.append(build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata=metadata))
 
         body = n.child_by_field_name("body")
         if body is not None:
@@ -201,6 +188,7 @@ def _extract_from_def(
                 ctx=ctx,
                 out=out,
                 language=language,
+                build_node=build_node,
             )
             ctx.pop_fn()
         return
@@ -210,23 +198,13 @@ def _extract_from_def(
         if not name:
             return
 
-        start_line, end_line = _lines(n)
         symbol = _qualname(ctx, name)
         body = n.child_by_field_name("body")
         metadata = _function_metadata(src, n, name=name)
 
         out.append(
-            Node(
-                id=f"{NodeKind.METHOD.value}:{path}:{symbol}",
-                kind=NodeKind.METHOD,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=language,
-                metadata=metadata,
+            build_node(
+                n, src, path, kind=NodeKind.METHOD, name=name, symbol=symbol, metadata=metadata
             )
         )
 
@@ -239,6 +217,7 @@ def _extract_from_def(
                 ctx=ctx,
                 out=out,
                 language=language,
+                build_node=build_node,
             )
             ctx.pop_fn()
         return
@@ -248,20 +227,8 @@ def _extract_from_def(
         if not name:
             return
 
-        start_line, end_line = _lines(n)
         out.append(
-            Node(
-                id=f"{NodeKind.ENUM.value}:{path}:{name}",
-                kind=NodeKind.ENUM,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=language,
-                metadata={},
-            )
+            build_node(n, src, path, kind=NodeKind.ENUM, name=name, symbol=name, metadata={})
         )
         return
 
@@ -270,20 +237,8 @@ def _extract_from_def(
         if not name:
             return
 
-        start_line, end_line = _lines(n)
         out.append(
-            Node(
-                id=f"{NodeKind.INTERFACE.value}:{path}:{name}",
-                kind=NodeKind.INTERFACE,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=language,
-                metadata={},
-            )
+            build_node(n, src, path, kind=NodeKind.INTERFACE, name=name, symbol=name, metadata={})
         )
         return
 
@@ -292,20 +247,8 @@ def _extract_from_def(
         if not name:
             return
 
-        start_line, end_line = _lines(n)
         out.append(
-            Node(
-                id=f"{NodeKind.TYPE.value}:{path}:{name}",
-                kind=NodeKind.TYPE,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=language,
-                metadata={},
-            )
+            build_node(n, src, path, kind=NodeKind.TYPE, name=name, symbol=name, metadata={})
         )
         return
 
@@ -318,6 +261,7 @@ def _try_extract_const_function(
     ctx: _BaseContext,
     out: list[Node],
     language: str,
+    build_node: _BuildNodeFn,
 ) -> bool:
     """Handle `const name = () => {}` and `const name = function() {}`."""
     if n.type != "lexical_declaration":
@@ -342,7 +286,6 @@ def _try_extract_const_function(
             continue
 
         name = _node_text(src, name_node)
-        start_line, end_line = _lines(n)
         metadata: dict = {}
 
         if value_node.type == TS_JS_ARROW_FUNCTION:
@@ -354,17 +297,8 @@ def _try_extract_const_function(
         body = value_node.child_by_field_name("body")
 
         out.append(
-            Node(
-                id=f"{NodeKind.FUNCTION.value}:{path}:{name}",
-                kind=NodeKind.FUNCTION,
-                source=NodeSource.CODE,
-                name=name,
-                path=path,
-                content_hash=content_hash_for_line_span(src, start_line, end_line),
-                start_line=start_line,
-                end_line=end_line,
-                language=language,
-                metadata=metadata,
+            build_node(
+                n, src, path, kind=NodeKind.FUNCTION, name=name, symbol=name, metadata=metadata
             )
         )
 
@@ -377,6 +311,7 @@ def _try_extract_const_function(
                 ctx=ctx,
                 out=out,
                 language=language,
+                build_node=build_node,
             )
             ctx.pop_fn()
         found = True
@@ -385,7 +320,14 @@ def _try_extract_const_function(
 
 
 def _walk(
-    *, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node], language: str
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _BaseContext,
+    out: list[Node],
+    language: str,
+    build_node: _BuildNodeFn,
 ) -> None:
     for child in n.children:
         if child.type in {
@@ -399,17 +341,81 @@ def _walk(
             TS_JS_TYPE_ALIAS_DECL,
             TS_JS_EXPORT_STATEMENT,
         }:
-            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, language=language)
+            _extract_from_def(
+                path=path,
+                src=src,
+                n=child,
+                ctx=ctx,
+                out=out,
+                language=language,
+                build_node=build_node,
+            )
         elif _try_extract_const_function(
-            path=path, src=src, n=child, ctx=ctx, out=out, language=language
+            path=path,
+            src=src,
+            n=child,
+            ctx=ctx,
+            out=out,
+            language=language,
+            build_node=build_node,
         ):
             pass
         else:
             if child.child_count:
-                _walk(path=path, src=src, n=child, ctx=ctx, out=out, language=language)
+                _walk(
+                    path=path,
+                    src=src,
+                    n=child,
+                    ctx=ctx,
+                    out=out,
+                    language=language,
+                    build_node=build_node,
+                )
+
+
+class TypeScriptHandler(BaseLanguageHandler):
+    """Handler for TypeScript/TSX source files."""
+
+    @property
+    def language_name(self) -> str:
+        return LANG_TYPESCRIPT
+
+    def parse(self, source: bytes, rel_path: str) -> list[Node]:
+        from loom.indexer.languages.jsx import extract_jsx_nodes
+
+        is_tsx = rel_path.endswith(".tsx")
+        parser = Parser(_TSX_LANGUAGE if is_tsx else _TS_LANGUAGE)
+        tree = parser.parse(source)
+
+        out: list[Node] = []
+        lang = LANG_TSX if is_tsx else LANG_TYPESCRIPT
+
+        # Wrap _build_node to apply the correct language (tsx vs typescript)
+        def build_node(ts_node: TSNode, src: bytes, path: str, **kwargs: object) -> Node:
+            node = self._build_node(ts_node, src, path, **kwargs)  # type: ignore[arg-type]
+            return node.model_copy(update={"language": lang})
+
+        _walk(
+            path=rel_path,
+            src=source,
+            n=tree.root_node,
+            ctx=_BaseContext(),
+            out=out,
+            language=lang,
+            build_node=build_node,
+        )
+        if is_tsx:
+            file_node_id = f"file:{rel_path}"
+            out.extend(
+                extract_jsx_nodes(
+                    rel_path, source, tree.root_node, lang, file_node_id, build_node=build_node
+                )
+            )
+        return out
 
 
 def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
+    from loom.indexer.languages._base import _default_repo_name
     from loom.indexer.languages.jsx import extract_jsx_nodes
 
     p = Path(path)
@@ -419,9 +425,18 @@ def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:  
     parser = Parser(_TSX_LANGUAGE if is_tsx else _TS_LANGUAGE)
     tree = parser.parse(src)
 
+    handler = TypeScriptHandler()
+    handler.repo_name = _default_repo_name()
+
     out: list[Node] = []
     lang = LANG_TSX if is_tsx else LANG_TYPESCRIPT
     norm_path = path.replace("\\", "/")
+
+    # Wrap _build_node to apply the correct language (tsx vs typescript)
+    def build_node(ts_node: TSNode, src: bytes, path: str, **kwargs: object) -> Node:
+        node = handler._build_node(ts_node, src, path, **kwargs)  # type: ignore[arg-type]
+        return node.model_copy(update={"language": lang})
+
     _walk(
         path=norm_path,
         src=src,
@@ -429,8 +444,13 @@ def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:  
         ctx=_BaseContext(),
         out=out,
         language=lang,
+        build_node=build_node,
     )
     if is_tsx:
         file_node_id = f"file:{norm_path}"
-        out.extend(extract_jsx_nodes(norm_path, src, tree.root_node, lang, file_node_id))
+        out.extend(
+            extract_jsx_nodes(
+                norm_path, src, tree.root_node, lang, file_node_id, build_node=build_node
+            )
+        )
     return out

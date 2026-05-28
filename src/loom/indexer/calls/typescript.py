@@ -7,9 +7,9 @@ from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 
+from loom.graph.models import Edge, EdgeType, Node, NodeKind
 from loom.indexer.calls._base import node_text
 from loom.indexer.calls.noise_filter import should_ignore_call
-from loom.graph.models import Edge, EdgeType, Node, NodeKind
 
 _TS_LANGUAGE = _Language(_ts_typescript.language_typescript())
 _TSX_LANGUAGE = _Language(_ts_typescript.language_tsx())

@@ -1,4 +1,5 @@
 """run.py — MCP server entry point and background indexing."""
+
 from __future__ import annotations
 
 import logging

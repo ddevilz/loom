@@ -3,6 +3,7 @@
 Extracted from src/loom/query/traversal.py (async) and
 src/loom/query/blast_radius.py (async), converted to pure synchronous methods.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -10,7 +11,7 @@ from typing import Any
 import networkx as nx
 
 from loom.graph.db import DB
-from loom.graph.models import Edge, EdgeType, Node
+from loom.graph.models import EdgeType, Node
 from loom.graph.repository.nodes import row_to_node
 
 

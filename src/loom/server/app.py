@@ -1,4 +1,5 @@
 """app.py — FastMCP server assembly."""
+
 from __future__ import annotations
 
 import logging
@@ -19,10 +20,10 @@ def build_server(
 ) -> object:
     """Build and return the FastMCP server with all 17 tools registered."""
     from loom.graph.db import DB, DEFAULT_DB_PATH
+    from loom.server import run as run_mod
     from loom.server.cache import MemoCache
     from loom.server.tools import analysis, context, graph, search
     from loom.server.tools import session as session_tools
-    from loom.server import run as run_mod
 
     if FastMCP is None:
         raise RuntimeError("fastmcp not installed — run: uv add fastmcp")

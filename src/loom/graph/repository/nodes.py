@@ -3,6 +3,7 @@
 Extracted from src/loom/store/nodes.py (async) and
 src/loom/query/node_lookup.py (async), converted to pure synchronous methods.
 """
+
 from __future__ import annotations
 
 import json
@@ -62,7 +63,6 @@ def row_to_node(row: sqlite3.Row) -> Node:
         summary=row["summary"],
         summary_hash=row["summary_hash"] if "summary_hash" in row.keys() else None,  # noqa: SIM118
         token_count=row["token_count"] if "token_count" in row.keys() else None,  # noqa: SIM118
-        is_dead_code=bool(row["is_dead_code"]),
         community_id=row["community_id"],
         metadata=metadata,
     )
@@ -90,9 +90,7 @@ class NodeRepository:
         """Return a single node by its exact id, or None."""
         with self._db._lock:
             conn = self._db.connect()
-            row = conn.execute(
-                "SELECT * FROM nodes WHERE id = ?", (node_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
             return row_to_node(row) if row else None
 
     def get_by_name(self, name: str, limit: int = 10) -> list[Node]:
@@ -146,8 +144,7 @@ class NodeRepository:
             by_kind = {
                 r["kind"]: r["c"]
                 for r in conn.execute(
-                    "SELECT kind, COUNT(*) AS c FROM nodes "
-                    "WHERE deleted_at IS NULL GROUP BY kind"
+                    "SELECT kind, COUNT(*) AS c FROM nodes WHERE deleted_at IS NULL GROUP BY kind"
                 ).fetchall()
             }
             by_edge = {
@@ -204,7 +201,6 @@ class NodeRepository:
                 n.file_mtime,
                 n.summary,
                 _calc_token_count(n),
-                int(n.is_dead_code),
                 n.community_id,
                 json.dumps(n.metadata, default=str),
                 now,
@@ -243,8 +239,7 @@ class NodeRepository:
                     }
 
                     conn.execute(
-                        "DELETE FROM edges "
-                        "WHERE from_id IN (SELECT id FROM nodes WHERE path = ?)",
+                        "DELETE FROM edges WHERE from_id IN (SELECT id FROM nodes WHERE path = ?)",
                         (rel_path,),
                     )
                     conn.execute("DELETE FROM nodes WHERE path = ?", (rel_path,))
@@ -254,8 +249,8 @@ class NodeRepository:
                             """INSERT OR REPLACE INTO nodes
                                  (id, kind, source, name, path, start_line, end_line,
                                   language, content_hash, file_hash, file_mtime, summary,
-                                  token_count, is_dead_code, community_id, metadata, updated_at)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                  token_count, community_id, metadata, updated_at)
+                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                             node_rows,
                         )
                     if edge_rows:
@@ -287,8 +282,8 @@ class NodeRepository:
                     """INSERT INTO nodes
                          (id, kind, source, name, path, start_line, end_line,
                           language, content_hash, file_hash, file_mtime, summary,
-                          token_count, is_dead_code, community_id, metadata, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                          token_count, community_id, metadata, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(id) DO UPDATE SET
                          kind=excluded.kind, source=excluded.source, name=excluded.name,
                          path=excluded.path, start_line=excluded.start_line,
@@ -301,7 +296,6 @@ class NodeRepository:
                              ELSE nodes.summary
                          END,
                          token_count=COALESCE(excluded.token_count, nodes.token_count),
-                         is_dead_code=excluded.is_dead_code,
                          community_id=excluded.community_id, metadata=excluded.metadata,
                          updated_at=CASE
                              WHEN excluded.content_hash IS NOT NULL
