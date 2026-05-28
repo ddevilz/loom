@@ -11,11 +11,18 @@ import re
 import sqlite3
 import subprocess
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from loom.graph.db import DB
-from loom.graph.models import EdgeType, SummarySource
+from loom.graph.models import EdgeType, Node, SummarySource
 from loom.graph.repository.nodes import row_to_node
+
+
+@dataclass
+class TestedByLink:
+    node: Node
+    confidence: float
 
 _CALLER_LIMIT = 10
 _CALLEE_LIMIT = 10
@@ -110,6 +117,15 @@ def _git_diff_hint(path: str, start_line: int | None, end_line: int | None) -> s
         return None
 
 
+def _get_tags_for_node(conn: sqlite3.Connection, node_id: str) -> list[str]:
+    """Fetch tags for a node from node_tags table."""
+    rows = conn.execute(
+        "SELECT tag FROM node_tags WHERE node_id = ? ORDER BY tag",
+        (node_id,),
+    ).fetchall()
+    return [r["tag"] for r in rows]
+
+
 def _brief_packet(node_row: sqlite3.Row) -> dict[str, Any]:
     node = row_to_node(node_row)
     return {
@@ -130,6 +146,10 @@ def _build_packet(
     callers_total: int,
     callees: list[sqlite3.Row],
     callees_total: int,
+    *,
+    complexity: str | None = None,
+    tags: list[str] | None = None,
+    tested_by: list[TestedByLink] | None = None,
 ) -> dict[str, Any]:
     node = row_to_node(node_row)
     metadata = json.loads(node_row["metadata"]) if node_row["metadata"] else {}
@@ -184,6 +204,17 @@ def _build_packet(
         "edge_coverage": metadata.get("edge_coverage", "unknown"),
         "last_analyzed_ago": last_analyzed_ago,
         "suggestion": suggestion,
+        "complexity": complexity,
+        "tags": tags or [],
+        "tested_by": [
+            {
+                "id": link.node.id,
+                "name": link.node.name,
+                "file_path": link.node.path,
+                "confidence": round(link.confidence, 3),
+            }
+            for link in (tested_by or [])
+        ],
     }
 
 
@@ -450,6 +481,17 @@ class ContextRepository:
     def __init__(self, db: DB) -> None:
         self._db = db
 
+    def _get_tested_by(self, conn: sqlite3.Connection, node_id: str) -> list[TestedByLink]:
+        """Return test nodes with TESTED_BY edges pointing to node_id."""
+        rows = conn.execute(
+            """SELECT n.*, e.confidence
+               FROM edges e
+               JOIN nodes n ON n.id = e.from_id
+               WHERE e.to_id = ? AND e.kind = 'TESTED_BY' AND n.deleted_at IS NULL""",
+            (node_id,),
+        ).fetchall()
+        return [TestedByLink(node=row_to_node(r), confidence=r["confidence"]) for r in rows]
+
     def get_context_packet(
         self,
         node_id: str,
@@ -526,7 +568,19 @@ class ContextRepository:
                         (node_id, EdgeType.CALLS.value),
                     ).fetchone()[0]
 
-                return _build_packet(node_row, callers, callers_total, callees, callees_total)
+                # For function/method nodes, fetch tags and tested_by
+                tags = _get_tags_for_node(conn, node_id)
+                tested_by = self._get_tested_by(conn, node_id)
+
+                # Extract complexity from node row
+                complexity_val = node_row["complexity"] if "complexity" in node_row.keys() else None
+
+                return _build_packet(
+                    node_row, callers, callers_total, callees, callees_total,
+                    complexity=complexity_val,
+                    tags=tags,
+                    tested_by=tested_by,
+                )
 
             else:
                 members = conn.execute(
