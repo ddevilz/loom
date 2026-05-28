@@ -9,10 +9,11 @@ Loom indexes your codebase into a local SQLite database using tree-sitter. It ex
 **Core loop:**
 
 ```
-loom analyze .              # tree-sitter indexes all symbols → ~/.loom/projects/myrepo.db
-search_code("login")        # instant: {name, path, line, summary, signature}
-get_context(node_id)        # full picture: summary + callers + callees, one call
-store_understanding(id, s)  # cache what you learned → returned on future searches
+loom analyze .                    # tree-sitter indexes all symbols → ~/.loom/projects/myrepo.db
+search_code("login")              # instant: {name, path, line, summary, signature}
+search_code("tag:auth login")     # tag-filtered search — AND semantics
+get_context(node_id)              # full picture: summary + callers + callees + complexity + tags
+store_understanding(id, s)        # cache what you learned → returned on future searches
 ```
 
 No Docker. No embeddings. No LLM calls from Loom. Pure tree-sitter + SQLite.
@@ -125,7 +126,7 @@ Override with `LOOM_DB_PATH` env var or `--db` flag.
 | `shortest_path(from_id, to_id)` | Shortest directed path on CALLS subgraph — each hop includes `summary` |
 | `graph_stats(include_cohesion?)` | Node/edge counts by kind. `include_cohesion=True` adds per-cluster cohesion scores (0.0–1.0, < 0.2 = refactor candidate). |
 | `god_nodes(limit)` | Most-called functions (highest in-degree) — each result includes `summary` |
-| `store_understanding(node_id, summary, force?)` | Cache agent-generated summary permanently. Returns `skipped: true` if summary already fresh — no re-write needed. |
+| `store_understanding(node_id, summary, force?, tags?)` | Cache agent-generated summary permanently. Optionally attach agent tags (`tags: ["security-sensitive", "needs-refactor"]`) — persisted with `source="agent"`, survive re-index. Returns `skipped: true` if summary already fresh — no re-write needed. |
 | `store_understanding_batch(updates)` | Batch version, max 50 per call |
 | `get_savings()` | Token savings report — all-time totals + 10 recent hits |
 | `start_session(agent_id)` | Register session start, returns session_id |
@@ -152,6 +153,8 @@ method:src/models/user.py:User.save
 class:src/models/user.py:User
 file:src/auth.py
 ```
+
+> **v0.6.0 note:** The 4-part `{kind}:{repo}:{path}:{symbol}` format is planned for a future phase. Current IDs remain 3-part.
 
 ## Agent workflow
 
@@ -191,8 +194,22 @@ store_understanding(
 - If source changes → `summary_stale: true` in `get_context` → agent re-reads and updates
 - If source unchanged → `store_understanding` returns `skipped: true` → no duplicate writes
 - Pass `force: true` to overwrite regardless
+- Pass `tags: ["label", ...]` to attach agent-owned tags — these survive re-index
 
 **Priority:** Agent summaries are never overwritten by auto-summaries. Re-analyzing preserves agent work.
+
+## Index-time enrichment (v0.6.0)
+
+Every `loom analyze` run now enriches the graph with additional metadata beyond raw symbols:
+
+- **File fingerprinting** — SHA-256 + mtime stored in `file_fingerprints` table; only changed files are re-parsed (incremental by default)
+- **Complexity classification** — each function/method tagged `SIMPLE`, `MODERATE`, or `COMPLEX` based on cyclomatic complexity
+- **AutoTagger** — decorator tags (`api-endpoint`, `async-task`, `auth`), import tags, and directory tags applied automatically
+- **TestLinker** — `TESTED_BY` edges created between test files and the production code they cover (Python, TypeScript, JavaScript, Java)
+- **GraphTagger** — graph-derived tags: `dead-code`, `entry-point`, `hub`, `bridge`
+- **Tag search** — `tag:X` syntax in `search_code` and `loom query`; multiple tags use AND semantics (e.g. `"tag:auth login"`)
+- **Enhanced context packets** — `get_context` now returns `complexity`, `tags`, and `tested_by` fields for function/method nodes
+- **Agent tags** — `store_understanding` accepts `tags: list[str]`; stored with `source="agent"` and survive re-index
 
 ## Plugin system
 
@@ -259,34 +276,48 @@ Indexed as file nodes: HTML, CSS, JSON, YAML, TOML, XML, INI, .env, .properties
 
 ## Schema
 
-Full DDL in [`src/loom/core/schema.sql`](src/loom/core/schema.sql). Two core tables:
+Full DDL in [`src/loom/graph/schema.sql`](src/loom/graph/schema.sql). Core tables:
 
 ```sql
-nodes    -- id, kind, name, path, language, summary, summary_hash,
-            token_count, content_hash, start_line, end_line, metadata, deleted_at, updated_at
-edges    -- from_id, to_id, kind, confidence
-savings  -- ts, node_id, query, tokens_saved, summary_type
-sessions -- id, agent_id, started_at
-meta     -- key/value counters (savings totals)
+nodes             -- id, kind, name, path, language, summary, summary_hash,
+                     token_count, content_hash, start_line, end_line, complexity,
+                     tags_normalized, metadata, deleted_at, updated_at
+edges             -- from_id, to_id, kind, confidence, confidence_tier
+savings           -- ts, node_id, query, tokens_saved, summary_type
+sessions          -- id, agent_id, started_at
+meta              -- key/value counters (savings totals)
+file_fingerprints -- file_path, content_sha, mtime_ns, indexed_at
+node_tags         -- node_id, tag, source  (source="agent" tags survive re-index)
 ```
 
-FTS5 virtual table `nodes_fts` indexes name + summary + path for full-text search.
+FTS5 virtual table `nodes_fts` indexes name + summary + path + tags_normalized for full-text and tag-based search.
 Sessions table tracks agent session timestamps for delta context.
 
 ## Architecture
 
 ```
 src/loom/
-├── core/          # Node/Edge models, DB context, schema.sql
-├── ingest/        # index_repo, sync_paths, tree-sitter parsers per language
-├── analysis/      # communities (Louvain), coupling (git co-change), dead code
-├── query/         # search, blast_radius, context packets, primer, delta
-├── store/         # nodes CRUD, sessions, savings, FTS5 sync
-├── mcp/           # FastMCP server (server.py), standalone entry point (run.py)
-├── cli/           # typer commands
-│   └── plugins/   # platform plugin registry (claude-code, cursor, windsurf, codex)
-├── templates/     # graph.html — interactive export UI
-└── data/          # loom-skill.md — Claude Code skill installed by loom install
+├── graph/               # Domain core (v0.6.0)
+│   ├── db.py            # SQLite schema init, DB class, _add_column_if_missing
+│   ├── schema.sql       # Full DDL
+│   ├── models/          # Node, Edge, EdgeType, ConfidenceTier, NodeKind,
+│   │                    # NodeSource, Complexity, SummarySource, QuestionType
+│   └── repository/      # NodeRepository, EdgeRepository, FingerprintRepository,
+│                        # TagRepository, SearchRepository, ContextRepository,
+│                        # TraversalRepository, SessionRepository, AnalyticsRepository
+├── indexer/             # index_repo, sync_paths, tree-sitter parsers per language
+│   ├── tagger.py        # AutoTagger — decorator, import, directory tags
+│   ├── test_linker.py   # TestLinker — TESTED_BY edges
+│   ├── graph_tagger.py  # GraphTagger — dead-code, entry-point, hub, bridge tags
+│   └── complexity.py    # Cyclomatic complexity classification
+├── intelligence/        # communities (Louvain), coupling (git co-change), dead code
+├── query/               # search, blast_radius, context packets, primer, delta
+├── store/               # Legacy CRUD layer (backwards compat; new code uses graph/repository/)
+├── server/              # FastMCP server (app.py + tools/), standalone entry point (run.py)
+├── cli/                 # typer commands
+│   └── plugins/         # platform plugin registry (claude-code, cursor, windsurf, codex)
+├── templates/           # graph.html — interactive export UI
+└── data/                # loom-skill.md — Claude Code skill installed by loom install
 ```
 
 ## Development

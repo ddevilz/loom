@@ -7,20 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Vector index DDL correctness and schema init error visibility
-- Embedding persistence via `vecf32()` for FalkorDB `VECTOR` type
-- Lexical context in `loom calls` (parents/children via `CONTAINS` edges)
-- Graph expansion includes `CONTAINS` edges in search
-- CLI ambiguity handling for `loom calls` target resolution
-- Comprehensive unit tests for vector indexing and embedding storage
-- QA diagnostic script for DB-level vector query validation
-- Open-source readiness: LICENSE (MIT), CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GitHub templates, CI
+## [0.6.0] - 2026-05-28
 
-### Fixed
-- Vector index never created due to DDL syntax errors
-- `loom query` always falling back to brute-force vector search
-- Ambiguous names in `loom calls` failing with generic “Target not found”
+### Added — Domain-driven architecture restructure
+
+- **`graph/` domain package** — new top-level package replacing scattered `core/` modules
+  - `graph/db.py` — merged from `core/db.py` + `core/context.py`; SQLite schema init, DB class, `_add_column_if_missing`
+  - `graph/schema.sql` — canonical DDL (moved from `core/schema.sql`)
+  - `graph/models/` — `Node`, `Edge`, and all enums (`EdgeType`, `ConfidenceTier`, `NodeKind`, `NodeSource`, `Complexity`, `SummarySource`, `QuestionType`)
+  - `graph/repository/` — `NodeRepository`, `EdgeRepository`, `FingerprintRepository`, `TagRepository`, `SearchRepository`, `ContextRepository`, `TraversalRepository`, `SessionRepository`, `AnalyticsRepository`
+- **MCP server moved** — entry point is now `loom.server.run:run_stdio` (was `loom.mcp.run`)
+- `store/` package retained for backwards compatibility; new code uses `graph/repository/`
+- 403 unit tests passing
+
+### Added — Index-time enrichment
+
+- **File fingerprinting** — SHA-256 + mtime stored in new `file_fingerprints` table; enables true incremental re-index (skip files whose mtime and hash are unchanged)
+- **Complexity classification** — `SIMPLE` / `MODERATE` / `COMPLEX` assigned per function/method, stored in `nodes.complexity` column
+- **AutoTagger** — post-parse pass applying decorator tags (`api-endpoint`, `async-task`, `auth`, etc.), import-derived tags, and directory-based tags
+- **TestLinker** — creates `TESTED_BY` edges between test files and production code they cover (Python, TypeScript, JavaScript, Java)
+- **GraphTagger** — graph-derived tags: `dead-code`, `entry-point`, `hub`, `bridge`; runs after community detection
+- **Tag search** — `tag:X` token syntax in `search_code` and `loom query`; multiple `tag:` tokens use AND semantics
+- **Enhanced context packets** — `get_context` response now includes `complexity`, `tags`, and `tested_by` fields for function/method nodes
+- **Agent tags** — `store_understanding` accepts optional `tags: list[str]`; stored in `node_tags` with `source="agent"`, survive re-index
+- **`node_tags` table** — `(node_id, tag, source)` schema; `source="agent"` tags are preserved across re-analyze
+- **`tags_normalized` column** — space-separated tags on `nodes`, indexed in FTS5 `nodes_fts` for text-search over tags
 
 ## [0.1.0] - 2026-03-09
 

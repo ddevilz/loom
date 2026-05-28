@@ -52,19 +52,19 @@ Both `loom analyze` and `loom-mcp` use the same resolution logic via `resolve_db
 
 If the resolved DB is empty, `loom-mcp` auto-indexes the current directory in the background before serving. You don't need to run `loom analyze` manually on first use.
 
-## MCP Tools (17)
+## MCP Tools
 
 | Tool | Purpose |
 |------|---------|
-| `search_code(query)` | FTS5 — returns summary + signature if cached |
-| `get_context(node_id, brief?, callers_limit?, callees_limit?)` | Full context: summary, callers, callees. `brief=True` = metadata only. `callers_limit=0` / `callees_limit=0` = skip traversal. |
+| `search_code(query)` | FTS5 — returns summary + signature if cached. Supports `tag:X` syntax. |
+| `get_context(node_id, brief?, callers_limit?, callees_limit?)` | Full context: summary, callers, callees, `complexity`, `tags`, `tested_by`. `brief=True` = metadata only. `callers_limit=0` / `callees_limit=0` = skip traversal. |
 | `get_blast_radius(node_id, depth)` | Transitive callers — what breaks if this changes |
 | `get_neighbors(node_id, depth, limit)` | All connected nodes across all edge types |
 | `get_community(community_id, limit)` | All members of a Louvain community cluster |
 | `shortest_path(from_id, to_id)` | Shortest path on CALLS subgraph |
 | `graph_stats(include_cohesion?)` | Node/edge counts. `include_cohesion=True` adds per-cluster scores. |
 | `god_nodes(limit)` | Most-called functions (unofficial entry points) |
-| `store_understanding(node_id, summary)` | Write agent-generated summary to SQLite |
+| `store_understanding(node_id, summary, tags?)` | Write agent-generated summary + optional tags to SQLite. Tags survive re-index. |
 | `store_understanding_batch(updates)` | Batch summary writes (max 50) |
 | `get_savings()` | Token savings from cache hits |
 | `get_status()` | Node count + DB health check |
@@ -119,12 +119,15 @@ get_delta(previous_session_id=<id>)      # only what changed
 
 # Finding code
 search_code("validate token")            # FTS5 — gets summary if cached
-get_context("function:src/auth.py:validate_token")  # full context packet
+search_code("tag:auth login")            # tag-filtered search
+get_context("function:src/auth.py:validate_token")
+# → includes complexity, tags, tested_by in addition to callers/callees/summary
 
 # After reading any function
 store_understanding(
     node_id="function:src/auth.py:validate_token",
-    summary="Validates JWT tokens, returns False if expired or signature is invalid."
+    summary="Validates JWT tokens, returns False if expired or signature is invalid.",
+    tags=["security-sensitive"]          # optional — survives re-index
 )
 
 # Impact analysis before a change
@@ -140,6 +143,8 @@ get_surprising_connections(limit=10)
 - `class:src/models/user.py:User`
 - `method:src/models/user.py:User.save`
 - `file:src/auth.py`
+
+Use `search_code` to get node IDs; don't construct them manually.
 
 ## Token Savings
 

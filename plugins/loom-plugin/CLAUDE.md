@@ -28,12 +28,15 @@ suggest_questions(limit=5)              # graph-topology-derived investigation p
 | Question | Loom call |
 |---|---|
 | "Where is X defined?" | `search_code("X")` |
+| "Find all auth-related endpoints" | `search_code("tag:auth tag:api-endpoint")` |
 | "What calls X?" | `get_context(node_id, callees_limit=0)` — callers in response |
 | "What breaks if I change X?" | `get_blast_radius(node_id, depth=3)` |
 | "What does X depend on?" | `get_context(node_id, callers_limit=0)` — callees in response |
 | "How does A connect to B?" | `shortest_path(from_id, to_id)` |
 | "What are the god nodes?" | `god_nodes(limit=10)` |
 | "What changed since last session?" | `get_delta(previous_session_id=<id>)` |
+| "What tests cover X?" | `get_context(node_id)` — check `tested_by` field |
+| "How complex is X?" | `get_context(node_id)` — check `complexity` field |
 
 ## Store what you learn
 
@@ -48,8 +51,27 @@ Bad: `"Handles auth."` / `"Calls jwt.decode()."`
 
 Every summary written here is returned to future agents for free.
 
+Optionally attach tags for future filtering:
+```
+store_understanding(node_id, summary, tags=["security-sensitive", "needs-refactor"])
+```
+
+Agent tags survive re-index — they are not overwritten by automatic tagging.
+
 ## Node ID format
 
 `{kind}:{path}:{symbol}` — e.g. `function:src/auth.py:validate_token`
 
 Use `search_code` to get node IDs; don't construct them manually.
+
+## Tag search syntax
+
+Use `tag:X` in any `search_code` or `loom query` call. Multiple tags are ANDed:
+
+```
+search_code("tag:auth")                   # nodes tagged "auth"
+search_code("tag:api-endpoint tag:auth")  # tagged both
+search_code("tag:async-task login")       # tagged "async-task" AND contains "login"
+```
+
+Auto-applied tags: `api-endpoint`, `async-task`, `auth`, `dead-code`, `entry-point`, `hub`, `bridge`, `test`, `migration`.

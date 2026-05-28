@@ -75,6 +75,63 @@ Loom parses source files into `Node` objects with file/line locations and metada
 
 ---
 
+## Index-time enrichment (v0.6.0)
+
+### File fingerprinting
+
+`FingerprintRepository` tracks `file_fingerprints (file_path, content_sha, mtime_ns, indexed_at)`. Incremental re-index uses mtime as a fast-path: if mtime is unchanged, the file is skipped without reading it. If mtime changed, SHA-256 is computed and compared; if identical, only mtime is updated. This gives true incremental indexing with no false re-parses.
+
+### Complexity classification (`indexer/complexity.py`)
+
+Cyclomatic complexity is computed from tree-sitter AST node counts (branches, loops, exception handlers, boolean operators). Result stored in `nodes.complexity` as `SIMPLE`, `MODERATE`, or `COMPLEX`.
+
+### AutoTagger (`indexer/tagger.py`)
+
+Post-parse pass applying three tag categories:
+
+| Category | Examples |
+|----------|---------|
+| Decorator tags | `@app.route` → `api-endpoint`, `@celery.task` → `async-task`, `@login_required` → `auth` |
+| Import tags | `import celery` → `async-task`, `import jwt` → `auth` |
+| Directory tags | `tests/` → `test`, `migrations/` → `migration` |
+
+Tags written to `node_tags (node_id, tag, source)` with `source="auto"`.
+
+### TestLinker (`indexer/test_linker.py`)
+
+Creates `TESTED_BY` edges from production code nodes to the test file/functions that cover them. Language support: Python, TypeScript, JavaScript, Java. Heuristic: test file name matches production file name (e.g. `test_auth.py` → `auth.py`).
+
+### GraphTagger (`indexer/graph_tagger.py`)
+
+Runs after community detection. Applies graph-topology-derived tags via `node_tags`:
+
+| Tag | Condition |
+|-----|-----------|
+| `dead-code` | Function/method has 0 incoming CALLS edges |
+| `entry-point` | Name matches main/handle_*/route patterns, or no incoming CALLS |
+| `hub` | High in-degree (called from many modules) |
+| `bridge` | Connects otherwise-separate communities |
+
+---
+
+## Tag system
+
+### Storage
+
+- `node_tags (node_id, tag, source)` — one row per tag per node
+- `source` values: `"auto"` (AutoTagger/GraphTagger), `"agent"` (set via `store_understanding`)
+- `nodes.tags_normalized` — space-separated string rebuilt from `node_tags` after every tag write
+
+### Tag search (`query/search.py`)
+
+`_TAG_RE = re.compile(r"\btag:(\S+)")` extracts `tag:X` tokens from query strings. Tag tokens are converted to `nodes_fts.tags_normalized:X` FTS5 sub-queries. Multiple `tag:` tokens are ANDed together. Non-tag terms search name/summary/path as usual.
+
+### Agent tags
+
+`store_understanding(node_id, summary, tags=["security-sensitive"])` writes tags with `source="agent"`. Re-index preserves `source="agent"` tags; only `source="auto"` tags are replaced on re-index.
+
+---
+
 ## Incremental sync
 
 Driven by SHA-256, not git.
@@ -125,31 +182,37 @@ Agent summaries are preserved through re-analyze (upsert logic: `ELSE nodes.summ
 
 ## Search (FTS5)
 
-`nodes_fts` is an FTS5 virtual table with separate columns for `name`, `summary`, `path` (porter + unicode61 tokenizer). Triggers keep it in sync on INSERT/UPDATE/DELETE.
+`nodes_fts` is an FTS5 virtual table with separate columns for `name`, `summary`, `path`, `tags_normalized` (porter + unicode61 tokenizer). Triggers keep it in sync on INSERT/UPDATE/DELETE.
 
 `search()` in `query/search.py`:
-1. Try FTS5 query
-2. Fall back to LIKE if FTS5 raises an error (malformed query)
-3. Wrap results in `SearchResult(node, score)`
+1. Extract `tag:X` tokens from query string; build FTS5 `tags_normalized:X` sub-clauses (AND)
+2. Try FTS5 query against name/summary/path for remaining terms
+3. Fall back to LIKE if FTS5 raises an error (malformed query)
+4. Wrap results in `SearchResult(node, score)`
 
 `search_code` MCP tool returns: `id, name, path, kind, line, score, summary, signature`.
+
+Tag search examples: `"tag:auth login"`, `"tag:api-endpoint tag:async-task"`.
 
 ---
 
 ## Context packets
 
-`get_context_packet()` in `query/context.py` executes one DB round-trip under one lock:
+`get_context_packet()` in `graph/repository/context.py` (via `ContextRepository`) executes one DB round-trip under one lock:
 
 1. Fetch node by ID
 2. If function/method:
    - callers: `SELECT n.* FROM edges e JOIN nodes n ON n.id = e.from_id WHERE e.to_id = ? AND e.kind = 'calls'` — same-file first, by in-degree, LIMIT 10
    - callees: same pattern for `e.from_id = ?`
    - staleness: `summary_hash IS NOT NULL AND summary_hash != content_hash`
+   - complexity: from `nodes.complexity` column
+   - tags: from `node_tags` table for this node
+   - tested_by: TESTED_BY edges pointing at this node
 3. If class/file:
    - members via CONTAINS edges
 4. Community: `SELECT to_id FROM edges WHERE from_id = ? AND kind = 'member_of'`
 
-Returns ~80 tokens. Replaces 4 separate MCP tool calls.
+Returns ~80 tokens. Replaces 4+ separate MCP tool calls.
 
 ---
 

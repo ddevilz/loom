@@ -25,15 +25,20 @@ loom analyze .
 
 What `loom analyze` does:
 - walks repo (gitignore-aware)
+- checks `file_fingerprints` table (SHA-256 + mtime) — skips truly unchanged files
 - parses changed/new files with tree-sitter
 - stores nodes + edges in `~/.loom/projects/{git-root-name}.db` (per-project; falls back to `~/.loom/loom.db`)
+- classifies function/method complexity (SIMPLE / MODERATE / COMPLEX)
+- applies AutoTagger — decorator tags, import tags, directory tags
+- creates TESTED_BY edges via TestLinker (Python, TypeScript, JavaScript, Java)
+- applies GraphTagger — dead-code, entry-point, hub, bridge tags
 - computes communities (Louvain) and coupling (git co-change)
 - marks dead code (no incoming CALLS)
 - fills auto-summaries for nodes with no summary
 - soft-deletes nodes for files removed from disk
 - prunes old sessions (keeps last 20 per agent)
 
-Only changed files are re-parsed (SHA-256 comparison). Fast on subsequent runs.
+Only changed files are re-parsed (SHA-256 + mtime comparison). Fast on subsequent runs.
 
 Use `--db` to override the database path:
 
@@ -91,7 +96,17 @@ loom context --json
 loom query "validate token"
 ```
 
-Uses FTS5 full-text search on name + summary + path. Returns node IDs, paths, kinds, and summaries.
+Uses FTS5 full-text search on name + summary + path + tags. Returns node IDs, paths, kinds, and summaries.
+
+**Tag search:** prefix a word with `tag:` to filter by tag. Multiple `tag:` tokens use AND semantics:
+
+```bash
+loom query "tag:auth"                  # all nodes tagged "auth"
+loom query "tag:api-endpoint login"    # tagged "api-endpoint" AND name/summary contains "login"
+loom query "tag:async-task tag:auth"   # tagged both "async-task" AND "auth"
+```
+
+Tag search also works in the `search_code` MCP tool with the same syntax.
 
 ## Call graph
 
@@ -110,6 +125,21 @@ loom stats
 ```
 
 Node and edge counts by kind. Useful for verifying index state.
+
+## Context packets
+
+`get_context(node_id)` returns a full picture of a node in one MCP call. For function/method nodes, the response now includes:
+
+- `complexity` — `"simple"`, `"moderate"`, or `"complex"` (assigned at index time)
+- `tags` — list of tags from all sources (auto, graph-derived, agent-written)
+- `tested_by` — list of test nodes with TESTED_BY edges pointing at this node
+
+```python
+ctx = get_context("function:src/auth.py:validate_token")
+# ctx["complexity"]  → "moderate"
+# ctx["tags"]        → ["auth", "api-endpoint"]
+# ctx["tested_by"]   → [{"node_id": "file:tests/test_auth.py", "path": "tests/test_auth.py"}]
+```
 
 ## Summaries
 
@@ -206,7 +236,7 @@ loom analyze .
 1. `loom install` writes MCP config
 2. Start a new Claude Code session
 3. Agent calls `start_session()` → gets `session_id`
-4. Agent uses `search_code`, `get_context`, `store_understanding`
+4. Agent uses `search_code` (supports `tag:X` syntax), `get_context` (returns `complexity`, `tags`, `tested_by`), `store_understanding` (accepts `tags: list[str]`)
 5. Next session: `get_delta(previous_session_id)` → only changed nodes
 
 ## Troubleshooting
