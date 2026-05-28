@@ -84,4 +84,5 @@ class Node(BaseModel):
 
     @staticmethod
     def make_code_id(kind: NodeKind, path: str, symbol: str) -> str:
+        # TODO(Phase 3): update to 4-part {kind}:{repo}:{path}:{symbol}
         return f"{kind.value}:{path}:{symbol}"

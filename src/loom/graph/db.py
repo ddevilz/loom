@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import logging
 import os
 import shutil
 import sqlite3
@@ -7,6 +9,8 @@ import subprocess
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _FTS5_PROBE = "CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_probe USING fts5(x);"
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
@@ -57,7 +61,6 @@ _DDL_CORE, _DDL_FTS5 = _load_schema()
 
 
 def _derive_repo_name() -> str:
-    import os
     # Try git remote origin
     try:
         url = subprocess.check_output(
@@ -82,7 +85,7 @@ def _derive_repo_name() -> str:
             stderr=subprocess.DEVNULL,
             text=True
         ).strip()
-        return os.path.basename(root)
+        return Path(root).name
     except Exception:
         pass
     return "unknown"
@@ -103,7 +106,6 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, col: str, typed
     cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
     if col not in cols:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}")
-        conn.commit()
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
@@ -162,22 +164,45 @@ def init_schema(conn: sqlite3.Connection) -> None:
     # Ensure parent_id column exists before migration
     _add_column_if_missing(conn, "nodes", "parent_id", "TEXT")
     repo_name = conn.execute("SELECT value FROM meta WHERE key = 'repo_name'").fetchone()[0]
+    # Migrate non-file 3-part IDs (kind:path:symbol → kind:repo:path:symbol, 2 colons → 3 colons).
+    # File nodes are already "complete" at 3 parts (file:repo:path), so exclude them.
     conn.execute("""
-        UPDATE nodes SET id = (
-            kind || ':' || ? || ':' || substr(id, instr(id, ':') + 1)
-        ) WHERE id NOT LIKE '%:%:%:%'
+        UPDATE nodes SET id = kind || ':' || ? || ':' || substr(id, instr(id, ':') + 1)
+        WHERE kind != 'file'
+          AND (length(id) - length(replace(id, ':', ''))) = 2
     """, (repo_name,))
+    # Migrate 2-part IDs (file:path → file:repo:path, 1 colon → 2 colons)
+    conn.execute("""
+        UPDATE nodes SET id = kind || ':' || ? || ':' || substr(id, instr(id, ':') + 1)
+        WHERE (length(id) - length(replace(id, ':', ''))) = 1
+    """, (repo_name,))
+    # Migrate parent_id non-file 3-part → 4-part
     conn.execute("""
         UPDATE nodes SET parent_id = (
             substr(parent_id, 1, instr(parent_id, ':') - 1) || ':' || ? || ':' ||
             substr(parent_id, instr(parent_id, ':') + 1)
-        ) WHERE parent_id IS NOT NULL AND parent_id NOT LIKE '%:%:%:%'
+        ) WHERE parent_id IS NOT NULL
+          AND substr(parent_id, 1, instr(parent_id, ':') - 1) != 'file'
+          AND (length(parent_id) - length(replace(parent_id, ':', ''))) = 2
+    """, (repo_name,))
+    # Migrate parent_id 2-part → 3-part
+    conn.execute("""
+        UPDATE nodes SET parent_id = (
+            substr(parent_id, 1, instr(parent_id, ':') - 1) || ':' || ? || ':' ||
+            substr(parent_id, instr(parent_id, ':') + 1)
+        ) WHERE parent_id IS NOT NULL
+          AND (length(parent_id) - length(replace(parent_id, ':', ''))) = 1
     """, (repo_name,))
     # v0.6.0 remove is_dead_code column (replaced by "dead-code" tag)
-    try:
-        conn.execute("ALTER TABLE nodes DROP COLUMN is_dead_code")
-    except Exception:
-        pass  # Already removed or not supported
+    if sqlite3.sqlite_version_info < (3, 35, 0):
+        log.warning(
+            "SQLite %s does not support DROP COLUMN (requires 3.35.0+); "
+            "is_dead_code column left in place",
+            sqlite3.sqlite_version,
+        )
+    else:
+        with contextlib.suppress(sqlite3.OperationalError):
+            conn.execute("ALTER TABLE nodes DROP COLUMN is_dead_code")
     conn.commit()
 
 
