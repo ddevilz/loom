@@ -167,7 +167,7 @@ let cy = cytoscape({
       style: { 'opacity': 0.15 }
     },
     {
-      selector: 'node[?is_dead_code]',
+      selector: 'node[tags_normalized *= "dead-code"]',
       style: { 'border-width': 2, 'border-color': '#e74c3c', 'border-style': 'dashed' }
     },
     {
@@ -263,8 +263,8 @@ cy.on('tap', 'node', evt => {
   n.removeClass('dimmed');
 
   // callers / callees
-  const callerNodes = n.incomers('node[kind="calls"], edge[kind="calls"]').sources();
-  const calleeNodes = n.outgoers('node[kind="calls"], edge[kind="calls"]').targets();
+  const callerNodes = n.incomers('edge[kind="CALLS"]').sources();
+  const calleeNodes = n.outgoers('edge[kind="CALLS"]').targets();
 
   const callerItems = callerNodes.map(c =>
     `<li onclick="focusNode('${c.id()}')">${c.data('label')} <span style="color:#555">(${c.data('path')})</span></li>`
@@ -277,7 +277,7 @@ cy.on('tap', 'node', evt => {
   detailEl.innerHTML = `
     <h2>${d.label}</h2>
     <span class="badge" style="background:${d.colour};color:#fff">${d.kind}</span>
-    ${d.is_dead_code ? '<span class="badge" style="background:#e74c3c;color:#fff">dead code</span>' : ''}
+    ${(d.tags_normalized && d.tags_normalized.includes('dead-code')) ? '<span class="badge" style="background:#e74c3c;color:#fff">dead code</span>' : ''}
     <div class="prop"><span class="prop-key">Path</span><span class="prop-val">${d.path}</span></div>
     ${d.language ? `<div class="prop"><span class="prop-key">Language</span><span class="prop-val">${d.language}</span></div>` : ''}
     <div class="prop"><span class="prop-key">ID</span><span class="prop-val" style="font-size:10px;color:#666">${d.id}</span></div>
@@ -345,7 +345,7 @@ let showDead = true;
 document.getElementById('btn-dead').addEventListener('click', e => {
   showDead = !showDead;
   e.target.classList.toggle('active', !showDead);
-  cy.nodes().filter(n => n.data('is_dead_code')).style('display', showDead ? 'element' : 'none');
+  cy.nodes().filter(n => n.data('tags_normalized') && n.data('tags_normalized').includes('dead-code')).style('display', showDead ? 'element' : 'none');
 });
 
 // toggle calls-only edges
@@ -354,7 +354,7 @@ document.getElementById('btn-calls-only').addEventListener('click', e => {
   callsOnly = !callsOnly;
   e.target.classList.toggle('active', callsOnly);
   if (callsOnly) {
-    activeEdgeKinds.clear(); activeEdgeKinds.add('calls');
+    activeEdgeKinds.clear(); activeEdgeKinds.add('CALLS');
   } else {
     RAW.edge_kinds.forEach(k => activeEdgeKinds.add(k));
   }

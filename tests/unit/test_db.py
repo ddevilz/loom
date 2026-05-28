@@ -75,7 +75,7 @@ def test_cross_file_edge_insert_allowed(tmp_path: Path):
     conn.commit()
     # Edge to a node that does not exist yet — must not raise
     conn.execute(
-        "INSERT INTO edges (from_id, to_id, kind) VALUES ('function:a:f', 'function:b:g', 'calls')"
+        "INSERT INTO edges (from_id, to_id, kind) VALUES ('function:a:f', 'function:b:g', 'CALLS')"
     )
     conn.commit()
     remaining = conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]

@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS nodes (
     summary         TEXT,
     summary_hash    TEXT,
     token_count     INTEGER,
-    is_dead_code    INTEGER NOT NULL DEFAULT 0,
     community_id    TEXT,
     metadata        TEXT NOT NULL DEFAULT '{}',
     updated_at      INTEGER NOT NULL,
