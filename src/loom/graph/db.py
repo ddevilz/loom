@@ -270,3 +270,9 @@ class DB:
                 init_schema(self._conn)
                 self._fts5 = has_fts5(self._conn)
             return self._conn
+
+    def get_repo_name(self) -> str:
+        """Return the repo name stored in the meta table (set during init_schema)."""
+        conn = self.connect()
+        row = conn.execute("SELECT value FROM meta WHERE key = 'repo_name'").fetchone()
+        return row[0] if row else "unknown"

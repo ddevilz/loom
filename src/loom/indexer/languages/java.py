@@ -8,14 +8,10 @@ from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 
-from loom.graph.models import Node, NodeKind, NodeSource
-from loom.graph.content_hash import content_hash_for_line_span
+from loom.graph.models import Node, NodeKind
 from loom.indexer.languages._base import BaseLanguageHandler, _BaseContext
 from loom.indexer.languages._ts_utils import (
     get_name as _get_name,
-)
-from loom.indexer.languages._ts_utils import (
-    lines as _lines,
 )
 from loom.indexer.languages._ts_utils import (
     node_text as _node_text,
@@ -41,8 +37,7 @@ from loom.indexer.languages.constants import (
 
 _JAVA_LANGUAGE = _Language(_ts_java.language())
 
-# Type aliases for callables threaded through walk functions
-_MakeIdFn = Callable[[NodeKind, str, str], str]
+# Type alias for the build_node callable matching _build_node signature
 _BuildNodeFn = Callable[..., Node]
 
 
@@ -166,7 +161,6 @@ def _extract_from_def(
     ctx: _BaseContext,
     out: list[Node],
     build_node: _BuildNodeFn,
-    make_id: _MakeIdFn,
     package: str = "",
 ) -> None:
     # Java: class_declaration, interface_declaration, enum_declaration,
@@ -229,7 +223,7 @@ def _extract_from_def(
         body = n.child_by_field_name("body")
         if body is not None:
             ctx.push_class(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id, package=package)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, package=package)
             ctx.pop_class()
         return
 
@@ -268,7 +262,7 @@ def _extract_from_def(
         )
 
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id, package=package)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, package=package)
         return
 
 
@@ -280,7 +274,6 @@ def _walk(
     ctx: _BaseContext,
     out: list[Node],
     build_node: _BuildNodeFn,
-    make_id: _MakeIdFn,
     package: str = "",
 ) -> None:
     for child in n.children:
@@ -293,10 +286,10 @@ def _walk(
             TS_JAVA_METHOD_DECL,
             TS_JAVA_CTOR_DECL,
         }:
-            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id, package=package)
+            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, package=package)
         else:
             if child.child_count:
-                _walk(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id, package=package)
+                _walk(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, package=package)
 
 
 def _extract_package(src: bytes, root: TSNode) -> str:
@@ -321,7 +314,6 @@ class JavaHandler(BaseLanguageHandler):
         tree = parser.parse(source)
         package = _extract_package(source, tree.root_node)
         out: list[Node] = []
-        make_id: _MakeIdFn = lambda kind, path, symbol: f"{kind.value}:{self.repo_name}:{path}:{symbol}"
         _walk(
             path=rel_path,
             src=source,
@@ -329,13 +321,14 @@ class JavaHandler(BaseLanguageHandler):
             ctx=_BaseContext(),
             out=out,
             build_node=self._build_node,
-            make_id=make_id,
             package=package,
         )
         return out
 
 
 def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
+    from loom.indexer.languages._base import _default_repo_name
+
     p = Path(path)
     src = p.read_bytes()
 
@@ -343,11 +336,10 @@ def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa
     tree = parser.parse(src)
 
     handler = JavaHandler()
-    handler.repo_name = "unknown"
+    handler.repo_name = _default_repo_name()
 
     package = _extract_package(src, tree.root_node)
     out: list[Node] = []
-    make_id: _MakeIdFn = lambda kind, file_path, symbol: f"{kind.value}:{handler.repo_name}:{file_path}:{symbol}"
     _walk(
         path=path.replace("\\", "/"),
         src=src,
@@ -355,7 +347,6 @@ def parse_java(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa
         ctx=_BaseContext(),
         out=out,
         build_node=handler._build_node,
-        make_id=make_id,
         package=package,
     )
     return out

@@ -8,14 +8,10 @@ from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 
-from loom.graph.models import Node, NodeKind, NodeSource
-from loom.graph.content_hash import content_hash_for_line_span
+from loom.graph.models import Node, NodeKind
 from loom.indexer.languages._base import BaseLanguageHandler, _BaseContext
 from loom.indexer.languages._ts_utils import (
     get_name as _get_name,
-)
-from loom.indexer.languages._ts_utils import (
-    lines as _lines,
 )
 from loom.indexer.languages._ts_utils import (
     node_text as _node_text,
@@ -369,8 +365,9 @@ def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
     p = Path(path)
     src = p.read_bytes()
 
+    from loom.indexer.languages._base import _default_repo_name
     handler = PythonHandler()
-    handler.repo_name = "unknown"
+    handler.repo_name = _default_repo_name()
 
     parser = Parser(_PY_LANGUAGE)
     tree = parser.parse(src)

@@ -8,14 +8,10 @@ from tree_sitter import Language as _Language
 from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 
-from loom.graph.models import Node, NodeKind, NodeSource
-from loom.graph.content_hash import content_hash_for_line_span
+from loom.graph.models import Node, NodeKind
 from loom.indexer.languages._base import BaseLanguageHandler, _BaseContext
 from loom.indexer.languages._ts_utils import (
     get_name as _get_name,
-)
-from loom.indexer.languages._ts_utils import (
-    lines as _lines,
 )
 from loom.indexer.languages._ts_utils import (
     node_text as _node_text,
@@ -41,8 +37,7 @@ from loom.indexer.languages.constants import (
 _TS_LANGUAGE = _Language(_ts_typescript.language_typescript())
 _TSX_LANGUAGE = _Language(_ts_typescript.language_tsx())
 
-# Type aliases for callables threaded through walk functions
-_MakeIdFn = Callable[[NodeKind, str, str], str]
+# Type alias for the build_node callable matching _build_node signature
 _BuildNodeFn = Callable[..., Node]
 
 
@@ -100,7 +95,6 @@ def _extract_from_def(
     out: list[Node],
     language: str,
     build_node: _BuildNodeFn,
-    make_id: _MakeIdFn,
 ) -> None:
     # Handle export statements
     if n.type == TS_JS_EXPORT_STATEMENT:
@@ -110,12 +104,12 @@ def _extract_from_def(
             # Try normal definition extraction first
             _extract_from_def(
                 path=path, src=src, n=declaration, ctx=ctx, out=out, language=language,
-                build_node=build_node, make_id=make_id,
+                build_node=build_node,
             )
             # Also try const function pattern (export const x = () => {})
             _try_extract_const_function(
                 path=path, src=src, n=declaration, ctx=ctx, out=out, language=language,
-                build_node=build_node, make_id=make_id,
+                build_node=build_node,
             )
         return
 
@@ -146,7 +140,6 @@ def _extract_from_def(
                 out=out,
                 language=language,
                 build_node=build_node,
-                make_id=make_id,
             )
             ctx.pop_class()
         return
@@ -188,7 +181,6 @@ def _extract_from_def(
                 out=out,
                 language=language,
                 build_node=build_node,
-                make_id=make_id,
             )
             ctx.pop_fn()
         return
@@ -216,7 +208,6 @@ def _extract_from_def(
                 out=out,
                 language=language,
                 build_node=build_node,
-                make_id=make_id,
             )
             ctx.pop_fn()
         return
@@ -261,7 +252,6 @@ def _try_extract_const_function(
     out: list[Node],
     language: str,
     build_node: _BuildNodeFn,
-    make_id: _MakeIdFn,
 ) -> bool:
     """Handle `const name = () => {}` and `const name = function() {}`."""
     if n.type != "lexical_declaration":
@@ -310,7 +300,6 @@ def _try_extract_const_function(
                 out=out,
                 language=language,
                 build_node=build_node,
-                make_id=make_id,
             )
             ctx.pop_fn()
         found = True
@@ -320,7 +309,7 @@ def _try_extract_const_function(
 
 def _walk(
     *, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node], language: str,
-    build_node: _BuildNodeFn, make_id: _MakeIdFn,
+    build_node: _BuildNodeFn,
 ) -> None:
     for child in n.children:
         if child.type in {
@@ -336,18 +325,18 @@ def _walk(
         }:
             _extract_from_def(
                 path=path, src=src, n=child, ctx=ctx, out=out, language=language,
-                build_node=build_node, make_id=make_id,
+                build_node=build_node,
             )
         elif _try_extract_const_function(
             path=path, src=src, n=child, ctx=ctx, out=out, language=language,
-            build_node=build_node, make_id=make_id,
+            build_node=build_node,
         ):
             pass
         else:
             if child.child_count:
                 _walk(
                     path=path, src=src, n=child, ctx=ctx, out=out, language=language,
-                    build_node=build_node, make_id=make_id,
+                    build_node=build_node,
                 )
 
 
@@ -367,7 +356,6 @@ class TypeScriptHandler(BaseLanguageHandler):
 
         out: list[Node] = []
         lang = LANG_TSX if is_tsx else LANG_TYPESCRIPT
-        make_id: _MakeIdFn = lambda kind, path, symbol: f"{kind.value}:{self.repo_name}:{path}:{symbol}"
 
         # Wrap _build_node to apply the correct language (tsx vs typescript)
         def build_node(ts_node: TSNode, src: bytes, path: str, **kwargs: object) -> Node:
@@ -382,15 +370,15 @@ class TypeScriptHandler(BaseLanguageHandler):
             out=out,
             language=lang,
             build_node=build_node,
-            make_id=make_id,
         )
         if is_tsx:
             file_node_id = f"file:{rel_path}"
-            out.extend(extract_jsx_nodes(rel_path, source, tree.root_node, lang, file_node_id))
+            out.extend(extract_jsx_nodes(rel_path, source, tree.root_node, lang, file_node_id, build_node=build_node))
         return out
 
 
 def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
+    from loom.indexer.languages._base import _default_repo_name
     from loom.indexer.languages.jsx import extract_jsx_nodes
 
     p = Path(path)
@@ -401,12 +389,11 @@ def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:  
     tree = parser.parse(src)
 
     handler = TypeScriptHandler()
-    handler.repo_name = "unknown"
+    handler.repo_name = _default_repo_name()
 
     out: list[Node] = []
     lang = LANG_TSX if is_tsx else LANG_TYPESCRIPT
     norm_path = path.replace("\\", "/")
-    make_id: _MakeIdFn = lambda kind, file_path, symbol: f"{kind.value}:{handler.repo_name}:{file_path}:{symbol}"
 
     # Wrap _build_node to apply the correct language (tsx vs typescript)
     def build_node(ts_node: TSNode, src: bytes, path: str, **kwargs: object) -> Node:
@@ -421,9 +408,8 @@ def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:  
         out=out,
         language=lang,
         build_node=build_node,
-        make_id=make_id,
     )
     if is_tsx:
         file_node_id = f"file:{norm_path}"
-        out.extend(extract_jsx_nodes(norm_path, src, tree.root_node, lang, file_node_id))
+        out.extend(extract_jsx_nodes(norm_path, src, tree.root_node, lang, file_node_id, build_node=build_node))
     return out

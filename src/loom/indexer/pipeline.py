@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from multiprocessing import cpu_count
 from pathlib import Path
 
+import os
+
 from loom.graph.models import Edge, EdgeType, Node, NodeKind, NodeSource
 from loom.graph.repository import Repository
 from loom.indexer.extractor import extract_summary, parse_code
@@ -208,6 +210,13 @@ async def index_repo(
     t0 = time.perf_counter()
     repo_path = repo_path.resolve()
     max_workers = workers or min(cpu_count(), 8)
+
+    # Inject repo_name into the environment so worker processes inherit it.
+    # This enables 4-part node IDs (kind:repo:path:symbol) in all parsers.
+    repo_name = await asyncio.to_thread(repo.db.get_repo_name)
+    _prev_repo_name = os.environ.get("LOOM_REPO_NAME")
+    os.environ["LOOM_REPO_NAME"] = repo_name
+    logger.info("[init] repo_name=%r (injected into LOOM_REPO_NAME)", repo_name)
 
     def _emit(phase: str, done: int, total: int) -> None:
         if progress_cb is not None:
@@ -404,6 +413,12 @@ async def index_repo(
         len(edges_all),
     )
     _emit("done", len(changed), len(all_files))
+
+    # Restore LOOM_REPO_NAME to its prior state (important for test isolation).
+    if _prev_repo_name is None:
+        os.environ.pop("LOOM_REPO_NAME", None)
+    else:
+        os.environ["LOOM_REPO_NAME"] = _prev_repo_name
 
     return IndexResult(
         repo_path=repo_path,

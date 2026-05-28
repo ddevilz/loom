@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from tree_sitter import Node as TSNode
 
@@ -112,17 +112,31 @@ def _walk(
         _walk(child, src, path, language, components, id_nodes)
 
 
+_BuildNodeFn = Callable[..., Node]
+
+
 def extract_jsx_nodes(
     path: str,
     src: bytes,
     tree_root: TSNode,
     language: str,
     file_node_id: str | None = None,
+    build_node: _BuildNodeFn | None = None,
 ) -> list[Node]:
     """Walk a TSX/JSX AST and return extra nodes for custom components and id= elements.
 
     Call this after the main TS/JS parse walk. The returned nodes use the same
     path and language as the parent file so they appear in the same index context.
+
+    Args:
+        path: Relative file path.
+        src: Raw UTF-8 source bytes.
+        tree_root: Tree-sitter root node.
+        language: Language identifier (e.g. 'tsx', 'javascript').
+        file_node_id: ID of the parent file node, if any.
+        build_node: Optional callable matching BaseLanguageHandler._build_node signature.
+            When provided, nodes are constructed via build_node (enabling 4-part IDs and
+            complexity). When None, falls back to inline Node construction (legacy path).
     """
     components: dict[str, dict[str, Any]] = {}
     id_nodes: dict[str, dict[str, Any]] = {}
@@ -135,7 +149,6 @@ def extract_jsx_nodes(
     for comp_name, data in components.items():
         lines: list[int] = data["lines"]
         props: list[str] = sorted(data["props"])
-        node_id = Node.make_code_id(NodeKind.FUNCTION, path, f"jsx_{comp_name}")
         first_line = lines[0]
         last_line = lines[-1]
         meta: dict[str, Any] = {
@@ -145,8 +158,24 @@ def extract_jsx_nodes(
         }
         if props:
             meta[META_JSX_PROPS] = props[:20]
-        nodes.append(
-            Node(
+        if build_node is not None:
+            node = build_node(
+                tree_root,
+                src,
+                path,
+                kind=NodeKind.FUNCTION,
+                name=f"<{comp_name}>",
+                symbol=f"jsx_{comp_name}",
+                parent_id=file_node_id,
+                metadata=meta,
+            )
+            # Override line numbers to reflect actual usage span
+            node = node.model_copy(update={"start_line": first_line, "end_line": last_line,
+                                           "content_hash": content_hash_for_line_span(src, first_line, last_line),
+                                           "language": language})
+        else:
+            node_id = Node.make_code_id(NodeKind.FUNCTION, path, f"jsx_{comp_name}")
+            node = Node(
                 id=node_id,
                 kind=NodeKind.FUNCTION,
                 source=NodeSource.CODE,
@@ -159,13 +188,12 @@ def extract_jsx_nodes(
                 parent_id=file_node_id,
                 metadata=meta,
             )
-        )
+        nodes.append(node)
 
     # One node per unique id= value in this file
     # Prefix with jsx_id_ to avoid collision with TS/JS function nodes (e.g. function header()
     # vs <div id="header">) which share the same NodeKind.FUNCTION:{path}:{name} space.
     for element_id, data in id_nodes.items():
-        node_id = Node.make_code_id(NodeKind.FUNCTION, path, f"jsx_id_{element_id}")
         line = data["line"]
         el_meta: dict[str, Any] = {META_HTML_ELEMENT_TYPE: data["tag"]}
         if data["classes"]:
@@ -174,8 +202,23 @@ def extract_jsx_nodes(
             el_meta[META_DATA_ATTRIBUTES] = data["data_attrs"]
         if data["aria_attrs"]:
             el_meta[META_ARIA_ATTRIBUTES] = data["aria_attrs"]
-        nodes.append(
-            Node(
+        if build_node is not None:
+            node = build_node(
+                tree_root,
+                src,
+                path,
+                kind=NodeKind.FUNCTION,
+                name=element_id,
+                symbol=f"jsx_id_{element_id}",
+                parent_id=file_node_id,
+                metadata=el_meta,
+            )
+            node = node.model_copy(update={"start_line": line, "end_line": line,
+                                           "content_hash": content_hash_for_line_span(src, line, line),
+                                           "language": language})
+        else:
+            node_id = Node.make_code_id(NodeKind.FUNCTION, path, f"jsx_id_{element_id}")
+            node = Node(
                 id=node_id,
                 kind=NodeKind.FUNCTION,
                 source=NodeSource.CODE,
@@ -188,6 +231,6 @@ def extract_jsx_nodes(
                 parent_id=file_node_id,
                 metadata=el_meta,
             )
-        )
+        nodes.append(node)
 
     return nodes

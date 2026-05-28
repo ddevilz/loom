@@ -2,14 +2,15 @@
 
 Contains:
     _BaseContext — parser state stack (class/function nesting)
-    BaseLanguageHandler — abstract interface for tree-sitter parsers (NEW)
+    BaseLanguageHandler — abstract interface for tree-sitter parsers
 
-Parsers are NOT refactored to extend BaseLanguageHandler yet — that happens
-in a follow-up PR. This module defines the interface only.
+All language handlers (python.py, typescript.py, javascript.py, java.py) extend
+BaseLanguageHandler and use _build_node for consistent 4-part node ID generation.
 """
 from __future__ import annotations
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -23,6 +24,11 @@ from loom.indexer.languages._ts_utils import lines as _lines
 from loom.indexer.complexity import classify_complexity
 
 logger = logging.getLogger(__name__)
+
+
+def _default_repo_name() -> str:
+    """Return the repo name from environment, defaulting to 'unknown'."""
+    return os.environ.get("LOOM_REPO_NAME", "unknown")
 
 
 @dataclass
@@ -72,12 +78,15 @@ class _BaseContext:
 class BaseLanguageHandler(ABC):
     """Template method interface for tree-sitter language parsers.
 
-    Defines the contract that all language handlers must fulfill.
-    Existing parsers (python.py, typescript.py, etc.) are NOT yet refactored
-    to extend this class — that happens in a follow-up PR.
+    All language handlers (python.py, typescript.py, javascript.py, java.py)
+    extend this class and use _build_node for consistent 4-part node ID generation
+    (kind:repo:path:symbol).
+
+    repo_name is injected after instantiation or read from LOOM_REPO_NAME env var.
     """
 
-    #: Repo name injected after instantiation; defaults to "unknown".
+    #: Repo name used in 4-part node IDs.  Defaults to LOOM_REPO_NAME env var
+    #: (or "unknown" if unset).  Callers may override after instantiation.
     repo_name: str = "unknown"
 
     @property
@@ -101,8 +110,14 @@ class BaseLanguageHandler(ABC):
 
     @property
     def _repo_name(self) -> str:
-        """Return the repo name for use in node IDs."""
-        return self.repo_name
+        """Return the repo name for use in node IDs.
+
+        Falls back to LOOM_REPO_NAME environment variable if repo_name is still
+        at the class-level default of "unknown".
+        """
+        if self.repo_name != "unknown":
+            return self.repo_name
+        return _default_repo_name()
 
     def _build_node(
         self,
@@ -144,9 +159,6 @@ class BaseLanguageHandler(ABC):
             complexity=classify_complexity(ts_node, self.language_name),
             metadata=metadata or {},
         )
-
-    def _build_node_id(self, kind: str, path: str, name: str) -> str:
-        return f"{kind}:{path}:{name}"
 
     def _extract_decorators(self, node: object) -> list[str]:
         """Common decorator extraction — override for language-specific behavior."""
