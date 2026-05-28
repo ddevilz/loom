@@ -13,7 +13,7 @@
       "name": "loom",
       "source": "./plugins/loom-plugin",
       "description": "Tree-sitter indexes your codebase into SQLite. Search by name/keyword, get summaries + signatures. Agent-written summaries persist across sessions — 51-1507x fewer tokens than reading files.",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "author": {
         "name": "Devashish",
         "email": "jadhavom24@gmail.com"
