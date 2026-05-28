@@ -287,8 +287,17 @@ def build_server(
         )
 
     @mcp.tool()
-    async def get_callers(node_id: str) -> dict:
-        """One-hop incoming CALLS — functions that call this node."""
+    async def get_callers(
+        node_id: str,
+        limit: int = 10,
+        include_summaries: bool = True,
+    ) -> dict:
+        """One-hop incoming CALLS — functions that call this node.
+
+        Args:
+            limit: Max callers to return (1-100). Default 10.
+            include_summaries: Include summary text. Set False for names/paths only (~70% smaller).
+        """
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         await _log(nid, "get_callers")
         key = _mk("get_callers", nid)
@@ -297,15 +306,28 @@ def build_server(
         nodes = await traversal.neighbors(
             db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="in"
         )
-        result = _ok(
-            [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
-        )
+        nodes = nodes[: _clamp_limit(limit)]
+        if include_summaries:
+            result = _ok(
+                [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
+            )
+        else:
+            result = _ok([{"id": n.id, "name": n.name, "path": n.path} for n in nodes])
         _memo_set(key, result)
         return result
 
     @mcp.tool()
-    async def get_callees(node_id: str) -> dict:
-        """One-hop outgoing CALLS — functions this node calls."""
+    async def get_callees(
+        node_id: str,
+        limit: int = 10,
+        include_summaries: bool = True,
+    ) -> dict:
+        """One-hop outgoing CALLS — functions this node calls.
+
+        Args:
+            limit: Max callees to return (1-100). Default 10.
+            include_summaries: Include summary text. Set False for names/paths only (~70% smaller).
+        """
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         await _log(nid, "get_callees")
         key = _mk("get_callees", nid)
@@ -314,9 +336,13 @@ def build_server(
         nodes = await traversal.neighbors(
             db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="out"
         )
-        result = _ok(
-            [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
-        )
+        nodes = nodes[: _clamp_limit(limit)]
+        if include_summaries:
+            result = _ok(
+                [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
+            )
+        else:
+            result = _ok([{"id": n.id, "name": n.name, "path": n.path} for n in nodes])
         _memo_set(key, result)
         return result
 
@@ -339,59 +365,101 @@ def build_server(
         return result
 
     @mcp.tool()
-    async def get_neighbors(node_id: str, depth: int = 1) -> dict:
-        """Generic neighbor traversal across all edge kinds, both directions."""
+    async def get_neighbors(
+        node_id: str,
+        depth: int = 1,
+        limit: int = 20,
+        include_summaries: bool = True,
+    ) -> dict:
+        """Generic neighbor traversal across all edge kinds, both directions.
+
+        Args:
+            depth: Hop depth (1-10). Default 1.
+            limit: Max neighbors to return (1-100). Default 20.
+            include_summaries: Include summary text. Set False for names/paths only.
+        """
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         await _log(nid, "get_neighbors")
         d = _clamp_depth(depth)
-        key = _mk("get_neighbors", nid, depth=d)
+        lim = _clamp_limit(limit)
+        key = _mk("get_neighbors", nid, depth=d, limit=lim)
         if (hit := _memo_get(key)) is not None:
             return hit
         nodes = await traversal.neighbors(db, nid, depth=d)
-        result = _ok(
-            [
-                {
-                    "id": n.id,
-                    "name": n.name,
-                    "path": n.path,
-                    "kind": n.kind.value,
-                    "summary": n.summary,
-                }
-                for n in nodes
-            ]
-        )
+        nodes = nodes[:lim]
+        if include_summaries:
+            result = _ok(
+                [
+                    {
+                        "id": n.id,
+                        "name": n.name,
+                        "path": n.path,
+                        "kind": n.kind.value,
+                        "summary": n.summary,
+                    }
+                    for n in nodes
+                ]
+            )
+        else:
+            result = _ok(
+                [{"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value} for n in nodes]
+            )
         _memo_set(key, result)
         return result
 
     @mcp.tool()
-    async def get_community(community_id: str) -> dict:
-        """Return all member nodes of a community cluster."""
+    async def get_community(
+        community_id: str,
+        limit: int = 50,
+        include_summaries: bool = True,
+    ) -> dict:
+        """Return member nodes of a community cluster.
+
+        Args:
+            limit: Max members to return (1-100). Default 50.
+            include_summaries: Include summary text. Set False for names/paths only.
+        """
         cid = _req_text(community_id, field="community_id", max_length=_MAX_ID)
         nodes = await traversal.community_members(db, cid)
+        nodes = nodes[: _clamp_limit(limit)]
+        if include_summaries:
+            return _ok(
+                [
+                    {
+                        "id": n.id,
+                        "name": n.name,
+                        "path": n.path,
+                        "kind": n.kind.value,
+                        "summary": n.summary,
+                    }
+                    for n in nodes
+                ]
+            )
         return _ok(
-            [
-                {
-                    "id": n.id,
-                    "name": n.name,
-                    "path": n.path,
-                    "kind": n.kind.value,
-                    "summary": n.summary,
-                }
-                for n in nodes
-            ]
+            [{"id": n.id, "name": n.name, "path": n.path, "kind": n.kind.value} for n in nodes]
         )
 
     @mcp.tool()
-    async def shortest_path(from_id: str, to_id: str) -> dict:
-        """Shortest directed path on CALLS subgraph."""
+    async def shortest_path(
+        from_id: str,
+        to_id: str,
+        include_summaries: bool = True,
+    ) -> dict:
+        """Shortest directed path on CALLS subgraph.
+
+        Args:
+            include_summaries: Include summary text on path nodes. Set False for names/paths only.
+        """
         fid = _req_text(from_id, field="from_id", max_length=_MAX_ID)
         tid = _req_text(to_id, field="to_id", max_length=_MAX_ID)
         path = await traversal.shortest_path(db, fid, tid)
-        return _ok(
-            None
-            if path is None
-            else [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in path]
-        )
+        if path is None:
+            return _ok(None)
+        if include_summaries:
+            return _ok(
+                [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in path]
+            )
+        return _ok([{"id": n.id, "name": n.name, "path": n.path} for n in path])
 
     @mcp.tool()
     async def graph_stats() -> dict:
@@ -399,14 +467,29 @@ def build_server(
         return _ok(await traversal.stats(db))
 
     @mcp.tool()
-    async def god_nodes(limit: int = 20) -> dict:
-        """Highest in-degree on CALLS subgraph (most-called functions)."""
+    async def god_nodes(limit: int = 20, include_summaries: bool = True) -> dict:
+        """Highest in-degree on CALLS subgraph (most-called functions).
+
+        Args:
+            limit: Max nodes to return (1-100). Default 20.
+            include_summaries: Include summary text. Set False for names/paths/degree only.
+        """
         pairs = await traversal.god_nodes(db, _clamp_limit(limit))
+        if include_summaries:
+            return _ok(
+                [
+                    {
+                        "id": n.id,
+                        "name": n.name,
+                        "path": n.path,
+                        "in_degree": deg,
+                        "summary": n.summary,
+                    }
+                    for n, deg in pairs
+                ]
+            )
         return _ok(
-            [
-                {"id": n.id, "name": n.name, "path": n.path, "in_degree": deg, "summary": n.summary}
-                for n, deg in pairs
-            ]
+            [{"id": n.id, "name": n.name, "path": n.path, "in_degree": deg} for n, deg in pairs]
         )
 
     @mcp.tool()
@@ -483,13 +566,7 @@ def build_server(
         """
         stats = await get_savings_stats(db)
         recent = await get_recent_savings(db, limit=10)
-        return _ok(
-            {
-                **stats,
-                "recent": recent,
-                "note": "tokens_saved estimated from source line counts (15 tokens/line avg)",
-            }
-        )
+        return _ok({**stats, "recent": recent})
 
     @mcp.tool()
     async def get_context(node_id: str) -> dict:
