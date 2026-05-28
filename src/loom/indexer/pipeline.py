@@ -228,8 +228,7 @@ def _file_merge(
     and also hard-deletes system tags. Agent summaries for re-appearing node IDs are
     preserved.
     """
-    import time as _time
-    now = int(_time.time())
+    now = int(time.time())
 
     node_rows = [
         (
@@ -251,6 +250,7 @@ def _file_merge(
                 and n.kind.value not in ("file", "community")
              else None),
             n.community_id,
+            n.complexity.value if n.complexity is not None else None,
             json.dumps(n.metadata, default=str) if n.metadata else "{}",
             now,
         )
@@ -290,11 +290,11 @@ def _file_merge(
 
             if old_ids:
                 placeholders = ",".join("?" * len(old_ids))
-                # Hard-delete old edges
+                # Only delete OUTGOING edges from re-indexed nodes
+                # Incoming cross-file edges are preserved (unchanged files won't be re-parsed)
                 conn.execute(
-                    f"DELETE FROM edges WHERE from_id IN ({placeholders}) "
-                    f"OR to_id IN ({placeholders})",
-                    old_ids + old_ids,
+                    f"DELETE FROM edges WHERE from_id IN ({placeholders})",
+                    old_ids,
                 )
                 # Hard-delete system tags for old nodes
                 conn.execute(
@@ -311,8 +311,8 @@ def _file_merge(
                     """INSERT OR IGNORE INTO nodes
                          (id, kind, source, name, path, start_line, end_line,
                           language, content_hash, file_hash, file_mtime, summary,
-                          token_count, community_id, metadata, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                          token_count, community_id, complexity, metadata, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     node_rows,
                 )
 
@@ -326,8 +326,9 @@ def _file_merge(
                 )
 
             # Restore agent summaries for surviving node IDs
+            new_node_ids = {n.id for n in nodes}
             for node_id, (summary, summary_hash) in saved.items():
-                if summary and any(n.id == node_id for n in nodes):
+                if summary and node_id in new_node_ids:
                     conn.execute(
                         "UPDATE nodes SET summary = ?, summary_hash = ? "
                         "WHERE id = ? AND summary IS NULL",
@@ -469,9 +470,13 @@ async def index_repo(
         for f in changed:
             try:
                 st = os.stat(str(f))
+                rel = f.relative_to(repo_path).as_posix()
+                file_nodes_for_path = by_path.get(rel, ([], []))[0]
+                file_node = next((n for n in file_nodes_for_path if n.kind == NodeKind.FILE), None)
+                content_sha = file_node.file_hash if file_node and file_node.file_hash else sha256_of_file(f)
                 fingerprints_to_write.append(FileFingerprint(
                     file_path=str(f),
-                    content_sha=sha256_of_file(f),
+                    content_sha=content_sha,
                     mtime_ns=st.st_mtime_ns,
                     indexed_at=time.time(),
                 ))
@@ -542,13 +547,13 @@ async def index_repo(
             from loom.indexer.test_linker import TestLinker  # noqa: PLC0415
             def _run_test_linker() -> tuple[int, int]:
                 # Get all non-deleted function/method nodes for link_all
-                conn = repo.db.connect()
-                rows = conn.execute(
-                    "SELECT id, kind, name, path, language, source, content_hash, "
-                    "start_line, end_line, metadata "
-                    "FROM nodes WHERE kind IN ('function','method','class') "
-                    "AND deleted_at IS NULL"
-                ).fetchall()
+                with repo.db._lock:
+                    conn = repo.db.connect()
+                    rows = conn.execute(
+                        "SELECT id, kind, name, path, language, source, content_hash, "
+                        "start_line, end_line FROM nodes "
+                        "WHERE kind IN ('function','method','class') AND deleted_at IS NULL"
+                    ).fetchall()
                 nodes_for_linking = []
                 for r in rows:
                     try:
