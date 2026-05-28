@@ -7,3 +7,5 @@ __pycache__/
 .ruff_cache
 # .claude/
 docs/superpowers/
+docs/research/
+.claude.worktrees/
