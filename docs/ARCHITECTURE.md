@@ -29,7 +29,7 @@ No Docker. No external services. No embedding model.
 
 ```
 src/loom/
-├── graph/                        # Domain core (v0.6.0)
+├── graph/                        # Domain core (v0.6.1)
 │   ├── db.py                     # SQLite schema init, DB class (connection pool + RLock),
 │   │                             # _add_column_if_missing(), DEFAULT_DB_PATH
 │   ├── schema.sql                # Full DDL

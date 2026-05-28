@@ -1,11 +1,18 @@
 {
   "name": "loom",
   "display_name": "Loom — Agent Memory Layer",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Persistent symbol index for AI coding agents. Tree-sitter indexes your repo into SQLite. Agents search by keyword and get summaries + signatures instantly. Zero LLM cost — summaries accumulate across sessions.",
   "author": "Devashish",
   "license": "MIT",
-  "tags": ["code-intelligence", "memory", "mcp", "tree-sitter", "sqlite", "agent-memory"],
+  "tags": [
+    "code-intelligence",
+    "memory",
+    "mcp",
+    "tree-sitter",
+    "sqlite",
+    "agent-memory"
+  ],
   "install": {
     "type": "uvx",
     "package": "loom-tool",
@@ -15,9 +22,5 @@
     "python": ">=3.10",
     "tools": ["uvx"]
   },
-  "quick_start": [
-    "cd loom",
-    "loom analyze .",
-    "loom install"
-  ]
+  "quick_start": ["cd loom", "loom analyze .", "loom install"]
 }

@@ -117,7 +117,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     # Multi-agent authorship — added in 0.5.0
     _add_column_if_missing(conn, "nodes", "summary_author", "TEXT")
     _add_column_if_missing(conn, "nodes", "summary_session", "TEXT")
-    # v0.6.0 new columns
+    # v0.6.1 new columns
     _add_column_if_missing(conn, "nodes", "complexity", "TEXT")
     _add_column_if_missing(conn, "nodes", "tags_normalized", "TEXT DEFAULT ''")
     # Index on deleted_at must be created after the column migration
@@ -134,7 +134,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_visits_session ON node_visits(session_id, visited_at DESC)"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_visits_node ON node_visits(node_id)")
-    # v0.6.0 new tables (idempotent via IF NOT EXISTS)
+    # v0.6.1 new tables (idempotent via IF NOT EXISTS)
     conn.execute("""CREATE TABLE IF NOT EXISTS file_fingerprints (
         file_path    TEXT PRIMARY KEY,
         content_sha  TEXT NOT NULL,
@@ -149,14 +149,14 @@ def init_schema(conn: sqlite3.Connection) -> None:
     )""")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_node_tags_tag  ON node_tags(tag, node_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_node_tags_node ON node_tags(node_id)")
-    # v0.6.0 EdgeType uppercase migration
+    # v0.6.1 EdgeType uppercase migration
     conn.execute("UPDATE edges SET kind = UPPER(kind) WHERE kind != UPPER(kind)")
-    # v0.6.0 repo_name in meta (for 4-part node ID migration)
+    # v0.6.1 repo_name in meta (for 4-part node ID migration)
     existing = conn.execute("SELECT value FROM meta WHERE key = 'repo_name'").fetchone()
     if not existing:
         repo_name = _derive_repo_name()
         conn.execute("INSERT OR IGNORE INTO meta VALUES ('repo_name', ?)", (repo_name,))
-    # v0.6.0 migrate 3-part IDs to 4-part (idempotent: skip already-migrated IDs)
+    # v0.6.1 migrate 3-part IDs to 4-part (idempotent: skip already-migrated IDs)
     # Ensure parent_id column exists before migration
     _add_column_if_missing(conn, "nodes", "parent_id", "TEXT")
     repo_name = conn.execute("SELECT value FROM meta WHERE key = 'repo_name'").fetchone()[0]
@@ -201,7 +201,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     """,
         (repo_name,),
     )
-    # v0.6.0 remove is_dead_code column (replaced by "dead-code" tag)
+    # v0.6.1 remove is_dead_code column (replaced by "dead-code" tag)
     if sqlite3.sqlite_version_info < (3, 35, 0):
         log.warning(
             "SQLite %s does not support DROP COLUMN (requires 3.35.0+); "

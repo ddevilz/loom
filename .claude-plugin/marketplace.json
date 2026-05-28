@@ -13,7 +13,7 @@
       "name": "loom",
       "source": "./plugins/loom-plugin",
       "description": "Tree-sitter indexes your codebase into SQLite. Search by name/keyword, get summaries + signatures. Agent-written summaries persist across sessions — 51-1507x fewer tokens than reading files.",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "author": {
         "name": "Devashish",
         "email": "jadhavom24@gmail.com"
@@ -21,9 +21,21 @@
       "homepage": "https://github.com/ddevilz/loom",
       "repository": "https://github.com/ddevilz/loom",
       "license": "MIT",
-      "keywords": ["code-intelligence", "mcp", "symbol-index", "tree-sitter", "agent-memory"],
+      "keywords": [
+        "code-intelligence",
+        "mcp",
+        "symbol-index",
+        "tree-sitter",
+        "agent-memory"
+      ],
       "category": "developer-tools",
-      "tags": ["code-search", "context", "symbol-index", "sqlite", "zero-llm-cost"]
+      "tags": [
+        "code-search",
+        "context",
+        "symbol-index",
+        "sqlite",
+        "zero-llm-cost"
+      ]
     }
   ]
 }

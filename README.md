@@ -154,7 +154,7 @@ class:src/models/user.py:User
 file:src/auth.py
 ```
 
-> **v0.6.0 note:** The 4-part `{kind}:{repo}:{path}:{symbol}` format is planned for a future phase. Current IDs remain 3-part.
+> **v0.6.1 note:** The 4-part `{kind}:{repo}:{path}:{symbol}` format is planned for a future phase. Current IDs remain 3-part.
 
 ## Agent workflow
 
@@ -198,7 +198,7 @@ store_understanding(
 
 **Priority:** Agent summaries are never overwritten by auto-summaries. Re-analyzing preserves agent work.
 
-## Index-time enrichment (v0.6.0)
+## Index-time enrichment (v0.6.1)
 
 Every `loom analyze` run now enriches the graph with additional metadata beyond raw symbols:
 
@@ -297,7 +297,7 @@ Sessions table tracks agent session timestamps for delta context.
 
 ```
 src/loom/
-├── graph/               # Domain core (v0.6.0)
+├── graph/               # Domain core (v0.6.1)
 │   ├── db.py            # SQLite schema init, DB class, _add_column_if_missing
 │   ├── schema.sql       # Full DDL
 │   ├── models/          # Node, Edge, EdgeType, ConfidenceTier, NodeKind,

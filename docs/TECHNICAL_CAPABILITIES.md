@@ -75,7 +75,7 @@ Loom parses source files into `Node` objects with file/line locations and metada
 
 ---
 
-## Index-time enrichment (v0.6.0)
+## Index-time enrichment (v0.6.1)
 
 ### File fingerprinting
 
