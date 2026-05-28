@@ -1,17 +1,16 @@
 """Unit tests for tag search — parse_tag_query() and SearchRepository tag filtering."""
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from loom.graph.db import DB
 from loom.graph.models import Node, NodeKind, NodeSource
 from loom.graph.repository import Repository
-from loom.graph.repository.search import SearchRepository, parse_tag_query
-
+from loom.graph.repository.search import parse_tag_query
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_db() -> DB:
     db = DB(path=":memory:")
@@ -32,6 +31,7 @@ def _make_node(name: str, path: str = "src/foo.py") -> Node:
 # ---------------------------------------------------------------------------
 # parse_tag_query tests
 # ---------------------------------------------------------------------------
+
 
 def test_parse_tag_query_single_tag() -> None:
     """tag:auth login → (["auth"], "login")"""
@@ -57,6 +57,7 @@ def test_parse_tag_query_no_tags() -> None:
 # ---------------------------------------------------------------------------
 # SearchRepository tag filter tests
 # ---------------------------------------------------------------------------
+
 
 def test_search_single_tag_filter() -> None:
     """Node with tag 'auth' is returned when searching tag:auth."""

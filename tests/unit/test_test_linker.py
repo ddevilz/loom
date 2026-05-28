@@ -1,9 +1,8 @@
 """Unit tests for TestLinker — TESTED_BY edge creation pass."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
-
-import pytest
 
 from loom.graph.models.node import Node, NodeKind, NodeSource
 from loom.indexer.test_linker import (
@@ -13,7 +12,6 @@ from loom.indexer.test_linker import (
     path_convention_match,
     strip_test_name,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

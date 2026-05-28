@@ -18,13 +18,13 @@ from pathlib import Path
 import pytest
 
 from loom.graph.models import NodeKind
-from loom.indexer.languages.markup.html import parse_html
 from loom.indexer.languages.markup.config import (
     parse_css,
     parse_env,
     parse_json,
     parse_properties,
 )
+from loom.indexer.languages.markup.html import parse_html
 
 
 @pytest.mark.integration

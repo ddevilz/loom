@@ -6,9 +6,8 @@ Covers:
 - ContextRepository.build_primer / get_context_packet (brief)
 - Repository composed facade — all 7 sub-repos attached
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from loom.graph.db import DB
 from loom.graph.models import Edge, EdgeType, Node, NodeKind, NodeSource
@@ -16,7 +15,6 @@ from loom.graph.repository import Repository
 from loom.graph.repository.context import ContextRepository
 from loom.graph.repository.search import SearchRepository
 from loom.graph.repository.traversal import TraversalRepository
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

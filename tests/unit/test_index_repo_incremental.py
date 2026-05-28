@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from loom.graph.db import DB
-from loom.indexer.pipeline import index_repo
 from loom.graph.repository import Repository
+from loom.indexer.pipeline import index_repo
 from loom.query import traversal
 from loom.store import nodes as node_store
 

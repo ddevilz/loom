@@ -6,8 +6,8 @@ import tree_sitter_python as _ts_python
 from tree_sitter import Language as _Language
 from tree_sitter import Parser
 
-from loom.indexer.calls import trace_calls, trace_calls_for_file
 from loom.graph.models import Edge, EdgeType, Node, NodeKind, NodeSource
+from loom.indexer.calls import trace_calls, trace_calls_for_file
 
 _PY_LANGUAGE = _Language(_ts_python.language())
 

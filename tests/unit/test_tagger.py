@@ -1,4 +1,5 @@
 """Unit tests for AutoTagger — decorator, import, and directory tag pass."""
+
 from __future__ import annotations
 
 import pytest
@@ -6,10 +7,10 @@ import pytest
 from loom.graph.models.node import Node, NodeKind, NodeSource
 from loom.indexer.tagger import AutoTagger
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_node(
     name: str = "func",
@@ -39,6 +40,7 @@ def tagger() -> AutoTagger:
 # Test 1: Decorator tag applied to correct node only
 # ---------------------------------------------------------------------------
 
+
 def test_decorator_tag_correct_node(tagger: AutoTagger) -> None:
     """Node with @pytest.fixture gets 'test-fixture'; other nodes don't."""
     fixture_node = make_node("setup", decorators=["@pytest.fixture"])
@@ -54,6 +56,7 @@ def test_decorator_tag_correct_node(tagger: AutoTagger) -> None:
 # Test 2: Router prefix matching (@router. prefix)
 # ---------------------------------------------------------------------------
 
+
 def test_router_prefix_match(tagger: AutoTagger) -> None:
     """@router.get('/users') should match the '@router.' prefix key -> 'api-endpoint'."""
     node = make_node("get_users", decorators=["@router.get('/users')"])
@@ -66,6 +69,7 @@ def test_router_prefix_match(tagger: AutoTagger) -> None:
 # ---------------------------------------------------------------------------
 # Test 3: Import tags applied to ALL nodes in the file
 # ---------------------------------------------------------------------------
+
 
 def test_import_tags_applied_to_all_nodes(tagger: AutoTagger) -> None:
     """File importing sqlalchemy -> all nodes get ['database', 'orm']."""
@@ -87,6 +91,7 @@ def test_import_tags_applied_to_all_nodes(tagger: AutoTagger) -> None:
 # Test 4: Dir tag — middleware path
 # ---------------------------------------------------------------------------
 
+
 def test_dir_tag_middleware(tagger: AutoTagger) -> None:
     """Path segment 'middleware' -> all nodes get 'middleware' tag."""
     node = make_node("auth_middleware")
@@ -100,6 +105,7 @@ def test_dir_tag_middleware(tagger: AutoTagger) -> None:
 # Test 5: Dir tag — helpers path -> utility
 # ---------------------------------------------------------------------------
 
+
 def test_dir_tag_helpers(tagger: AutoTagger) -> None:
     """Path segment 'helpers' -> all nodes get 'utility' tag."""
     node = make_node("format_date")
@@ -112,6 +118,7 @@ def test_dir_tag_helpers(tagger: AutoTagger) -> None:
 # ---------------------------------------------------------------------------
 # Test 6: No tags when nothing matches
 # ---------------------------------------------------------------------------
+
 
 def test_no_tags_when_no_match(tagger: AutoTagger) -> None:
     """No matching decorators, imports, or directory segments -> empty tag lists."""
@@ -129,6 +136,7 @@ def test_no_tags_when_no_match(tagger: AutoTagger) -> None:
 # ---------------------------------------------------------------------------
 # Test 7: Multiple sources combine on the same node
 # ---------------------------------------------------------------------------
+
 
 def test_multiple_sources_combine(tagger: AutoTagger) -> None:
     """Node with a decorator + matching import + matching dir path gets all tags."""
@@ -155,6 +163,7 @@ def test_multiple_sources_combine(tagger: AutoTagger) -> None:
 # Test 8: metadata=None (or empty dict) handled gracefully
 # ---------------------------------------------------------------------------
 
+
 def test_node_with_no_metadata_handled_gracefully(tagger: AutoTagger) -> None:
     """Node with empty metadata dict (no 'decorators' key) should not raise."""
     node = make_node("bare_func")
@@ -170,6 +179,7 @@ def test_node_with_no_metadata_handled_gracefully(tagger: AutoTagger) -> None:
 # Test 9: Windows-style path separators
 # ---------------------------------------------------------------------------
 
+
 def test_windows_path_separator(tagger: AutoTagger) -> None:
     """Backslash-separated paths should still match dir tags."""
     node = make_node("do_work")
@@ -183,6 +193,7 @@ def test_windows_path_separator(tagger: AutoTagger) -> None:
 # Test 10: Exact decorator match doesn't bleed into similar names
 # ---------------------------------------------------------------------------
 
+
 def test_staticmethod_exact_match(tagger: AutoTagger) -> None:
     """@staticmethod key should match exactly and return 'static' tag."""
     node = make_node("my_func", decorators=["@staticmethod"])
@@ -195,6 +206,7 @@ def test_staticmethod_exact_match(tagger: AutoTagger) -> None:
 # ---------------------------------------------------------------------------
 # Test 11: Empty nodes list
 # ---------------------------------------------------------------------------
+
 
 def test_empty_nodes_list(tagger: AutoTagger) -> None:
     """Empty nodes list should return empty dict."""

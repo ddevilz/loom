@@ -1,4 +1,5 @@
 """Unit tests for GraphTagger — dead-code, entry-point, hub, bridge tags."""
+
 from __future__ import annotations
 
 import time
@@ -7,8 +8,7 @@ import pytest
 
 from loom.graph.db import DB
 from loom.graph.repository import Repository
-from loom.indexer.graph_tagger import ENTRY_DECORATOR_TAGS, compute_graph_tags
-
+from loom.indexer.graph_tagger import compute_graph_tags
 
 # ---------------------------------------------------------------------------
 # Helpers

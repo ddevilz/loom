@@ -17,8 +17,8 @@ async def indexed_server():
     """FastMCP server with python_flask_app indexed into an in-memory DB."""
     db = DB(path=":memory:")
     server = build_server(db=db)
-    from loom.indexer.pipeline import index_repo
     from loom.graph.repository import Repository
+    from loom.indexer.pipeline import index_repo
 
     await index_repo(_FIXTURE_REPO, repo=Repository(db))
     return server

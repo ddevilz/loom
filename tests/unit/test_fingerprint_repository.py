@@ -1,6 +1,9 @@
 """Unit tests for FingerprintRepository."""
+
 import time
+
 import pytest
+
 from loom.graph.db import DB
 from loom.graph.repository.fingerprints import FileFingerprint, FingerprintRepository
 

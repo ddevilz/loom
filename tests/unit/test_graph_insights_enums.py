@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from loom.intelligence.suggested_questions import suggest_questions
 from loom.graph.db import DB
-from loom.graph.models import QuestionType
-from loom.graph.models import Node, NodeKind, NodeSource
+from loom.graph.models import Node, NodeKind, NodeSource, QuestionType
+from loom.intelligence.suggested_questions import suggest_questions
 from loom.store import nodes as node_store
 
 

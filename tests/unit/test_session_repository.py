@@ -1,4 +1,5 @@
 """Tests for SessionRepository."""
+
 from __future__ import annotations
 
 from loom.graph.db import DB
@@ -35,7 +36,13 @@ def test_get_latest_for_agent():
 def test_record_visit():
     db = _make_db()
     node_repo = NodeRepository(db)
-    node = Node(id="function:a.py:foo", kind=NodeKind.FUNCTION, source=NodeSource.CODE, name="foo", path="a.py")
+    node = Node(
+        id="function:a.py:foo",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="foo",
+        path="a.py",
+    )
     node_repo.upsert([node])
     sess_repo = SessionRepository(db)
     s = sess_repo.create("test")

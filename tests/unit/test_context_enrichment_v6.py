@@ -1,9 +1,8 @@
 # tests/unit/test_context_enrichment_v6.py
 """Phase 10: Tests for get_context_packet complexity/tags/tested_by enrichment
 and store_understanding tags parameter."""
-from __future__ import annotations
 
-import time
+from __future__ import annotations
 
 import pytest
 
@@ -12,7 +11,6 @@ from loom.graph.models import Node, NodeKind, NodeSource
 from loom.graph.repository.context import ContextRepository
 from loom.graph.repository.nodes import NodeRepository
 from loom.graph.repository.tags import TagRepository
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -68,7 +66,9 @@ def tag_repo(db: DB) -> TagRepository:
 # ---------------------------------------------------------------------------
 
 
-def test_context_packet_includes_complexity(db: DB, node_repo: NodeRepository, ctx_repo: ContextRepository) -> None:
+def test_context_packet_includes_complexity(
+    db: DB, node_repo: NodeRepository, ctx_repo: ContextRepository
+) -> None:
     """get_context_packet returns complexity field from nodes table."""
     node = _make_fn("src/auth.py", "validate_token")
     node_repo.upsert([node])
@@ -76,9 +76,7 @@ def test_context_packet_includes_complexity(db: DB, node_repo: NodeRepository, c
     # Set complexity directly in DB
     with db._lock:
         conn = db.connect()
-        conn.execute(
-            "UPDATE nodes SET complexity = 'complex' WHERE id = ?", (node.id,)
-        )
+        conn.execute("UPDATE nodes SET complexity = 'complex' WHERE id = ?", (node.id,))
         conn.commit()
 
     packet = ctx_repo.get_context_packet(node.id)
@@ -172,7 +170,6 @@ def test_context_packet_tested_by_populated_with_edge(
 async def test_store_understanding_writes_agent_tags(db: DB, node_repo: NodeRepository) -> None:
     """store_understanding with tags= writes tags with source='agent'."""
     from loom.store import nodes as node_store
-    from loom.server.app import build_server
 
     # We need to test through the registered tool.
     # Instead, call the logic directly via TagRepository + node_store to verify
@@ -185,8 +182,9 @@ async def test_store_understanding_writes_agent_tags(db: DB, node_repo: NodeRepo
     assert result["found"] is True
 
     # Now simulate what store_understanding does with tags
-    from loom.graph.repository.tags import TagRepository as TR
     import asyncio
+
+    from loom.graph.repository.tags import TagRepository as TR
 
     valid_tags = ["security-sensitive", "pci-scope"]
 

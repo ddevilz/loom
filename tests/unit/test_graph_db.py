@@ -1,4 +1,4 @@
-from loom.graph.db import DB, connect, has_fts5, init_schema, resolve_db_path
+from loom.graph.db import DB, connect, init_schema
 
 
 def test_connect_memory():
@@ -9,7 +9,9 @@ def test_connect_memory():
 def test_init_schema_memory():
     conn = connect(":memory:")
     init_schema(conn)
-    tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    tables = [
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    ]
     assert "nodes" in tables
     assert "edges" in tables
 

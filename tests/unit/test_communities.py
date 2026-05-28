@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from loom.intelligence.communities import compute_communities
 from loom.graph.db import DB
 from loom.graph.models import Edge, EdgeType, Node, NodeKind, NodeSource
+from loom.intelligence.communities import compute_communities
 from loom.query import traversal
 from loom.store import edges as edge_store
 from loom.store import nodes as node_store

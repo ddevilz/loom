@@ -6,8 +6,7 @@ import time
 import pytest
 
 from loom.graph.db import DB
-from loom.graph.models import SummarySource
-from loom.graph.models import Node, NodeKind, NodeSource
+from loom.graph.models import Node, NodeKind, NodeSource, SummarySource
 from loom.query.context import _compute_suggestion, _humanize_ago, get_context_packet
 from loom.store import nodes as node_store
 

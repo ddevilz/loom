@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from loom.graph.models import Node, NodeKind
+from loom.graph.models import NodeKind
 from loom.indexer.languages.python import parse_python
 from loom.indexer.registry import get_registry
 

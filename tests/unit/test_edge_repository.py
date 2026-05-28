@@ -1,4 +1,5 @@
 """Tests for EdgeRepository."""
+
 from __future__ import annotations
 
 from loom.graph.db import DB
@@ -15,8 +16,20 @@ def _make_db():
 
 def _seed(db):
     node_repo = NodeRepository(db)
-    n1 = Node(id="function:a.py:foo", kind=NodeKind.FUNCTION, source=NodeSource.CODE, name="foo", path="a.py")
-    n2 = Node(id="function:b.py:bar", kind=NodeKind.FUNCTION, source=NodeSource.CODE, name="bar", path="b.py")
+    n1 = Node(
+        id="function:a.py:foo",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="foo",
+        path="a.py",
+    )
+    n2 = Node(
+        id="function:b.py:bar",
+        kind=NodeKind.FUNCTION,
+        source=NodeSource.CODE,
+        name="bar",
+        path="b.py",
+    )
     node_repo.upsert([n1, n2])
     edge_repo = EdgeRepository(db)
     edge_repo.upsert([Edge(from_id=n1.id, to_id=n2.id, kind=EdgeType.CALLS)])

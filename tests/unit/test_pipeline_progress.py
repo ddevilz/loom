@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 
 from loom.graph.db import DB
-from loom.indexer.pipeline import index_repo
 from loom.graph.repository import Repository
+from loom.indexer.pipeline import index_repo
 
 
 @pytest.fixture
