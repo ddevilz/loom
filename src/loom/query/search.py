@@ -42,7 +42,7 @@ async def search(query: str, db: DB, *, limit: int = 10) -> list[SearchResult]:
         Soft-deleted nodes are excluded. caller_count included for ranking.
     """
     tags = list(dict.fromkeys(_TAG_RE.findall(query)))
-    fts_query = _TAG_RE.sub("", query).strip() if tags else query
+    fts_query = _TAG_RE.sub("", query).strip()
 
     def _run() -> list[tuple[Node, float, int]]:
         with db._lock:
