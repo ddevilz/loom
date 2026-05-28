@@ -24,6 +24,7 @@ class TestedByLink:
     node: Node
     confidence: float
 
+
 _CALLER_LIMIT = 10
 _CALLEE_LIMIT = 10
 _MEMBER_LIMIT = 20
@@ -487,8 +488,8 @@ class ContextRepository:
             """SELECT n.*, e.confidence
                FROM edges e
                JOIN nodes n ON n.id = e.from_id
-               WHERE e.to_id = ? AND e.kind = 'TESTED_BY' AND n.deleted_at IS NULL""",
-            (node_id,),
+               WHERE e.to_id = ? AND e.kind = ? AND n.deleted_at IS NULL""",
+            (node_id, EdgeType.TESTED_BY.value),
         ).fetchall()
         return [TestedByLink(node=row_to_node(r), confidence=r["confidence"]) for r in rows]
 

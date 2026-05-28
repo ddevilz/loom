@@ -90,8 +90,11 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
 
         # Write agent tags if provided
         tags_written = 0
+        tags_rejected = 0
         if tags:
+            raw_count = len(tags)
             valid_tags = [t.strip() for t in tags if isinstance(t, str) and t.strip()]
+            tags_rejected = raw_count - len(valid_tags)
             if valid_tags:
                 import asyncio  # noqa: PLC0415
                 from loom.graph.repository.tags import TagRepository  # noqa: PLC0415
@@ -102,7 +105,7 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
 
                 tags_written = await asyncio.to_thread(_write_tags)
 
-        return ok({"skipped": result["skipped"], "node_id": nid, "tags_written": tags_written})
+        return ok({"skipped": result["skipped"], "node_id": nid, "tags_written": tags_written, "tags_rejected": tags_rejected})
 
     @mcp.tool()
     async def get_savings() -> dict:
