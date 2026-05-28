@@ -265,3 +265,29 @@ def test_deleted_nodes_excluded_from_tags(repo: Repository) -> None:
     assert dead_id not in result
     # live node is still present (may get dead-code tag)
     assert live_id in result
+
+
+# ---------------------------------------------------------------------------
+# Test 11: TESTED_BY edge does NOT suppress dead-code
+# ---------------------------------------------------------------------------
+
+
+def test_tested_by_edge_does_not_suppress_dead_code(tmp_path):
+    """A node with a TESTED_BY edge but zero CALLS in-degree is still dead-code."""
+    db = DB(path=tmp_path / "test.db")
+    db.connect()  # initialise schema
+    repo = Repository(db)
+
+    _insert_node(db, "prod:fn", "function", "validate")
+    _insert_node(db, "test:fn", "function", "test_validate")
+    # TESTED_BY edge from test to prod
+    conn = db.connect()
+    conn.execute(
+        "INSERT INTO edges (from_id, to_id, kind, confidence) VALUES (?,?,?,?)",
+        ("test:fn", "prod:fn", "TESTED_BY", 0.7),
+    )
+    conn.commit()
+
+    result = compute_graph_tags(repo)
+    # prod:fn has zero CALLS in-degree → still dead-code
+    assert "dead-code" in result.get("prod:fn", [])
