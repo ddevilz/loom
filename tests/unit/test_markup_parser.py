@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loom.analysis.code.parser import parse_repo
-from loom.core import NodeKind
-from loom.ingest.code.languages.html import parse_html
-from loom.ingest.code.languages.markup import (
+from loom.indexer.extractor import parse_repo
+from loom.graph.models import NodeKind
+from loom.indexer.languages.markup.html import parse_html
+from loom.indexer.languages.markup.config import (
     parse_css,
     parse_json,
     parse_xml,

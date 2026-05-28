@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loom.ingest.code.walker import walk_repo
+from loom.indexer.walker import walk_repo
 
 
 def _touch(p: Path, content: str = "x") -> None:

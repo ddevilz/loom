@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from loom.core import NodeKind
-from loom.ingest.code.languages.python import parse_python
+from loom.graph.models import NodeKind
+from loom.indexer.languages.python import parse_python
 
 
 @pytest.mark.integration

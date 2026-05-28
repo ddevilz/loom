@@ -5,7 +5,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import loom.cli
-from loom.core.context import DB
+from loom.graph.db import DB
 
 runner = CliRunner()
 
@@ -17,7 +17,7 @@ def test_cli_help_shows_analyze_command() -> None:
 
 
 def test_cli_analyze_calls_index_repo(monkeypatch, tmp_path: Path) -> None:
-    from loom.ingest.pipeline import IndexResult
+    from loom.indexer.pipeline import IndexResult
 
     fake_result = IndexResult(
         repo_path=tmp_path,
@@ -43,12 +43,12 @@ def test_cli_analyze_calls_index_repo(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_cli_analyze_uses_db_flag(monkeypatch, tmp_path: Path) -> None:
-    from loom.ingest.pipeline import IndexResult
+    from loom.indexer.pipeline import IndexResult
 
     db_paths: list = []
 
-    async def fake_index_repo(path, db, **kw):
-        db_paths.append(db.path)
+    async def fake_index_repo(path, repo, **kw):
+        db_paths.append(repo.db.path)
         return IndexResult(
             repo_path=tmp_path,
             files_parsed=0,
@@ -71,7 +71,7 @@ def test_cli_analyze_uses_db_flag(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_cli_analyze_shows_errors(monkeypatch, tmp_path: Path) -> None:
-    from loom.ingest.pipeline import IndexResult
+    from loom.indexer.pipeline import IndexResult
 
     async def fake_index_repo(path, db, **kw):
         return IndexResult(

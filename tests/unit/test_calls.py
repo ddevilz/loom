@@ -6,8 +6,8 @@ import tree_sitter_python as _ts_python
 from tree_sitter import Language as _Language
 from tree_sitter import Parser
 
-from loom.analysis.code.calls import trace_calls, trace_calls_for_file
-from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
+from loom.indexer.calls import trace_calls, trace_calls_for_file
+from loom.graph.models import Edge, EdgeType, Node, NodeKind, NodeSource
 
 _PY_LANGUAGE = _Language(_ts_python.language())
 
@@ -242,7 +242,7 @@ def caller():
 
 
 def test_trace_calls_for_file_integration(tmp_path: Path):
-    from loom.ingest.code.languages.python import parse_python
+    from loom.indexer.languages.python import parse_python
 
     code = """
 def helper():
@@ -267,7 +267,7 @@ def main():
 
 
 def test_trace_calls_auth_fixture_integration():
-    from loom.ingest.code.languages.python import parse_python
+    from loom.indexer.languages.python import parse_python
 
     auth_path = Path(__file__).parent.parent / "fixtures" / "sample_repo" / "auth.py"
     if not auth_path.exists():
@@ -284,7 +284,7 @@ def test_trace_calls_auth_fixture_integration():
 
 
 def test_parse_file_emits_contains_edges_for_top_level_symbols(tmp_path: Path):
-    from loom.ingest.pipeline import _parse_file
+    from loom.indexer.pipeline import _parse_file
 
     test_file = tmp_path / "module.py"
     test_file.write_text(

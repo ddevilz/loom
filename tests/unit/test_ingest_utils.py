@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loom.ingest.utils import sha256_of_file
+from loom.indexer.utils import sha256_of_file
 
 
 def test_sha256_of_file_stable(tmp_path: Path) -> None:

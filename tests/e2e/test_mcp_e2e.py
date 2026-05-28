@@ -6,8 +6,8 @@ import pytest
 import pytest_asyncio
 from fastmcp import Client
 
-from loom.core.context import DB
-from loom.mcp.server import build_server
+from loom.graph.db import DB
+from loom.server.app import build_server
 
 _FIXTURE_REPO = Path(__file__).parents[2] / "tests" / "fixtures" / "python_flask_app"
 
@@ -17,9 +17,10 @@ async def indexed_server():
     """FastMCP server with python_flask_app indexed into an in-memory DB."""
     db = DB(path=":memory:")
     server = build_server(db=db)
-    from loom.ingest.pipeline import index_repo
+    from loom.indexer.pipeline import index_repo
+    from loom.graph.repository import Repository
 
-    await index_repo(_FIXTURE_REPO, db=db)
+    await index_repo(_FIXTURE_REPO, repo=Repository(db))
     return server
 
 
@@ -34,15 +35,12 @@ async def empty_server():
 
 
 @pytest.mark.asyncio
-async def test_list_tools_returns_all_21(indexed_server) -> None:
+async def test_list_tools_returns_all_17(indexed_server) -> None:
     async with Client(indexed_server) as client:
         tools = await client.list_tools()
     names = {t.name for t in tools}
     expected = {
         "search_code",
-        "get_node",
-        "get_callers",
-        "get_callees",
         "get_blast_radius",
         "get_neighbors",
         "get_community",
@@ -57,7 +55,6 @@ async def test_list_tools_returns_all_21(indexed_server) -> None:
         "get_delta",
         "get_surprising_connections",
         "suggest_questions",
-        "get_community_cohesion",
         "get_work_plan",
         "get_status",
     }
@@ -264,8 +261,8 @@ async def test_get_work_plan_returns_document_priority_when_unannotated(indexed_
 
 
 @pytest.mark.asyncio
-async def test_get_callers_memo_cache_hit(indexed_server) -> None:
-    """Calling get_callers twice on the same node within TTL returns identical result."""
+async def test_get_neighbors_memo_cache_hit(indexed_server) -> None:
+    """Calling get_neighbors twice on the same node within TTL returns identical result."""
     async with Client(indexed_server) as client:
         await client.call_tool("start_session", {"agent_id": "memo-test"})
         sr = await client.call_tool("search_code", {"query": "create_user", "limit": 3})
@@ -274,8 +271,8 @@ async def test_get_callers_memo_cache_hit(indexed_server) -> None:
             pytest.skip("no function/method node for create_user")
         nid = results[0]["id"]
 
-        r1 = await client.call_tool("get_callers", {"node_id": nid})
-        r2 = await client.call_tool("get_callers", {"node_id": nid})
+        r1 = await client.call_tool("get_neighbors", {"node_id": nid, "depth": 1})
+        r2 = await client.call_tool("get_neighbors", {"node_id": nid, "depth": 1})
 
     # Both calls must return identical data (second served from memo cache)
     assert r1.data == r2.data

@@ -9,9 +9,10 @@ from rich.console import Console
 from rich.logging import RichHandler
 
 from loom.cli._app import app
-from loom.ingest.incremental import sync_paths
-from loom.ingest.pipeline import index_repo
-from loom.mcp.server import build_server
+from loom.graph.repository import Repository
+from loom.indexer.incremental import sync_paths
+from loom.indexer.pipeline import index_repo
+from loom.server.app import build_server
 
 console = Console()
 
@@ -34,7 +35,7 @@ def analyze(
     """Build or refresh the Loom graph for a repo."""
     _enable_progress_logging()
     db = ctx.obj["db"]
-    result = asyncio.run(index_repo(path, db))
+    result = asyncio.run(index_repo(path, Repository(db)))
     console.print(
         f"[green]indexed {result.files_parsed} files, "
         f"{result.nodes_written} nodes, {result.edges_written} edges[/green]"
@@ -53,7 +54,7 @@ def sync(
 ) -> None:
     """Incremental sync of changed files (driven by SHA-256 hashes)."""
     db = ctx.obj["db"]
-    r = asyncio.run(sync_paths(db, path, old_sha=old_sha, new_sha=new_sha))
+    r = asyncio.run(sync_paths(Repository(db), path, old_sha=old_sha, new_sha=new_sha))
     console.print(
         f"[green]synced {r.files_changed} files, "
         f"{r.nodes_written} nodes, {r.edges_written} edges[/green]"

@@ -44,7 +44,7 @@ Issues = "https://github.com/devashishjadav/loom/issues"
 
 [project.scripts]
 loom = "loom.cli:main"
-loom-mcp = "loom.mcp.run:run_stdio"
+loom-mcp = "loom.server.run:run_stdio"
 loom-test = "loom.devtools:run_tests"
 loom-check-deps = "loom.devtools:check_deps"
 

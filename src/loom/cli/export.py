@@ -8,7 +8,7 @@ import typer
 from rich.console import Console
 
 from loom.cli._app import app
-from loom.core.context import DB, DEFAULT_DB_PATH
+from loom.graph.db import DB, DEFAULT_DB_PATH
 from loom.store.nodes import get_export_rows
 
 console = Console()

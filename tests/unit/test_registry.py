@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from loom.ingest.code.languages.constants import EXT_JS, EXT_JSX
-from loom.ingest.code.registry import get_registry
+from loom.indexer.languages.constants import EXT_JS, EXT_JSX
+from loom.indexer.registry import get_registry
 
 
 def test_js_jsx_have_call_tracer() -> None:

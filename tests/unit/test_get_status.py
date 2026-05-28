@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from loom.core.context import DB
-from loom.mcp.server import build_server
+from loom.graph.db import DB
+from loom.server.app import build_server
 
 
 @pytest.mark.asyncio
@@ -27,7 +27,7 @@ async def test_get_status_data_fields(tmp_path: Path) -> None:
     """get_status data contains expected keys."""
     import asyncio
 
-    from loom.mcp import run as run_mod
+    from loom.server import run as run_mod
 
     db = DB(path=tmp_path / "test.db")
     # Trigger connect

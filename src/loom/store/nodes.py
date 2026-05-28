@@ -5,9 +5,9 @@ import json
 import sqlite3
 import time
 
-from loom.core.context import DB
-from loom.core.edge import Edge
-from loom.core.node import Node, NodeKind, NodeSource
+from loom.graph.db import DB
+from loom.graph.models import Edge
+from loom.graph.models import Node, NodeKind, NodeSource
 
 _TOKENS_PER_LINE = 15  # avg chars/line ~60, chars/token ~4 → 15 tokens/line
 

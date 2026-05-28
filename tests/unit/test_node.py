@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from loom.core.node import Node, NodeKind, NodeSource
+from loom.graph.models import Node, NodeKind, NodeSource
 
 
 def test_make_code_id():

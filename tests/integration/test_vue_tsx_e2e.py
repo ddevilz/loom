@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from loom.core import NodeKind
-from loom.ingest.code.languages.typescript import parse_typescript
+from loom.graph.models import NodeKind
+from loom.indexer.languages.typescript import parse_typescript
 
 
 @pytest.mark.integration

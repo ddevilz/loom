@@ -4,8 +4,8 @@ import asyncio
 import sqlite3
 from dataclasses import dataclass
 
-from loom.core.context import DB
-from loom.core.node import Node
+from loom.graph.db import DB
+from loom.graph.models import Node
 from loom.store.nodes import row_to_node
 
 

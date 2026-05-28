@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from loom.core.db import connect, has_fts5, init_schema
+from loom.graph.db import connect, has_fts5, init_schema
 
 
 def test_init_schema_creates_tables(tmp_path: Path):

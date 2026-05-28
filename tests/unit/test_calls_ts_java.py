@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loom.analysis.code.calls import trace_calls_for_java_file, trace_calls_for_ts_file
-from loom.analysis.code.parser import parse_code
+from loom.indexer.calls import trace_calls_for_java_file, trace_calls_for_ts_file
+from loom.indexer.extractor import parse_code
 
 
 def test_trace_calls_for_ts_file_extracts_calls(tmp_path: Path) -> None:

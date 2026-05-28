@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loom.analysis.code.noise_filter import should_ignore_call
+from loom.indexer.calls.noise_filter import should_ignore_call
 
 
 def test_should_ignore_call_python_default_backward_compatible():

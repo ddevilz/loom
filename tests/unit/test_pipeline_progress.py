@@ -5,8 +5,9 @@ from typing import Any
 
 import pytest
 
-from loom.core.context import DB
-from loom.ingest.pipeline import index_repo
+from loom.graph.db import DB
+from loom.indexer.pipeline import index_repo
+from loom.graph.repository import Repository
 
 
 @pytest.fixture
@@ -22,7 +23,7 @@ async def test_progress_cb_called_during_index(tmp_path: Path, db: DB) -> None:
     def cb(phase: str, done: int, total: int) -> None:
         calls.append({"phase": phase, "done": done, "total": total})
 
-    await index_repo(tmp_path, db, progress_cb=cb)
+    await index_repo(tmp_path, Repository(db), progress_cb=cb)
     # Even on empty repo some phase callbacks fire
     # At minimum, indexing completes without error
     assert len(calls) > 0, "progress_cb should be called at least once"
@@ -36,5 +37,5 @@ async def test_progress_cb_called_during_index(tmp_path: Path, db: DB) -> None:
 @pytest.mark.asyncio
 async def test_index_repo_works_without_progress_cb(tmp_path: Path, db: DB) -> None:
     """progress_cb=None (default) — no error."""
-    result = await index_repo(tmp_path, db)
+    result = await index_repo(tmp_path, Repository(db))
     assert result is not None

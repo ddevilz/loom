@@ -6,8 +6,8 @@ import json
 import sqlite3
 from typing import Any
 
-from loom.analysis.code.extractor import extract_summary
-from loom.core.context import DB
+from loom.indexer.extractor import extract_summary
+from loom.graph.db import DB
 from loom.store.nodes import row_to_node
 
 _DEFAULT_LIMIT = 100

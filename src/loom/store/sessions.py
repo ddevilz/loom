@@ -5,7 +5,7 @@ import time
 from typing import Any
 from uuid import uuid4
 
-from loom.core.context import DB
+from loom.graph.db import DB
 
 
 async def create_session(db: DB, *, agent_id: str = "default") -> dict[str, Any]:
