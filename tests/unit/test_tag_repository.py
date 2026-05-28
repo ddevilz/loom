@@ -1,6 +1,9 @@
 """Unit tests for TagRepository."""
+
 import time
+
 import pytest
+
 from loom.graph.db import DB
 from loom.graph.repository.tags import TagRepository
 
@@ -9,9 +12,11 @@ from loom.graph.repository.tags import TagRepository
 def db_with_node(tmp_path):
     db = DB(tmp_path / "test.db")
     conn = db.connect()
-    conn.execute("""INSERT INTO nodes (id, kind, source, name, path, updated_at)
-                   VALUES ('function:repo:src/foo.py:bar', 'function', 'code', 'bar', 'src/foo.py', ?)""",
-                 (int(time.time()),))
+    conn.execute(
+        "INSERT INTO nodes (id, kind, source, name, path, updated_at)"
+        " VALUES ('function:repo:src/foo.py:bar', 'function', 'code', 'bar', 'src/foo.py', ?)",
+        (int(time.time()),),
+    )
     conn.commit()
     return db
 
