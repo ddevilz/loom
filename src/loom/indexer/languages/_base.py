@@ -12,8 +12,15 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Any
 
-from loom.graph.models import Node
+from tree_sitter import Node as TSNode
+
+from loom.graph.models import Node, NodeKind, NodeSource
+from loom.graph.models.enums import Complexity
+from loom.graph.content_hash import content_hash_for_line_span
+from loom.indexer.languages._ts_utils import lines as _lines
+from loom.indexer.complexity import classify_complexity
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +77,9 @@ class BaseLanguageHandler(ABC):
     to extend this class — that happens in a follow-up PR.
     """
 
+    #: Repo name injected after instantiation; defaults to "unknown".
+    repo_name: str = "unknown"
+
     @property
     @abstractmethod
     def language_name(self) -> str:
@@ -88,6 +98,52 @@ class BaseLanguageHandler(ABC):
             List of parsed Nodes.
         """
         ...
+
+    @property
+    def _repo_name(self) -> str:
+        """Return the repo name for use in node IDs."""
+        return self.repo_name
+
+    def _build_node(
+        self,
+        ts_node: TSNode,
+        src: bytes,
+        path: str,
+        *,
+        kind: NodeKind,
+        name: str,
+        symbol: str,
+        parent_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Node:
+        """Build a Node with complexity computed from ts_node.
+
+        Args:
+            ts_node: Tree-sitter AST node for the function/class.
+            src: Raw file source bytes.
+            path: Relative file path.
+            kind: NodeKind (FUNCTION, METHOD, CLASS, etc.).
+            name: Simple name (stored on Node.name).
+            symbol: Qualname used in ID — caller's responsibility.
+            parent_id: ID of containing node, if any.
+            metadata: Language-specific extras (decorators, signature, etc.).
+        """
+        start_line, end_line = _lines(ts_node)
+        repo_name = self._repo_name
+        return Node(
+            id=f"{kind.value}:{repo_name}:{path}:{symbol}",
+            kind=kind,
+            source=NodeSource.CODE,
+            name=name,
+            path=path,
+            language=self.language_name,
+            content_hash=content_hash_for_line_span(src, start_line, end_line),
+            start_line=start_line,
+            end_line=end_line,
+            parent_id=parent_id,
+            complexity=classify_complexity(ts_node, self.language_name),
+            metadata=metadata or {},
+        )
 
     def _build_node_id(self, kind: str, path: str, name: str) -> str:
         return f"{kind}:{path}:{name}"
