@@ -41,7 +41,7 @@ async def search(query: str, db: DB, *, limit: int = 10) -> list[SearchResult]:
         List of SearchResult ordered by relevance (highest score first).
         Soft-deleted nodes are excluded. caller_count included for ranking.
     """
-    tags = _TAG_RE.findall(query)
+    tags = list(dict.fromkeys(_TAG_RE.findall(query)))
     fts_query = _TAG_RE.sub("", query).strip() if tags else query
 
     def _run() -> list[tuple[Node, float, int]]:
@@ -74,17 +74,30 @@ async def search(query: str, db: DB, *, limit: int = 10) -> list[SearchResult]:
                         return [(row_to_node(r), r["_score"], r["_caller_count"]) for r in rows]
                     except sqlite3.OperationalError:
                         pass
-                # Tag-only fallback
-                rows = conn.execute(
-                    f"""SELECT n.*, 1.0 AS _score,
-                              (SELECT COUNT(*) FROM edges
-                               WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
-                         FROM nodes n
-                         JOIN ({tag_sub}) tagged ON tagged.node_id = n.id
-                        WHERE n.deleted_at IS NULL
-                        LIMIT ?""",
-                    (*tags, limit),
-                ).fetchall()
+                # Tag-only fallback (no FTS5 text) OR FTS5 not available
+                if fts_query:
+                    rows = conn.execute(
+                        f"""SELECT n.*, 1.0 AS _score,
+                                  (SELECT COUNT(*) FROM edges
+                                   WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
+                             FROM nodes n
+                             JOIN ({tag_sub}) tagged ON tagged.node_id = n.id
+                            WHERE n.deleted_at IS NULL
+                              AND n.name LIKE ?
+                            LIMIT ?""",
+                        (*tags, f"%{fts_query}%", limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        f"""SELECT n.*, 1.0 AS _score,
+                                  (SELECT COUNT(*) FROM edges
+                                   WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
+                             FROM nodes n
+                             JOIN ({tag_sub}) tagged ON tagged.node_id = n.id
+                            WHERE n.deleted_at IS NULL
+                            LIMIT ?""",
+                        (*tags, limit),
+                    ).fetchall()
                 return [(row_to_node(r), 1.0, r["_caller_count"]) for r in rows]
 
             # No tags — original code paths
