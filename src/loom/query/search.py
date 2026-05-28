@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import re as _re
 import sqlite3
 from dataclasses import dataclass
 
 from loom.graph.db import DB
 from loom.graph.models import Node
 from loom.store.nodes import row_to_node
+
+_TAG_RE = _re.compile(r'\btag:(\S+)')
 
 
 @dataclass
@@ -28,7 +31,8 @@ async def search(query: str, db: DB, *, limit: int = 10) -> list[SearchResult]:
     """Search for nodes by name prefix or FTS5 full-text.
 
     Args:
-        query: Search string. For FTS5 this is a full-text query; for LIKE fallback
+        query: Search string. Supports tag:X tokens (e.g. "tag:auth login").
+               For FTS5 this is a full-text query; for LIKE fallback
                it matches against node names.
         db: Database context.
         limit: Maximum number of results to return.
@@ -37,10 +41,53 @@ async def search(query: str, db: DB, *, limit: int = 10) -> list[SearchResult]:
         List of SearchResult ordered by relevance (highest score first).
         Soft-deleted nodes are excluded. caller_count included for ranking.
     """
+    tags = _TAG_RE.findall(query)
+    fts_query = _TAG_RE.sub("", query).strip() if tags else query
 
     def _run() -> list[tuple[Node, float, int]]:
         with db._lock:
             conn = db.connect()
+
+            if tags:
+                tag_count = len(tags)
+                tag_sub = (
+                    "SELECT node_id FROM node_tags "
+                    f"WHERE tag IN ({','.join('?' * tag_count)}) "
+                    "GROUP BY node_id "
+                    f"HAVING COUNT(DISTINCT tag) = {tag_count}"
+                )
+                if fts_query and db._fts5:
+                    try:
+                        rows = conn.execute(
+                            f"""SELECT n.*, -bm25(nodes_fts) AS _score,
+                                      (SELECT COUNT(*) FROM edges
+                                       WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
+                                 FROM nodes_fts
+                                 JOIN nodes n ON nodes_fts.rowid = n.rowid
+                                 JOIN ({tag_sub}) tagged ON tagged.node_id = n.id
+                                WHERE nodes_fts MATCH ?
+                                  AND n.deleted_at IS NULL
+                                ORDER BY bm25(nodes_fts)
+                                LIMIT ?""",
+                            (*tags, fts_query, limit),
+                        ).fetchall()
+                        return [(row_to_node(r), r["_score"], r["_caller_count"]) for r in rows]
+                    except Exception:
+                        pass
+                # Tag-only fallback
+                rows = conn.execute(
+                    f"""SELECT n.*, 1.0 AS _score,
+                              (SELECT COUNT(*) FROM edges
+                               WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
+                         FROM nodes n
+                         JOIN ({tag_sub}) tagged ON tagged.node_id = n.id
+                        WHERE n.deleted_at IS NULL
+                        LIMIT ?""",
+                    (*tags, limit),
+                ).fetchall()
+                return [(row_to_node(r), 1.0, r["_caller_count"]) for r in rows]
+
+            # No tags — original code paths
             if db._fts5:
                 try:
                     rows = conn.execute(

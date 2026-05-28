@@ -32,7 +32,7 @@ def _infer_dead_reason(name: str, summary: str | None) -> str:
 
 
 async def mark_dead_code(db: DB) -> int:
-    """Mark function/method nodes with zero incoming CALLS as is_dead_code=1.
+    """Mark function/method nodes with zero incoming CALLS with "dead-code" tag.
 
     Also enriches each dead node's metadata with:
       - dead_reason: heuristic explanation (name pattern, docstring hint, or "no callers")
