@@ -28,6 +28,7 @@ def parse_tag_query(q: str) -> tuple[list[str], str]:
         parse_tag_query("login") -> ([], "login")
     """
     tags = _TAG_RE.findall(q)
+    tags = list(dict.fromkeys(tags))
     fts_query = _TAG_RE.sub("", q).strip()
     return tags, fts_query
 
@@ -110,16 +111,29 @@ class SearchRepository:
                         pass
 
                 # Tag-only filter (no FTS5 text) OR FTS5 not available
-                rows = conn.execute(
-                    f"""SELECT n.*, 1.0 AS _score,
-                              (SELECT COUNT(*) FROM edges
-                               WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
-                         FROM nodes n
-                         JOIN ({tag_subquery}) tagged ON tagged.node_id = n.id
-                        WHERE n.deleted_at IS NULL
-                        LIMIT ?""",
-                    (*tags, limit),
-                ).fetchall()
+                if fts_query:
+                    rows = conn.execute(
+                        f"""SELECT n.*, 1.0 AS _score,
+                                  (SELECT COUNT(*) FROM edges
+                                   WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
+                             FROM nodes n
+                             JOIN ({tag_subquery}) tagged ON tagged.node_id = n.id
+                            WHERE n.deleted_at IS NULL
+                              AND n.name LIKE ?
+                            LIMIT ?""",
+                        (*tags, f"%{fts_query}%", limit),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        f"""SELECT n.*, 1.0 AS _score,
+                                  (SELECT COUNT(*) FROM edges
+                                   WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
+                             FROM nodes n
+                             JOIN ({tag_subquery}) tagged ON tagged.node_id = n.id
+                            WHERE n.deleted_at IS NULL
+                            LIMIT ?""",
+                        (*tags, limit),
+                    ).fetchall()
                 return [
                     SearchResult(node=row_to_node(r), score=1.0, caller_count=r["_caller_count"])
                     for r in rows

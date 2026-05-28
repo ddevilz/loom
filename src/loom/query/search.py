@@ -72,7 +72,7 @@ async def search(query: str, db: DB, *, limit: int = 10) -> list[SearchResult]:
                             (*tags, fts_query, limit),
                         ).fetchall()
                         return [(row_to_node(r), r["_score"], r["_caller_count"]) for r in rows]
-                    except Exception:
+                    except sqlite3.OperationalError:
                         pass
                 # Tag-only fallback
                 rows = conn.execute(
