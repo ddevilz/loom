@@ -1,5 +1,6 @@
 # Loom
 
+[![SafeSkill 88/100](https://img.shields.io/badge/SafeSkill-88%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/ddevilz-loom)
 > A persistent symbol index for AI coding agents. Agents find functions instantly. Agents write summaries as they work. The cache gets richer every session — zero LLM cost from Loom's side.
 
 ## What Loom is
