@@ -35,9 +35,6 @@ async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
     """All tools should be registered."""
     expected = {
         "search_code",
-        "get_node",
-        "get_callers",
-        "get_callees",
         "get_blast_radius",
         "get_neighbors",
         "get_community",
@@ -52,7 +49,6 @@ async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
         "get_delta",
         "get_surprising_connections",
         "suggest_questions",
-        "get_community_cohesion",
         "get_status",
         "get_work_plan",
     }

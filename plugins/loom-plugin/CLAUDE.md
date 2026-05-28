@@ -28,9 +28,9 @@ suggest_questions(limit=5)              # graph-topology-derived investigation p
 | Question | Loom call |
 |---|---|
 | "Where is X defined?" | `search_code("X")` |
-| "What calls X?" | `get_callers(node_id)` |
+| "What calls X?" | `get_context(node_id, callees_limit=0)` — callers in response |
 | "What breaks if I change X?" | `get_blast_radius(node_id, depth=3)` |
-| "What does X depend on?" | `get_callees(node_id)` |
+| "What does X depend on?" | `get_context(node_id, callers_limit=0)` — callees in response |
 | "How does A connect to B?" | `shortest_path(from_id, to_id)` |
 | "What are the god nodes?" | `god_nodes(limit=10)` |
 | "What changed since last session?" | `get_delta(previous_session_id=<id>)` |

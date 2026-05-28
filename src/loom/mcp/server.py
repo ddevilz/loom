@@ -14,7 +14,6 @@ from loom.analysis.graph_insights import (
     suggest_questions as _suggest_questions,
 )
 from loom.core.context import DB, DEFAULT_DB_PATH
-from loom.core.edge import EdgeType
 from loom.core.enums import SummarySource
 from loom.mcp import run as _run_mod
 from loom.mcp.enums import Confidence, ConfidenceSignal, ErrorCode, WorkPlanPriority
@@ -73,7 +72,7 @@ def build_server(
     *,
     db: DB | None = None,
 ) -> FastMCP:
-    """Build and return the FastMCP server with all 21 tools registered."""
+    """Build and return the FastMCP server with all 17 tools registered."""
     if FastMCP is None:
         raise RuntimeError("fastmcp not installed — run: uv add fastmcp")
     mcp = FastMCP("loom")
@@ -267,86 +266,6 @@ def build_server(
         return _ok(output)
 
     @mcp.tool()
-    async def get_node(node_id: str) -> dict:
-        """Return a single node by id."""
-        nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
-        n = await node_store.get_node(db, nid)
-        return _ok(
-            None
-            if n is None
-            else {
-                "id": n.id,
-                "name": n.name,
-                "path": n.path,
-                "kind": n.kind.value,
-                "language": n.language,
-                "summary": n.summary,
-                "start_line": n.start_line,
-                "end_line": n.end_line,
-            }
-        )
-
-    @mcp.tool()
-    async def get_callers(
-        node_id: str,
-        limit: int = 10,
-        include_summaries: bool = True,
-    ) -> dict:
-        """One-hop incoming CALLS — functions that call this node.
-
-        Args:
-            limit: Max callers to return (1-100). Default 10.
-            include_summaries: Include summary text. Set False for names/paths only (~70% smaller).
-        """
-        nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
-        await _log(nid, "get_callers")
-        key = _mk("get_callers", nid)
-        if (hit := _memo_get(key)) is not None:
-            return hit
-        nodes = await traversal.neighbors(
-            db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="in"
-        )
-        nodes = nodes[: _clamp_limit(limit)]
-        if include_summaries:
-            result = _ok(
-                [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
-            )
-        else:
-            result = _ok([{"id": n.id, "name": n.name, "path": n.path} for n in nodes])
-        _memo_set(key, result)
-        return result
-
-    @mcp.tool()
-    async def get_callees(
-        node_id: str,
-        limit: int = 10,
-        include_summaries: bool = True,
-    ) -> dict:
-        """One-hop outgoing CALLS — functions this node calls.
-
-        Args:
-            limit: Max callees to return (1-100). Default 10.
-            include_summaries: Include summary text. Set False for names/paths only (~70% smaller).
-        """
-        nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
-        await _log(nid, "get_callees")
-        key = _mk("get_callees", nid)
-        if (hit := _memo_get(key)) is not None:
-            return hit
-        nodes = await traversal.neighbors(
-            db, nid, depth=1, edge_types=[EdgeType.CALLS], direction="out"
-        )
-        nodes = nodes[: _clamp_limit(limit)]
-        if include_summaries:
-            result = _ok(
-                [{"id": n.id, "name": n.name, "path": n.path, "summary": n.summary} for n in nodes]
-            )
-        else:
-            result = _ok([{"id": n.id, "name": n.name, "path": n.path} for n in nodes])
-        _memo_set(key, result)
-        return result
-
-    @mcp.tool()
     async def get_blast_radius(
         node_id: str, depth: int = 3, limit: int = 50, offset: int = 0
     ) -> dict:
@@ -462,9 +381,17 @@ def build_server(
         return _ok([{"id": n.id, "name": n.name, "path": n.path} for n in path])
 
     @mcp.tool()
-    async def graph_stats() -> dict:
-        """Node/edge counts broken down by kind."""
-        return _ok(await traversal.stats(db))
+    async def graph_stats(include_cohesion: bool = False) -> dict:
+        """Node/edge counts broken down by kind.
+
+        Args:
+            include_cohesion: Include per-community cohesion scores (expensive, O(edges)).
+                              Replaces get_community_cohesion when True.
+        """
+        stats = await traversal.stats(db)
+        if include_cohesion:
+            stats["cohesion"] = await _get_community_cohesion(db)
+        return _ok(stats)
 
     @mcp.tool()
     async def god_nodes(limit: int = 20, include_summaries: bool = True) -> dict:
@@ -569,24 +496,37 @@ def build_server(
         return _ok({**stats, "recent": recent})
 
     @mcp.tool()
-    async def get_context(node_id: str) -> dict:
+    async def get_context(
+        node_id: str,
+        brief: bool = False,
+        callers_limit: int = 10,
+        callees_limit: int = 10,
+    ) -> dict:
         """Full context packet — everything to reason about a function without reading source.
 
-        Returns summary, signature, callers (top 10), callees (top 10), and staleness flag.
+        Returns summary, signature, callers, callees, and staleness flag.
         If summary_stale is True, check auto_summary for current metadata.
         For class/file nodes, returns members instead of callers/callees.
+
+        Replaces get_node (brief=True) and get_callers/get_callees (callers_limit/callees_limit).
 
         Args:
             node_id: Exact node id from search_code results.
                      Example: 'function:src/auth.py:validate_token'
+            brief: Return metadata only (id/name/path/kind/language/lines) — no traversal.
+                   Faster than full context when you only need to check existence.
+            callers_limit: Max callers to return (0 = skip callers, saves ~50% response size).
+            callees_limit: Max callees to return (0 = skip callees).
         """
         nid = _req_text(node_id, field="node_id", max_length=_MAX_ID)
         await _log(nid, "get_context")
-        key = _mk("get_context", nid)
+        key = _mk("get_context", nid, brief=brief, cl=callers_limit, ce=callees_limit)
         if (hit := _memo_get(key)) is not None:
             return hit
-        packet = await get_context_packet(db, nid)
-        if packet and packet.get("summary_source") == SummarySource.AUTO:
+        packet = await get_context_packet(
+            db, nid, brief=brief, callers_limit=callers_limit, callees_limit=callees_limit
+        )
+        if not brief and packet and packet.get("summary_source") == SummarySource.AUTO:
             packet["_nudge"] = (
                 f"No agent understanding stored for '{nid}'. "
                 f"After reading, call store_understanding(node_id='{nid}', "
@@ -700,17 +640,6 @@ def build_server(
         Call this at session start to prioritize what to investigate.
         """
         return _ok(await _suggest_questions(db, limit=_clamp_limit(limit)))
-
-    @mcp.tool()
-    async def get_community_cohesion() -> dict:
-        """Cohesion score for every community.
-
-        Cohesion = internal CALLS / (internal + external CALLS).
-        1.0 = perfectly self-contained. 0.0 = all calls cross boundaries.
-
-        Low cohesion (<0.2) communities are refactor candidates.
-        """
-        return _ok(await _get_community_cohesion(db))
 
     @mcp.tool()
     async def get_work_plan() -> dict:

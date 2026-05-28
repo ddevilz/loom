@@ -54,6 +54,21 @@ _CALLEE_LIMIT = 10
 _MEMBER_LIMIT = 20
 
 
+def _brief_packet(node_row: sqlite3.Row) -> dict[str, Any]:
+    """Lightweight metadata-only packet — no traversal. Used when brief=True."""
+    node = row_to_node(node_row)
+    return {
+        "id": node.id,
+        "name": node.name,
+        "path": node.path,
+        "kind": node.kind.value,
+        "language": node.language,
+        "summary": node.summary,
+        "start_line": node.start_line,
+        "end_line": node.end_line,
+    }
+
+
 def _git_diff_hint(path: str, start_line: int | None, end_line: int | None) -> str | None:
     """Summarise what changed in a node's line range since the last commit."""
     if start_line is None or end_line is None:
@@ -208,15 +223,25 @@ def _build_members_packet(
     }
 
 
-async def get_context_packet(db: DB, node_id: str) -> dict[str, Any] | None:
+async def get_context_packet(
+    db: DB,
+    node_id: str,
+    *,
+    brief: bool = False,
+    callers_limit: int = _CALLER_LIMIT,
+    callees_limit: int = _CALLEE_LIMIT,
+) -> dict[str, Any] | None:
     """Full context packet for a node — everything needed to reason without reading source.
 
-    For function/method nodes: returns summary, signature, callers (top 10), callees (top 10).
+    For function/method nodes: returns summary, signature, callers, callees.
     For class/file/community nodes: returns members via CONTAINS edges.
 
     Args:
         db: Database context.
         node_id: Exact node id (e.g. 'function:src/auth.py:validate_token').
+        brief: If True, return metadata only (no traversal). Replaces get_node.
+        callers_limit: Max callers to fetch (0 = skip callers entirely).
+        callees_limit: Max callees to fetch (0 = skip callees entirely).
 
     Returns:
         Context packet dict, or None if node not found.
@@ -231,42 +256,51 @@ async def get_context_packet(db: DB, node_id: str) -> dict[str, Any] | None:
             if not node_row:
                 return None
 
+            if brief:
+                return _brief_packet(node_row)
+
             kind = node_row["kind"]
             path = node_row["path"]
 
             if kind in ("function", "method"):
-                callers = conn.execute(
-                    """
-                    SELECT n.id, n.name, n.path, n.start_line,
-                           (SELECT COUNT(*) FROM edges e2 WHERE e2.to_id = n.id) AS indeg
-                    FROM edges e
-                    JOIN nodes n ON n.id = e.from_id
-                    WHERE e.to_id = ? AND e.kind = ?
-                    ORDER BY CASE WHEN n.path = ? THEN 0 ELSE 1 END, indeg DESC
-                    LIMIT ?
-                    """,
-                    (node_id, EdgeType.CALLS.value, path, _CALLER_LIMIT),
-                ).fetchall()
-                callers_total = conn.execute(
-                    "SELECT COUNT(*) FROM edges WHERE to_id = ? AND kind = ?",
-                    (node_id, EdgeType.CALLS.value),
-                ).fetchone()[0]
+                callers: list[sqlite3.Row] = []
+                callers_total = 0
+                if callers_limit > 0:
+                    callers = conn.execute(
+                        """
+                        SELECT n.id, n.name, n.path, n.start_line,
+                               (SELECT COUNT(*) FROM edges e2 WHERE e2.to_id = n.id) AS indeg
+                        FROM edges e
+                        JOIN nodes n ON n.id = e.from_id
+                        WHERE e.to_id = ? AND e.kind = ?
+                        ORDER BY CASE WHEN n.path = ? THEN 0 ELSE 1 END, indeg DESC
+                        LIMIT ?
+                        """,
+                        (node_id, EdgeType.CALLS.value, path, callers_limit),
+                    ).fetchall()
+                    callers_total = conn.execute(
+                        "SELECT COUNT(*) FROM edges WHERE to_id = ? AND kind = ?",
+                        (node_id, EdgeType.CALLS.value),
+                    ).fetchone()[0]
 
-                callees = conn.execute(
-                    """
-                    SELECT n.id, n.name, n.path, n.start_line
-                    FROM edges e
-                    JOIN nodes n ON n.id = e.to_id
-                    WHERE e.from_id = ? AND e.kind = ?
-                    ORDER BY CASE WHEN n.path = ? THEN 0 ELSE 1 END
-                    LIMIT ?
-                    """,
-                    (node_id, EdgeType.CALLS.value, path, _CALLEE_LIMIT),
-                ).fetchall()
-                callees_total = conn.execute(
-                    "SELECT COUNT(*) FROM edges WHERE from_id = ? AND kind = ?",
-                    (node_id, EdgeType.CALLS.value),
-                ).fetchone()[0]
+                callees: list[sqlite3.Row] = []
+                callees_total = 0
+                if callees_limit > 0:
+                    callees = conn.execute(
+                        """
+                        SELECT n.id, n.name, n.path, n.start_line
+                        FROM edges e
+                        JOIN nodes n ON n.id = e.to_id
+                        WHERE e.from_id = ? AND e.kind = ?
+                        ORDER BY CASE WHEN n.path = ? THEN 0 ELSE 1 END
+                        LIMIT ?
+                        """,
+                        (node_id, EdgeType.CALLS.value, path, callees_limit),
+                    ).fetchall()
+                    callees_total = conn.execute(
+                        "SELECT COUNT(*) FROM edges WHERE from_id = ? AND kind = ?",
+                        (node_id, EdgeType.CALLS.value),
+                    ).fetchone()[0]
 
                 return _build_packet(node_row, callers, callers_total, callees, callees_total)
 

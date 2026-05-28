@@ -31,7 +31,7 @@
     "loom": {
       "command": "uvx",
       "args": ["--from", "loom-tool", "loom-mcp"],
-      "description": "21 code intelligence tools — search, context packets, blast radius, sessions, topology insights, token savings tracking. DB resolved: LOOM_DB_PATH env → ~/.loom/projects/{git-root-name}.db → ~/.loom/loom.db.",
+      "description": "17 code intelligence tools — search, context packets, blast radius, sessions, topology insights, token savings tracking. DB resolved: LOOM_DB_PATH env → ~/.loom/projects/{git-root-name}.db → ~/.loom/loom.db.",
       "optional": false
     }
   }
