@@ -490,7 +490,7 @@ async def index_repo(
                 )
                 fingerprints_to_write.append(
                     FileFingerprint(
-                        file_path=str(f),
+                        file_path=f.as_posix(),
                         content_sha=content_sha,
                         mtime_ns=st.st_mtime_ns,
                         indexed_at=time.time(),
@@ -660,7 +660,7 @@ async def index_repo(
             logger.info("[cleanup] soft-deleted %d removed files", deleted_count)
 
         # After soft-deleting nodes, also delete fingerprints for removed files
-        deleted_abs = [str(repo_path / ip) for ip in indexed_paths if ip not in current_rel_paths]
+        deleted_abs = [(repo_path / ip).as_posix() for ip in indexed_paths if ip not in current_rel_paths]
         if deleted_abs:
             await asyncio.to_thread(repo.fingerprints.delete_paths, deleted_abs)
 
