@@ -2,11 +2,14 @@
 
 Moved from ingest/pipeline.py with the following changes:
 - Imports updated to graph.* and indexer.*
-- Internal store calls converted: await async_fn(db, ...) → await asyncio.to_thread(repo.method, ...)
-- Signature changed: index_repo(repo_path, *, repo: Repository, ...) instead of (repo_path, db: DB, ...)
+- Internal store calls converted:
+  await async_fn(db, ...) → await asyncio.to_thread(repo.method, ...)
+- Signature changed: index_repo(repo_path, *, repo: Repository, ...)
+  instead of (repo_path, db: DB, ...)
 - index_repo() stays async def — callers already use asyncio.run() or await
 - Communities/coupling stay on old paths until Phase 3 (intelligence/) moves them
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +17,7 @@ import contextlib
 import functools
 import json
 import logging
+import os
 import sqlite3
 import time
 from collections.abc import Callable
@@ -22,15 +26,13 @@ from dataclasses import dataclass, field
 from multiprocessing import cpu_count
 from pathlib import Path
 
-import os
-
 from loom.graph.models import Edge, EdgeType, Node, NodeKind, NodeSource
 from loom.graph.repository import Repository
 from loom.indexer.extractor import extract_summary, parse_code
+from loom.indexer.languages.constants import EXT_PY, EXT_PYW
 from loom.indexer.registry import get_registry
 from loom.indexer.utils import sha256_of_file
 from loom.indexer.walker import walk_repo
-from loom.indexer.languages.constants import EXT_PY, EXT_PYW
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +205,7 @@ def resolve_calls(
 def _read_import_lines(path: str) -> list[str]:
     """Read first 60 lines of a file and return lines that look like imports."""
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with Path(path).open(encoding="utf-8", errors="replace") as f:
             lines = []
             for i, line in enumerate(f):
                 if i >= 60:
@@ -245,10 +247,13 @@ def _file_merge(
             n.file_mtime,
             n.summary,
             # token_count
-            (max(1, n.end_line - n.start_line + 1) * 15
-             if n.start_line is not None and n.end_line is not None
+            (
+                max(1, n.end_line - n.start_line + 1) * 15
+                if n.start_line is not None
+                and n.end_line is not None
                 and n.kind.value not in ("file", "community")
-             else None),
+                else None
+            ),
             n.community_id,
             n.complexity.value if n.complexity is not None else None,
             json.dumps(n.metadata, default=str) if n.metadata else "{}",
@@ -283,10 +288,13 @@ def _file_merge(
             }
 
             # Collect old node IDs (for tag cleanup before deleting nodes)
-            old_ids = [r["id"] for r in conn.execute(
-                "SELECT id FROM nodes WHERE path = ?",
-                (rel_path,),
-            ).fetchall()]
+            old_ids = [
+                r["id"]
+                for r in conn.execute(
+                    "SELECT id FROM nodes WHERE path = ?",
+                    (rel_path,),
+                ).fetchall()
+            ]
 
             if old_ids:
                 placeholders = ",".join("?" * len(old_ids))
@@ -298,7 +306,8 @@ def _file_merge(
                 )
                 # Hard-delete system tags for old nodes
                 conn.execute(
-                    f"DELETE FROM node_tags WHERE node_id IN ({placeholders}) AND source = 'system'",
+                    "DELETE FROM node_tags WHERE node_id IN "
+                    f"({placeholders}) AND source = 'system'",
                     old_ids,
                 )
 
@@ -372,7 +381,7 @@ async def index_repo(
     all_files: list[Path] = [Path(fp) for fp in all_files_str]
 
     # --- Phase 2: classify changes with IncrementalSync ---
-    from loom.indexer.incremental import IncrementalSync, ChangeReport  # noqa: PLC0415
+    from loom.indexer.incremental import ChangeReport, IncrementalSync  # noqa: PLC0415
 
     sync = IncrementalSync(repo)
     report: ChangeReport = await asyncio.to_thread(sync.classify_changes, all_files_str)
@@ -381,13 +390,15 @@ async def index_repo(
 
     # Update mtime-only fingerprints (content unchanged, just mtime differs)
     if report.mtime_only:
+
         def _update_mtimes() -> None:
             for p in report.mtime_only:
                 try:
-                    mtime_ns = os.stat(p).st_mtime_ns
+                    mtime_ns = Path(p).stat().st_mtime_ns
                     repo.fingerprints.update_mtime(p, mtime_ns)
                 except OSError:
                     pass
+
         await asyncio.to_thread(_update_mtimes)
 
     logger.info(
@@ -466,20 +477,25 @@ async def index_repo(
     # Update fingerprints for indexed files
     if changed:
         from loom.graph.repository.fingerprints import FileFingerprint  # noqa: PLC0415
+
         fingerprints_to_write = []
         for f in changed:
             try:
-                st = os.stat(str(f))
+                st = f.stat()
                 rel = f.relative_to(repo_path).as_posix()
                 file_nodes_for_path = by_path.get(rel, ([], []))[0]
                 file_node = next((n for n in file_nodes_for_path if n.kind == NodeKind.FILE), None)
-                content_sha = file_node.file_hash if file_node and file_node.file_hash else sha256_of_file(f)
-                fingerprints_to_write.append(FileFingerprint(
-                    file_path=str(f),
-                    content_sha=content_sha,
-                    mtime_ns=st.st_mtime_ns,
-                    indexed_at=time.time(),
-                ))
+                content_sha = (
+                    file_node.file_hash if file_node and file_node.file_hash else sha256_of_file(f)
+                )
+                fingerprints_to_write.append(
+                    FileFingerprint(
+                        file_path=str(f),
+                        content_sha=content_sha,
+                        mtime_ns=st.st_mtime_ns,
+                        indexed_at=time.time(),
+                    )
+                )
             except OSError:
                 pass
         if fingerprints_to_write:
@@ -493,6 +509,7 @@ async def index_repo(
         t = time.perf_counter()
         try:
             from loom.intelligence.communities import compute_communities  # noqa: PLC0415
+
             await compute_communities(repo.db)
             logger.info("[communities] done in %.1fs", time.perf_counter() - t)
         except Exception as exc:
@@ -504,6 +521,7 @@ async def index_repo(
         t = time.perf_counter()
         try:
             from loom.intelligence.coupling import compute_coupling  # noqa: PLC0415
+
             await compute_coupling(repo.db, repo_path)
             logger.info("[coupling] done in %.1fs", time.perf_counter() - t)
         except Exception as exc:
@@ -514,7 +532,9 @@ async def index_repo(
         t = time.perf_counter()
         try:
             from loom.indexer.tagger import AutoTagger  # noqa: PLC0415
+
             tagger = AutoTagger()
+
             def _run_tagger() -> int:
                 count = 0
                 for path, (fn, _) in by_path.items():
@@ -525,8 +545,11 @@ async def index_repo(
                             repo.tags.add_tags(node_id, tags, source="system")
                             count += len(tags)
                 return count
+
             tag_count = await asyncio.to_thread(_run_tagger)
-            logger.info("[tagger] done in %.1fs — %d tags applied", time.perf_counter() - t, tag_count)
+            logger.info(
+                "[tagger] done in %.1fs — %d tags applied", time.perf_counter() - t, tag_count
+            )
         except Exception as exc:
             logger.warning("[tagger] failed in %.1fs: %s", time.perf_counter() - t, exc)
 
@@ -545,6 +568,7 @@ async def index_repo(
         t = time.perf_counter()
         try:
             from loom.indexer.test_linker import TestLinker  # noqa: PLC0415
+
             def _run_test_linker() -> tuple[int, int]:
                 # Get all non-deleted function/method nodes for link_all
                 with repo.db._lock:
@@ -557,17 +581,19 @@ async def index_repo(
                 nodes_for_linking = []
                 for r in rows:
                     try:
-                        nodes_for_linking.append(Node(
-                            id=r["id"],
-                            kind=NodeKind(r["kind"]),
-                            source=NodeSource(r["source"]),
-                            name=r["name"],
-                            path=r["path"],
-                            language=r["language"],
-                            content_hash=r["content_hash"],
-                            start_line=r["start_line"],
-                            end_line=r["end_line"],
-                        ))
+                        nodes_for_linking.append(
+                            Node(
+                                id=r["id"],
+                                kind=NodeKind(r["kind"]),
+                                source=NodeSource(r["source"]),
+                                name=r["name"],
+                                path=r["path"],
+                                language=r["language"],
+                                content_hash=r["content_hash"],
+                                start_line=r["start_line"],
+                                end_line=r["end_line"],
+                            )
+                        )
                     except Exception:
                         continue
                 linker = TestLinker(repo)
@@ -577,10 +603,13 @@ async def index_repo(
                     if tags:
                         repo.tags.add_tags(node_id, tags, source="system")
                 return len(test_edges), sum(len(v) for v in test_tags.values())
+
             edge_count, tag_count = await asyncio.to_thread(_run_test_linker)
             logger.info(
                 "[test_linker] done in %.1fs — %d TESTED_BY edges, %d tags",
-                time.perf_counter() - t, edge_count, tag_count,
+                time.perf_counter() - t,
+                edge_count,
+                tag_count,
             )
         except Exception as exc:
             logger.warning("[test_linker] failed in %.1fs: %s", time.perf_counter() - t, exc)
@@ -590,6 +619,7 @@ async def index_repo(
         t = time.perf_counter()
         try:
             from loom.indexer.graph_tagger import compute_graph_tags  # noqa: PLC0415
+
             def _run_graph_tagger() -> int:
                 graph_tags = compute_graph_tags(repo)
                 count = 0
@@ -598,8 +628,11 @@ async def index_repo(
                         repo.tags.add_tags(node_id, tags, source="system")
                         count += len(tags)
                 return count
+
             gtag_count = await asyncio.to_thread(_run_graph_tagger)
-            logger.info("[graph_tagger] done in %.1fs — %d tags", time.perf_counter() - t, gtag_count)
+            logger.info(
+                "[graph_tagger] done in %.1fs — %d tags", time.perf_counter() - t, gtag_count
+            )
         except Exception as exc:
             logger.warning("[graph_tagger] failed in %.1fs: %s", time.perf_counter() - t, exc)
 

@@ -66,7 +66,8 @@ async def mark_dead_code(db: DB) -> int:
 
                 # Tag dead nodes
                 conn.executemany(
-                    "INSERT OR IGNORE INTO node_tags (node_id, tag, source) VALUES (?, 'dead-code', 'system')",
+                    "INSERT OR IGNORE INTO node_tags (node_id, tag, source) "
+                    "VALUES (?, 'dead-code', 'system')",
                     [(row["id"],) for row in dead_rows],
                 )
 

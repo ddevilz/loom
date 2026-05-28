@@ -4,11 +4,12 @@ This module is pure computation: it takes already-parsed nodes and returns
 (edges, tags) without touching the database.  The pipeline is responsible for
 persisting the result via repo.edges.upsert() and repo.tags.add_tags().
 """
+
 from __future__ import annotations
 
-import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -49,10 +50,16 @@ TEST_PATTERNS: dict[str, list[TestPattern]] = {
 }
 
 STRIP_RULES: dict[str, list[tuple[str, str]]] = {
-    "python":     [("test_", "prefix"), ("_test", "suffix")],
+    "python": [("test_", "prefix"), ("_test", "suffix")],
     "typescript": [("test", "prefix_camel")],
     "javascript": [("test", "prefix_camel")],
-    "java":       [("Test", "prefix_camel"), ("Test", "suffix"), ("Tests", "suffix"), ("IT", "suffix"), ("Spec", "suffix")],
+    "java": [
+        ("Test", "prefix_camel"),
+        ("Test", "suffix"),
+        ("Tests", "suffix"),
+        ("IT", "suffix"),
+        ("Spec", "suffix"),
+    ],
 }
 
 MIN_CONFIDENCE = 0.55  # HIGH only — minimum 2 signals
@@ -87,14 +94,14 @@ def strip_test_name(name: str, language: str) -> str:
     rules = STRIP_RULES.get(language, [])
     for pattern, rule_type in rules:
         if rule_type == "prefix" and name.startswith(pattern):
-            return name[len(pattern):]
+            return name[len(pattern) :]
         elif rule_type == "suffix" and name.endswith(pattern):
             return name[: -len(pattern)]
         elif rule_type == "prefix_camel":
             lower_name = name.lower()
             lower_pat = pattern.lower()
             if lower_name.startswith(lower_pat):
-                stripped = name[len(pattern):]
+                stripped = name[len(pattern) :]
                 if stripped:
                     return stripped[0].upper() + stripped[1:]
                 return stripped
@@ -110,7 +117,7 @@ def path_convention_match(test_path: str, prod_path: str, language: str) -> bool
             if m:
                 # Compare exact stem: captured group must equal prod_path's stem
                 base = m.group(1)
-                prod_stem = os.path.splitext(os.path.basename(prod_path))[0]
+                prod_stem = Path(prod_path).stem
                 if base == prod_stem:
                     return True
         if p.dir_swap:
@@ -118,20 +125,24 @@ def path_convention_match(test_path: str, prod_path: str, language: str) -> bool
             if test_dir in test_path and prod_dir in prod_path:
                 # Compare stems: TestFoo.java matches Foo.java
                 return True
-        if p.dir_re and p.mirror_src:
-            if re.search(p.dir_re, test_path) and p.mirror_src in prod_path:
-                # Also require matching stems
-                test_stem = re.sub(r'^test_|_test$', '', os.path.splitext(os.path.basename(test_path))[0])
-                prod_stem = os.path.splitext(os.path.basename(prod_path))[0]
-                if test_stem == prod_stem:
-                    return True
+        if (
+            p.dir_re
+            and p.mirror_src
+            and re.search(p.dir_re, test_path)
+            and p.mirror_src in prod_path
+        ):
+            # Also require matching stems
+            test_stem = re.sub(r"^test_|_test$", "", Path(test_path).stem)
+            prod_stem = Path(prod_path).stem
+            if test_stem == prod_stem:
+                return True
     return False
 
 
 def _read_test_content(path: str) -> str:
     """Read first 50 lines of test file for import analysis caching."""
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with Path(path).open(encoding="utf-8", errors="replace") as f:
             return "".join(line for i, line in enumerate(f) if i < 50)
     except OSError:
         return ""
@@ -139,7 +150,7 @@ def _read_test_content(path: str) -> str:
 
 def _check_import(test_content: str, prod_path: str) -> bool:
     """Check if prod_path's module name appears in pre-loaded test file content."""
-    prod_module = os.path.splitext(os.path.basename(prod_path))[0]
+    prod_module = Path(prod_path).stem
     if not prod_module:
         return False
     return prod_module in test_content
@@ -166,12 +177,10 @@ def name_match(stripped: str, prod_name: str) -> bool:
 
 
 class TestLinker:
-    def __init__(self, repo: "Repository") -> None:
+    def __init__(self, repo: Repository) -> None:
         self.repo = repo
 
-    def link_all(
-        self, all_nodes: list["Node"]
-    ) -> tuple[list, dict[str, list[str]]]:
+    def link_all(self, all_nodes: list[Node]) -> tuple[list, dict[str, list[str]]]:
         """Find TESTED_BY edges for all nodes.
 
         Returns:
@@ -181,8 +190,8 @@ class TestLinker:
         from loom.graph.models.edge import ConfidenceTier, Edge, EdgeType
 
         # Separate test nodes from production nodes
-        test_nodes: list["Node"] = []
-        prod_nodes: list["Node"] = []
+        test_nodes: list[Node] = []
+        prod_nodes: list[Node] = []
 
         for node in all_nodes:
             lang = node.language or ""

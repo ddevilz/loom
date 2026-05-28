@@ -3,6 +3,7 @@
 Extracted from src/loom/query/context.py (async) and
 src/loom/query/primer.py (async), converted to pure synchronous methods.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -366,7 +367,9 @@ def _build_primer_data(conn: sqlite3.Connection) -> dict[str, Any]:
         "AND summary IS NOT NULL"
     ).fetchone()[0]
 
-    last_ts = conn.execute("SELECT MAX(updated_at) FROM nodes WHERE deleted_at IS NULL").fetchone()[0]
+    last_ts = conn.execute("SELECT MAX(updated_at) FROM nodes WHERE deleted_at IS NULL").fetchone()[
+        0
+    ]
 
     return {
         "empty": False,
@@ -574,10 +577,14 @@ class ContextRepository:
                 tested_by = self._get_tested_by(conn, node_id)
 
                 # Extract complexity from node row
-                complexity_val = node_row["complexity"] if "complexity" in node_row.keys() else None
+                complexity_val = node_row["complexity"] if "complexity" in node_row.keys() else None  # noqa: SIM118
 
                 return _build_packet(
-                    node_row, callers, callers_total, callees, callees_total,
+                    node_row,
+                    callers,
+                    callers_total,
+                    callees,
+                    callees_total,
                     complexity=complexity_val,
                     tags=tags,
                     tested_by=tested_by,

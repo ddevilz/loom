@@ -2,11 +2,11 @@
 
 Moved from ingest/incremental.py with imports updated to graph.* and indexer.*.
 """
+
 from __future__ import annotations
 
 import functools
 import logging
-import os
 import subprocess
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
@@ -125,11 +125,11 @@ async def sync_paths(
 
 @dataclass
 class ChangeReport:
-    new:        list[str] = field(default_factory=list)
-    changed:    list[str] = field(default_factory=list)
+    new: list[str] = field(default_factory=list)
+    changed: list[str] = field(default_factory=list)
     mtime_only: list[str] = field(default_factory=list)
-    unchanged:  list[str] = field(default_factory=list)
-    deleted:    list[str] = field(default_factory=list)
+    unchanged: list[str] = field(default_factory=list)
+    deleted: list[str] = field(default_factory=list)
 
     @property
     def files_to_index(self) -> list[str]:
@@ -138,7 +138,7 @@ class ChangeReport:
 
     @property
     def files_to_update_mtime(self) -> list[str]:
-        """Files where only mtime changed — caller must update stored mtime to preserve fast-path."""
+        """Files where only mtime changed; caller must update stored mtime to keep fast-path."""
         return self.mtime_only
 
 
@@ -158,7 +158,7 @@ class IncrementalSync:
 
         for path in discovered_files:
             try:
-                stat_result = os.stat(path)
+                stat_result = Path(path).stat()
             except FileNotFoundError:
                 report.deleted.append(path)
                 continue

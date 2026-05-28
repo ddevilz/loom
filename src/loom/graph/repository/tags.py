@@ -1,4 +1,5 @@
 """TagRepository — node tag storage with system/agent source tracking."""
+
 from __future__ import annotations
 
 from loom.graph.db import DB
@@ -40,7 +41,8 @@ class TagRepository:
             conn = self._db.connect()
             placeholders = ",".join("?" * len(tags))
             conn.execute(
-                f"DELETE FROM node_tags WHERE node_id = ? AND source = ? AND tag IN ({placeholders})",
+                "DELETE FROM node_tags WHERE node_id = ? AND source = ? "
+                f"AND tag IN ({placeholders})",
                 [node_id, source, *tags],
             )
             self._rebuild_normalized(conn, node_id)

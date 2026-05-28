@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import tree_sitter_python as _ts_python
 from tree_sitter import Language as _Language
@@ -214,13 +215,24 @@ def _extract_from_def(
             if hint:
                 meta[META_FRAMEWORK_HINT] = hint
         out.append(
-            build_node(n, src, path, kind=NodeKind.CLASS, name=name, symbol=name, parent_id=parent_id, metadata=meta)
+            build_node(
+                n,
+                src,
+                path,
+                kind=NodeKind.CLASS,
+                name=name,
+                symbol=name,
+                parent_id=parent_id,
+                metadata=meta,
+            )
         )
 
         body = n.child_by_field_name("body")
         if body is not None:
             ctx.push_class(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
+            _walk(
+                path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id
+            )
             ctx.pop_class()
         return
 
@@ -243,12 +255,23 @@ def _extract_from_def(
             meta["is_async"] = True
         body = n.child_by_field_name("body")
         out.append(
-            build_node(n, src, path, kind=kind, name=name, symbol=symbol, parent_id=parent_id, metadata=meta)
+            build_node(
+                n,
+                src,
+                path,
+                kind=kind,
+                name=name,
+                symbol=symbol,
+                parent_id=parent_id,
+                metadata=meta,
+            )
         )
 
         if body is not None:
             ctx.push_fn(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
+            _walk(
+                path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, make_id=make_id
+            )
             ctx.pop_fn()
         return
 
@@ -295,7 +318,16 @@ def _try_extract_assignment(
             symbol = _qualname(ctx, name) if ctx.class_stack else name
             kind = NodeKind.METHOD if ctx.class_stack else NodeKind.FUNCTION
             out.append(
-                build_node(n, src, path, kind=kind, name=name, symbol=symbol, parent_id=parent_id, metadata={"is_lambda": True})
+                build_node(
+                    n,
+                    src,
+                    path,
+                    kind=kind,
+                    name=name,
+                    symbol=symbol,
+                    parent_id=parent_id,
+                    metadata={"is_lambda": True},
+                )
             )
             return True
 
@@ -306,7 +338,16 @@ def _try_extract_assignment(
                 func_name = _node_text(src, func_node)
                 if func_name in _CLASS_FACTORY_NAMES:
                     out.append(
-                        build_node(n, src, path, kind=NodeKind.CLASS, name=name, symbol=name, parent_id=parent_id, metadata={"class_factory": func_name})
+                        build_node(
+                            n,
+                            src,
+                            path,
+                            kind=NodeKind.CLASS,
+                            name=name,
+                            symbol=name,
+                            parent_id=parent_id,
+                            metadata={"class_factory": func_name},
+                        )
                     )
                     return True
 
@@ -326,12 +367,30 @@ def _walk(
     # We walk all children and recursively extract definitions.
     for child in n.children:
         if child.type in {TS_PY_FUNCTION_DEF, TS_PY_CLASS_DEF, TS_PY_DECORATED_DEF}:
-            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
-        elif _try_extract_assignment(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id):
+            _extract_from_def(
+                path=path,
+                src=src,
+                n=child,
+                ctx=ctx,
+                out=out,
+                build_node=build_node,
+                make_id=make_id,
+            )
+        elif _try_extract_assignment(
+            path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id
+        ):
             pass
         else:
             if child.child_count:
-                _walk(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, make_id=make_id)
+                _walk(
+                    path=path,
+                    src=src,
+                    n=child,
+                    ctx=ctx,
+                    out=out,
+                    build_node=build_node,
+                    make_id=make_id,
+                )
 
 
 class PythonHandler(BaseLanguageHandler):
@@ -345,7 +404,10 @@ class PythonHandler(BaseLanguageHandler):
         parser = Parser(_PY_LANGUAGE)
         tree = parser.parse(source)
         out: list[Node] = []
-        make_id: _MakeIdFn = lambda kind, path, symbol: f"{kind.value}:{self.repo_name}:{path}:{symbol}"
+
+        def make_id(kind: object, path: str, symbol: str) -> str:
+            return f"{kind.value}:{self.repo_name}:{path}:{symbol}"
+
         _walk(
             path=rel_path,
             src=source,
@@ -366,6 +428,7 @@ def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
     src = p.read_bytes()
 
     from loom.indexer.languages._base import _default_repo_name
+
     handler = PythonHandler()
     handler.repo_name = _default_repo_name()
 
@@ -373,7 +436,10 @@ def parse_python(path: str, *, exclude_tests: bool = False) -> list[Node]:
     tree = parser.parse(src)
 
     out: list[Node] = []
-    make_id: _MakeIdFn = lambda kind, file_path, symbol: f"{kind.value}:{handler.repo_name}:{file_path}:{symbol}"
+
+    def make_id(kind: object, file_path: str, symbol: str) -> str:
+        return f"{kind.value}:{handler.repo_name}:{file_path}:{symbol}"
+
     _walk(
         path=path.replace("\\", "/"),
         src=src,

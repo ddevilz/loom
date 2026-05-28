@@ -1,17 +1,19 @@
 """analysis.py — analysis, annotation, and savings MCP tools."""
+
 from __future__ import annotations
 
 
 def register(mcp: object, db: object, session: dict, cache: object) -> None:
     from loom.intelligence.cohesion import get_community_cohesion as _get_cohesion  # noqa: F401
-    from loom.intelligence.surprising_connections import get_surprising_connections as _get_surprising
     from loom.intelligence.suggested_questions import suggest_questions as _suggest_questions
+    from loom.intelligence.surprising_connections import (
+        get_surprising_connections as _get_surprising,
+    )
+    from loom.server.enums import ErrorCode, WorkPlanPriority
+    from loom.server.validation import MAX_ID, clamp_limit, err, ok, validate_text
     from loom.store import nodes as node_store
     from loom.store.node_visits import get_annotation_gaps
     from loom.store.savings import get_recent_savings, get_savings_stats
-
-    from loom.server.enums import ErrorCode, WorkPlanPriority
-    from loom.server.validation import MAX_ID, clamp_limit, err, ok, validate_text
 
     @mcp.tool()
     async def store_understanding_batch(updates: list[dict]) -> dict:
@@ -61,7 +63,8 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         since it was last stored (content_hash unchanged). Pass force=True to
         overwrite an existing summary regardless.
 
-        tags: Optional list of agent tags to attach to this node (e.g. ["security-sensitive", "needs-refactor"]).
+        tags: Optional list of agent tags to attach to this node
+              (e.g. ["security-sensitive", "needs-refactor"]).
               Tags are persisted with source="agent" and survive re-index.
 
         Returns {"ok": true, "skipped": true} when skipped — no re-read needed.
@@ -97,6 +100,7 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
             tags_rejected = raw_count - len(valid_tags)
             if valid_tags:
                 import asyncio  # noqa: PLC0415
+
                 from loom.graph.repository.tags import TagRepository  # noqa: PLC0415
 
                 def _write_tags() -> int:
@@ -105,7 +109,14 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
 
                 tags_written = await asyncio.to_thread(_write_tags)
 
-        return ok({"skipped": result["skipped"], "node_id": nid, "tags_written": tags_written, "tags_rejected": tags_rejected})
+        return ok(
+            {
+                "skipped": result["skipped"],
+                "node_id": nid,
+                "tags_written": tags_written,
+                "tags_rejected": tags_rejected,
+            }
+        )
 
     @mcp.tool()
     async def get_savings() -> dict:
