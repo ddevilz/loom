@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from loom.core.context import DB
+from loom.graph.db import DB
 from loom.query import traversal
 
 

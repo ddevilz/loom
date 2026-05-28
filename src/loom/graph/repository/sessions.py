@@ -16,7 +16,6 @@ import time
 from typing import Any
 from uuid import uuid4
 
-from loom.analysis.code.extractor import extract_summary
 from loom.graph.db import DB
 from loom.graph.repository.nodes import row_to_node
 
@@ -343,6 +342,7 @@ class SessionRepository:
         """Convert a nodes row to a compact delta packet."""
         node = row_to_node(row)
         metadata = json.loads(row["metadata"]) if row["metadata"] else {}
+        from loom.indexer.extractor import extract_summary  # deferred to avoid circular import
         auto_summary = extract_summary(node) if not node.summary else None
 
         summary_hash = row["summary_hash"] if "summary_hash" in row.keys() else None  # noqa: SIM118

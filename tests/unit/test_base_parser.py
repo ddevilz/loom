@@ -1,5 +1,5 @@
 # tests/unit/test_base_parser.py
-from loom.ingest.code.languages._base import _BaseContext
+from loom.indexer.languages._base import _BaseContext
 
 
 def test_push_pop_class():

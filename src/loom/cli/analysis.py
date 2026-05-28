@@ -5,8 +5,8 @@ import asyncio
 import typer
 from rich.console import Console
 
-from loom.analysis.communities import compute_communities
-from loom.analysis.dead_code import mark_dead_code
+from loom.intelligence.communities import compute_communities
+from loom.intelligence.dead_code import mark_dead_code
 from loom.cli._app import app
 
 console = Console()

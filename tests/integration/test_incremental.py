@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from loom.core.context import DB
-from loom.ingest.incremental import sync_paths
+from loom.graph.db import DB
+from loom.graph.repository import Repository
+from loom.indexer.incremental import sync_paths
 from loom.query import traversal
 
 
@@ -47,7 +48,7 @@ async def test_sync_paths_touches_only_changed_files(tmp_path: Path) -> None:
     new = _git(repo, "rev-parse", "HEAD").strip()
 
     db = DB(path=tmp_path / "loom.db")
-    result = await sync_paths(db, repo, old_sha=old, new_sha=new)
+    result = await sync_paths(Repository(db), repo, old_sha=old, new_sha=new)
 
     assert result.files_changed == 1
     assert result.nodes_written >= 1
@@ -65,10 +66,10 @@ async def test_sync_paths_no_change_skips_work(tmp_path: Path) -> None:
     _git(repo, "commit", "-m", "init")
 
     db = DB(path=tmp_path / "loom.db")
-    r1 = await sync_paths(db, repo)
+    r1 = await sync_paths(Repository(db), repo)
     assert r1.files_changed == 1
 
-    r2 = await sync_paths(db, repo)
+    r2 = await sync_paths(Repository(db), repo)
     assert r2.files_changed == 0
     assert r2.nodes_written == 0
 
@@ -85,7 +86,7 @@ async def test_sync_paths_deleted_file_clears_nodes(tmp_path: Path) -> None:
     _git(repo, "commit", "-m", "init")
 
     db = DB(path=tmp_path / "loom.db")
-    await sync_paths(db, repo)
+    await sync_paths(Repository(db), repo)
 
     stats_before = await traversal.stats(db)
     assert stats_before["nodes"] >= 1
@@ -94,5 +95,5 @@ async def test_sync_paths_deleted_file_clears_nodes(tmp_path: Path) -> None:
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "delete a")
 
-    r = await sync_paths(db, repo)
+    r = await sync_paths(Repository(db), repo)
     assert r.files_changed == 0

@@ -5,13 +5,13 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import loom.cli
-from loom.core.context import DB
+from loom.graph.db import DB
 
 runner = CliRunner()
 
 
 def test_cli_sync_happy_path(monkeypatch, tmp_path: Path) -> None:
-    from loom.ingest.incremental import SyncResult
+    from loom.indexer.incremental import SyncResult
 
     async def fake_sync_paths(db, path, *, old_sha=None, new_sha=None):
         return SyncResult(files_changed=2, nodes_written=8, edges_written=3)
@@ -28,7 +28,7 @@ def test_cli_sync_happy_path(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_cli_sync_no_changes(monkeypatch, tmp_path: Path) -> None:
-    from loom.ingest.incremental import SyncResult
+    from loom.indexer.incremental import SyncResult
 
     async def fake_sync_paths(db, path, *, old_sha=None, new_sha=None):
         return SyncResult(files_changed=0, nodes_written=0, edges_written=0)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 import loom.cli
-from loom.core.context import DB
+from loom.graph.db import DB
 
 runner = CliRunner()
 

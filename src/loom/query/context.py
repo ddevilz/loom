@@ -8,10 +8,10 @@ import subprocess
 import time
 from typing import Any
 
-from loom.analysis.code.extractor import extract_summary
-from loom.core.context import DB
-from loom.core.edge import EdgeType
-from loom.core.enums import SummarySource
+from loom.indexer.extractor import extract_summary
+from loom.graph.db import DB
+from loom.graph.models import EdgeType
+from loom.graph.models import SummarySource
 from loom.store.nodes import row_to_node
 
 

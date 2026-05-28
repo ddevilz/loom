@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from loom.core.context import DB
-from loom.core.node import NodeKind
+from loom.graph.db import DB
+from loom.graph.models import NodeKind
 from loom.store.nodes import get_nodes_by_name
 
 

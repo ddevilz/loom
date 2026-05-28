@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loom.core.context import DB
+from loom.graph.db import DB
 from loom.query.traversal import blast_radius as _blast_radius
 
 

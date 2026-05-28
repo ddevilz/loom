@@ -6,7 +6,7 @@ import json
 import sqlite3
 from typing import Any
 
-from loom.core.context import DB
+from loom.graph.db import DB
 
 _MAX_MODULES = 8
 _MAX_HOT_FUNCTIONS = 5

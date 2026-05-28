@@ -24,7 +24,7 @@ def test_serve_has_no_misleading_host_port_flags() -> None:
 
 def test_check_drift_response_has_no_semantic_violations_key() -> None:
     """check_drift must not return a vestigial 'semantic_violations' key."""
-    spec = importlib.util.find_spec("loom.mcp.server")
+    spec = importlib.util.find_spec("loom.server.app")
     assert spec is not None and spec.origin is not None
     source = Path(spec.origin).read_text()
     tree = ast.parse(source)

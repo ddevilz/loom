@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from loom.core.context import DB
-from loom.core.node import Node, NodeKind, NodeSource
+from loom.graph.db import DB
+from loom.graph.models import Node, NodeKind, NodeSource
 from loom.query.node_lookup import resolve_node_id
 from loom.store import nodes as node_store
 

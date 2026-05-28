@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from loom.core.context import DB
-from loom.core.node import Node, NodeKind, NodeSource
+from loom.graph.db import DB
+from loom.graph.models import Node, NodeKind, NodeSource
 from loom.query import traversal
 from loom.store import edges as edge_store
 from loom.store import nodes as node_store

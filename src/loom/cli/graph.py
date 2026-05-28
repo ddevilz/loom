@@ -7,8 +7,8 @@ from rich.console import Console
 from rich.table import Table
 
 from loom.cli._app import app
-from loom.core.context import DB
-from loom.core.edge import EdgeType
+from loom.graph.db import DB
+from loom.graph.models import EdgeType
 from loom.query import traversal
 from loom.query.blast_radius import build_blast_radius_payload
 from loom.query.node_lookup import resolve_node_id

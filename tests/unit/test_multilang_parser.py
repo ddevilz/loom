@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loom.core import NodeKind
-from loom.ingest.code.languages.java import parse_java
-from loom.ingest.code.languages.javascript import parse_javascript
-from loom.ingest.code.languages.typescript import parse_typescript
+from loom.graph.models import NodeKind
+from loom.indexer.languages.java import parse_java
+from loom.indexer.languages.javascript import parse_javascript
+from loom.indexer.languages.typescript import parse_typescript
 
 
 def _by_name(nodes, name: str):
@@ -228,7 +228,7 @@ def test_parse_java_no_package_still_works(tmp_path: Path):
 
 
 def test_registry_dispatches_to_correct_parser(tmp_path: Path):
-    from loom.analysis.code.parser import parse_code
+    from loom.indexer.extractor import parse_code
 
     # TypeScript
     ts_file = tmp_path / "app.ts"

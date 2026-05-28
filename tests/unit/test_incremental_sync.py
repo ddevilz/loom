@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from loom.core.context import DB
-from loom.ingest.incremental import SyncResult, _validate_ref, sync_paths
+from loom.graph.db import DB
+from loom.graph.repository import Repository
+from loom.indexer.incremental import SyncResult, _validate_ref, sync_paths
 
 
 def test_validate_ref_accepts_safe_chars() -> None:
@@ -53,7 +54,7 @@ async def test_sync_paths_with_git_shas(tmp_path: Path) -> None:
     new = _git(repo, "rev-parse", "HEAD").strip()
 
     db = DB(path=tmp_path / "loom.db")
-    result = await sync_paths(db, repo, old_sha=old, new_sha=new)
+    result = await sync_paths(Repository(db), repo, old_sha=old, new_sha=new)
 
     assert isinstance(result, SyncResult)
     assert result.files_changed == 1
@@ -72,10 +73,10 @@ async def test_sync_paths_skips_unchanged_files(tmp_path: Path) -> None:
 
     db = DB(path=tmp_path / "loom.db")
 
-    r1 = await sync_paths(db, repo)
+    r1 = await sync_paths(Repository(db), repo)
     assert r1.files_changed == 1
 
-    r2 = await sync_paths(db, repo)
+    r2 = await sync_paths(Repository(db), repo)
     assert r2.files_changed == 0
     assert r2.nodes_written == 0
 
@@ -83,7 +84,7 @@ async def test_sync_paths_skips_unchanged_files(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_sync_paths_empty_repo_returns_zero(tmp_path: Path) -> None:
     db = DB(path=tmp_path / "loom.db")
-    result = await sync_paths(db, tmp_path)
+    result = await sync_paths(Repository(db), tmp_path)
     assert result.files_changed == 0
     assert result.nodes_written == 0
     assert result.edges_written == 0

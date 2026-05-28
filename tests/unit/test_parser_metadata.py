@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loom.ingest.code.languages.java import parse_java
-from loom.ingest.code.languages.python import parse_python
-from loom.ingest.code.languages.typescript import parse_typescript
+from loom.indexer.languages.java import parse_java
+from loom.indexer.languages.python import parse_python
+from loom.indexer.languages.typescript import parse_typescript
 
 
 def test_python_parser_emits_signature_metadata(tmp_path: Path) -> None:

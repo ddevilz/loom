@@ -4,7 +4,7 @@ import asyncio
 import time
 from typing import Any
 
-from loom.core.context import DB
+from loom.graph.db import DB
 
 
 async def log_visit(db: DB, *, session_id: str, node_id: str, tool: str) -> None:

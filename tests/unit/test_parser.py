@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from loom.core import Node, NodeKind
-from loom.ingest.code.languages.python import parse_python
-from loom.ingest.code.registry import get_registry
+from loom.graph.models import Node, NodeKind
+from loom.indexer.languages.python import parse_python
+from loom.indexer.registry import get_registry
 
 
 def _by_name(nodes, name: str):
@@ -159,7 +159,7 @@ def test_fastapi_route_hint(tmp_path: Path):
 
 
 def test_parse_code_skips_unsupported_extensions(tmp_path: Path):
-    from loom.analysis.code.parser import parse_code
+    from loom.indexer.extractor import parse_code
 
     # Only truly unsupported extensions (images, fonts, archives, etc.)
     for ext in [".svg", ".png", ".pdf", ".zip", ".woff"]:
@@ -169,7 +169,7 @@ def test_parse_code_skips_unsupported_extensions(tmp_path: Path):
 
 
 def test_parse_code_parses_python(tmp_path: Path):
-    from loom.analysis.code.parser import parse_code
+    from loom.indexer.extractor import parse_code
 
     p = tmp_path / "mod.py"
     p.write_text("def hello():\n    pass\n", encoding="utf-8")
@@ -205,7 +205,7 @@ def test_registry_get_handler_for_path_special_cases_env_files():
 
 
 def test_parse_repo_walks_directory(tmp_path: Path):
-    from loom.analysis.code.parser import parse_repo
+    from loom.indexer.extractor import parse_repo
 
     # create a mini project
     (tmp_path / "app.py").write_text("def main():\n    pass\n", encoding="utf-8")
@@ -228,7 +228,7 @@ def test_parse_repo_walks_directory(tmp_path: Path):
 
 
 def test_parse_repo_skips_venv_and_node_modules(tmp_path: Path):
-    from loom.analysis.code.parser import parse_repo
+    from loom.indexer.extractor import parse_repo
 
     # real code
     (tmp_path / "app.py").write_text("def real():\n    pass\n", encoding="utf-8")
@@ -252,7 +252,7 @@ def test_parse_repo_skips_venv_and_node_modules(tmp_path: Path):
 
 
 def test_parse_repo_skips_hidden_dirs(tmp_path: Path):
-    from loom.analysis.code.parser import parse_repo
+    from loom.indexer.extractor import parse_repo
 
     (tmp_path / "app.py").write_text("def real():\n    pass\n", encoding="utf-8")
     hidden = tmp_path / ".hidden"

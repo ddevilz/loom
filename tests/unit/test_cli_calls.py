@@ -5,13 +5,13 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 import loom.cli
-from loom.core.context import DB
+from loom.graph.db import DB
 
 runner = CliRunner()
 
 
 def test_cli_callers_prints_results(monkeypatch, tmp_path: Path) -> None:
-    from loom.core.node import Node, NodeKind, NodeSource
+    from loom.graph.models import Node, NodeKind, NodeSource
 
     caller_node = Node(
         id="function:src/a.py:caller",
@@ -38,7 +38,7 @@ def test_cli_callers_prints_results(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_cli_callees_prints_results(monkeypatch, tmp_path: Path) -> None:
-    from loom.core.node import Node, NodeKind, NodeSource
+    from loom.graph.models import Node, NodeKind, NodeSource
 
     callee_node = Node(
         id="function:src/b.py:callee",

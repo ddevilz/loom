@@ -5,15 +5,15 @@ from unittest.mock import patch
 
 import pytest
 
-from loom.core.context import _PROJECTS_DIR, resolve_db_path
+from loom.graph.db import _PROJECTS_DIR, resolve_db_path
 
 
 def test_non_git_fallback_uses_cwd_name(tmp_path: Path) -> None:
     """Non-git dir → ~/.loom/projects/{dirname}.db (not loom.db)."""
-    with patch("loom.core.context.subprocess.run") as mock_run:
+    with patch("loom.graph.db.subprocess.run") as mock_run:
         mock_run.return_value.returncode = 1  # simulate: not a git repo
 
-        with patch("loom.core.context.Path.cwd", return_value=tmp_path):
+        with patch("loom.graph.db.Path.cwd", return_value=tmp_path):
             result = resolve_db_path()
 
     assert result == _PROJECTS_DIR / f"{tmp_path.name}.db"
@@ -33,10 +33,10 @@ def test_non_git_migration_copies_legacy_db(tmp_path: Path) -> None:
     expected_db = projects_dir / "myproject.db"
 
     with (
-        patch("loom.core.context.subprocess.run") as mock_run,
-        patch("loom.core.context._PROJECTS_DIR", projects_dir),
-        patch("loom.core.context.DEFAULT_DB_PATH", legacy),
-        patch("loom.core.context.Path.cwd", return_value=project_dir),
+        patch("loom.graph.db.subprocess.run") as mock_run,
+        patch("loom.graph.db._PROJECTS_DIR", projects_dir),
+        patch("loom.graph.db.DEFAULT_DB_PATH", legacy),
+        patch("loom.graph.db.Path.cwd", return_value=project_dir),
     ):
         mock_run.return_value.returncode = 1
 
@@ -61,10 +61,10 @@ def test_non_git_no_migration_if_marker_exists(tmp_path: Path) -> None:
     expected_db = projects_dir / "myproject.db"
 
     with (
-        patch("loom.core.context.subprocess.run") as mock_run,
-        patch("loom.core.context._PROJECTS_DIR", projects_dir),
-        patch("loom.core.context.DEFAULT_DB_PATH", legacy),
-        patch("loom.core.context.Path.cwd", return_value=project_dir),
+        patch("loom.graph.db.subprocess.run") as mock_run,
+        patch("loom.graph.db._PROJECTS_DIR", projects_dir),
+        patch("loom.graph.db.DEFAULT_DB_PATH", legacy),
+        patch("loom.graph.db.Path.cwd", return_value=project_dir),
     ):
         mock_run.return_value.returncode = 1
 

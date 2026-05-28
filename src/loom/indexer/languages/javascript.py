@@ -1,0 +1,247 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import tree_sitter_javascript as _ts_javascript
+from tree_sitter import Language as _Language
+from tree_sitter import Node as TSNode
+from tree_sitter import Parser
+
+from loom.graph.models import Node, NodeKind, NodeSource
+from loom.graph.content_hash import content_hash_for_line_span
+from loom.indexer.languages._base import _BaseContext
+from loom.indexer.languages._ts_utils import (
+    get_name as _get_name,
+)
+from loom.indexer.languages._ts_utils import (
+    lines as _lines,
+)
+from loom.indexer.languages._ts_utils import (
+    node_text as _node_text,
+)
+from loom.indexer.languages.constants import (
+    LANG_JAVASCRIPT,
+    TS_JS_ARROW_FUNCTION,
+    TS_JS_CLASS_DECL,
+    TS_JS_FUNCTION,
+    TS_JS_FUNCTION_DECL,
+    TS_JS_METHOD_DEF,
+)
+
+_JS_LANGUAGE = _Language(_ts_javascript.language())
+
+
+def _qualname(ctx: _BaseContext, name: str) -> str:
+    parts: list[str] = []
+    if ctx.class_stack:
+        parts.append(".".join(ctx.class_stack))
+    if ctx.fn_stack:
+        parts.append(".".join(ctx.fn_stack))
+    parts.append(name)
+    return ".".join(parts)
+
+
+def _extract_from_def(
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _BaseContext,
+    out: list[Node],
+) -> None:
+    if n.type == TS_JS_CLASS_DECL:
+        name = _get_name(src, n)
+        if not name:
+            return
+
+        start_line, end_line = _lines(n)
+        out.append(
+            Node(
+                id=f"{NodeKind.CLASS.value}:{path}:{name}",
+                kind=NodeKind.CLASS,
+                source=NodeSource.CODE,
+                name=name,
+                path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
+                start_line=start_line,
+                end_line=end_line,
+                language=LANG_JAVASCRIPT,
+                metadata={},
+            )
+        )
+
+        body = n.child_by_field_name("body")
+        if body is not None:
+            ctx.push_class(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_class()
+        return
+
+    if n.type in {TS_JS_FUNCTION_DECL, TS_JS_FUNCTION, TS_JS_ARROW_FUNCTION}:
+        name = _get_name(src, n)
+        if not name:
+            return
+
+        start_line, end_line = _lines(n)
+        kind = NodeKind.FUNCTION
+        symbol = name
+
+        out.append(
+            Node(
+                id=f"{kind.value}:{path}:{symbol}",
+                kind=kind,
+                source=NodeSource.CODE,
+                name=name,
+                path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
+                start_line=start_line,
+                end_line=end_line,
+                language=LANG_JAVASCRIPT,
+                metadata={},
+            )
+        )
+
+        body = n.child_by_field_name("body")
+        if body is not None:
+            ctx.push_fn(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_fn()
+        return
+
+    if n.type == TS_JS_METHOD_DEF:
+        name = _get_name(src, n)
+        if not name:
+            return
+
+        start_line, end_line = _lines(n)
+        symbol = _qualname(ctx, name)
+
+        out.append(
+            Node(
+                id=f"{NodeKind.METHOD.value}:{path}:{symbol}",
+                kind=NodeKind.METHOD,
+                source=NodeSource.CODE,
+                name=name,
+                path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
+                start_line=start_line,
+                end_line=end_line,
+                language=LANG_JAVASCRIPT,
+                metadata={},
+            )
+        )
+
+        body = n.child_by_field_name("body")
+        if body is not None:
+            ctx.push_fn(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_fn()
+        return
+
+
+def _try_extract_const_function(
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _BaseContext,
+    out: list[Node],
+) -> bool:
+    """Handle `const name = () => {}` and `const name = function() {}`."""
+    if n.type != "lexical_declaration":
+        return False
+
+    found = False
+    for child in n.children:
+        if child.type != "variable_declarator":
+            continue
+
+        name_node = child.child_by_field_name("name")
+        value_node = child.child_by_field_name("value")
+        if name_node is None or value_node is None:
+            continue
+        if name_node.type != "identifier":
+            continue
+        if value_node.type not in {
+            TS_JS_ARROW_FUNCTION,
+            TS_JS_FUNCTION,
+            "function_expression",
+        }:
+            continue
+
+        name = _node_text(src, name_node)
+        start_line, end_line = _lines(n)
+        metadata: dict = {}
+
+        if value_node.type == TS_JS_ARROW_FUNCTION:
+            metadata["is_arrow"] = True
+        for vc in value_node.children:
+            if vc.type == "async":
+                metadata["is_async"] = True
+                break
+
+        out.append(
+            Node(
+                id=f"{NodeKind.FUNCTION.value}:{path}:{name}",
+                kind=NodeKind.FUNCTION,
+                source=NodeSource.CODE,
+                name=name,
+                path=path,
+                content_hash=content_hash_for_line_span(src, start_line, end_line),
+                start_line=start_line,
+                end_line=end_line,
+                language=LANG_JAVASCRIPT,
+                metadata=metadata,
+            )
+        )
+
+        body = value_node.child_by_field_name("body")
+        if body is not None:
+            ctx.push_fn(name)
+            _walk(path=path, src=src, n=body, ctx=ctx, out=out)
+            ctx.pop_fn()
+        found = True
+
+    return found
+
+
+def _walk(*, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node]) -> None:
+    for child in n.children:
+        if child.type in {
+            TS_JS_FUNCTION_DECL,
+            TS_JS_CLASS_DECL,
+            TS_JS_METHOD_DEF,
+            TS_JS_FUNCTION,
+            TS_JS_ARROW_FUNCTION,
+        }:
+            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out)
+        elif _try_extract_const_function(path=path, src=src, n=child, ctx=ctx, out=out):
+            pass
+        else:
+            if child.child_count:
+                _walk(path=path, src=src, n=child, ctx=ctx, out=out)
+
+
+def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:  # noqa: ARG001
+    from loom.indexer.languages.jsx import extract_jsx_nodes
+
+    p = Path(path)
+    src = p.read_bytes()
+
+    is_jsx = p.suffix.lower() == ".jsx"
+    parser = Parser(_JS_LANGUAGE)
+    tree = parser.parse(src)
+
+    out: list[Node] = []
+    norm_path = path.replace("\\", "/")
+    _walk(
+        path=norm_path,
+        src=src,
+        n=tree.root_node,
+        ctx=_BaseContext(),
+        out=out,
+    )
+    if is_jsx:
+        file_node_id = f"file:{norm_path}"
+        out.extend(extract_jsx_nodes(norm_path, src, tree.root_node, LANG_JAVASCRIPT, file_node_id))
+    return out

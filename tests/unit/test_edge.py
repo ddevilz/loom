@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from loom.core.edge import ConfidenceTier, Edge, EdgeType
+from loom.graph.models import ConfidenceTier, Edge, EdgeType
 
 
 def test_edge_defaults():

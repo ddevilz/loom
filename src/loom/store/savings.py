@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from loom.core.context import DB
+from loom.graph.db import DB
 
 _META_TOTAL_TOKENS = "savings_total_tokens"
 _META_TOTAL_HITS = "savings_total_hits"

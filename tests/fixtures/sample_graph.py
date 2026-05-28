@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loom.core import Edge, EdgeType, Node, NodeKind, NodeSource
+from loom.graph.models import Edge, EdgeType, Node, NodeKind, NodeSource
 
 
 def build_sample_graph():

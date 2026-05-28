@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from loom.core.context import DB
+from loom.graph.db import DB
 
 
 def test_db_imports() -> None:
