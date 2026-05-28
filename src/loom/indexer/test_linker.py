@@ -6,6 +6,7 @@ persisting the result via repo.edges.upsert() and repo.tags.add_tags().
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -49,9 +50,9 @@ TEST_PATTERNS: dict[str, list[TestPattern]] = {
 
 STRIP_RULES: dict[str, list[tuple[str, str]]] = {
     "python":     [("test_", "prefix"), ("_test", "suffix")],
-    "typescript": [("test", "prefix_camel"), (".test", "file_suffix"), (".spec", "file_suffix")],
-    "javascript": [("test", "prefix_camel"), (".test", "file_suffix"), (".spec", "file_suffix")],
-    "java":       [("Test", "prefix_camel"), ("Test", "suffix"), ("Tests", "suffix"), ("IT", "suffix")],
+    "typescript": [("test", "prefix_camel")],
+    "javascript": [("test", "prefix_camel")],
+    "java":       [("Test", "prefix_camel"), ("Test", "suffix"), ("Tests", "suffix"), ("IT", "suffix"), ("Spec", "suffix")],
 }
 
 MIN_CONFIDENCE = 0.55  # HIGH only — minimum 2 signals
@@ -69,6 +70,8 @@ def is_test_file(path: str, language: str) -> bool:
         if p.file_re and re.search(p.file_re, path):
             return True
         if p.dir_re and re.search(p.dir_re, path):
+            return True
+        if p.dir_swap and p.dir_swap[0] in path:
             return True
     return False
 
@@ -105,9 +108,10 @@ def path_convention_match(test_path: str, prod_path: str, language: str) -> bool
         if p.file_re:
             m = re.search(p.file_re, test_path)
             if m:
-                # The captured group(s) should appear in prod_path's basename
+                # Compare exact stem: captured group must equal prod_path's stem
                 base = m.group(1)
-                if base in prod_path:
+                prod_stem = os.path.splitext(os.path.basename(prod_path))[0]
+                if base == prod_stem:
                     return True
         if p.dir_swap:
             test_dir, prod_dir = p.dir_swap
@@ -115,33 +119,40 @@ def path_convention_match(test_path: str, prod_path: str, language: str) -> bool
                 # Compare stems: TestFoo.java matches Foo.java
                 return True
         if p.dir_re and p.mirror_src:
-            if re.search(p.dir_re, test_path):
-                # prod should be in mirror_src
-                if p.mirror_src in prod_path:
+            if re.search(p.dir_re, test_path) and p.mirror_src in prod_path:
+                # Also require matching stems
+                test_stem = re.sub(r'^test_|_test$', '', os.path.splitext(os.path.basename(test_path))[0])
+                prod_stem = os.path.splitext(os.path.basename(prod_path))[0]
+                if test_stem == prod_stem:
                     return True
     return False
 
 
+def _read_test_content(path: str) -> str:
+    """Read first 50 lines of test file for import analysis caching."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            return "".join(line for i, line in enumerate(f) if i < 50)
+    except OSError:
+        return ""
+
+
+def _check_import(test_content: str, prod_path: str) -> bool:
+    """Check if prod_path's module name appears in pre-loaded test file content."""
+    prod_module = os.path.splitext(os.path.basename(prod_path))[0]
+    if not prod_module:
+        return False
+    return prod_module in test_content
+
+
 def imports_module(test_path: str, prod_path: str) -> bool:
-    """Approximate import check — does prod_path's module name appear in test_path's stem?
+    """Public API — reads test file and checks for prod module import.
 
     This is a heuristic: reads test file and checks if prod module name appears as an import.
     For performance, we check by reading the first 50 lines only.
     Falls back to False if file can't be read.
     """
-    import os
-
-    prod_module = os.path.splitext(os.path.basename(prod_path))[0]  # "auth" from "src/auth.py"
-    try:
-        with open(test_path, "r", encoding="utf-8", errors="replace") as f:
-            for i, line in enumerate(f):
-                if i >= 50:
-                    break
-                if prod_module in line:
-                    return True
-    except OSError:
-        return False
-    return False
+    return _check_import(_read_test_content(test_path), prod_path)
 
 
 def name_match(stripped: str, prod_name: str) -> bool:
@@ -167,7 +178,7 @@ class TestLinker:
             edges: list of TESTED_BY Edge objects (confidence >= MIN_CONFIDENCE)
             tags: dict of node_id -> ["tested"] for production nodes that have test coverage
         """
-        from loom.graph.models.edge import Edge, EdgeType
+        from loom.graph.models.edge import ConfidenceTier, Edge, EdgeType
 
         # Separate test nodes from production nodes
         test_nodes: list["Node"] = []
@@ -199,12 +210,15 @@ class TestLinker:
 
             stripped = strip_test_name(name, lang)
 
+            # Pre-read test file content once per test node (avoid repeated I/O)
+            test_content = _read_test_content(path)
+
             for prod in prod_nodes:
                 score = 0.0
 
                 if path_convention_match(path, prod.path or "", lang):
                     score += 0.3
-                if imports_module(path, prod.path or ""):
+                if _check_import(test_content, prod.path or ""):
                     score += 0.3
                 if name_match(stripped, prod.name or ""):
                     score += 0.25
@@ -216,6 +230,7 @@ class TestLinker:
                             to_id=prod.id,
                             kind=EdgeType.TESTED_BY,
                             confidence=score,
+                            confidence_tier=ConfidenceTier.INFERRED,
                         )
                     )
                     if prod.id not in tags:

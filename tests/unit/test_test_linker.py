@@ -1,6 +1,8 @@
 """Unit tests for TestLinker — TESTED_BY edge creation pass."""
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from loom.graph.models.node import Node, NodeKind, NodeSource
@@ -149,7 +151,8 @@ def test_link_all_integration_path_and_name_match() -> None:
 
     # TestLinker.link_all does not write to DB — pass None as repo
     linker = TestLinker(repo=None)  # type: ignore[arg-type]
-    edges, tags = linker.link_all([test_node, prod_node])
+    with patch("loom.indexer.test_linker._read_test_content", return_value=""):
+        edges, tags = linker.link_all([test_node, prod_node])
 
     assert len(edges) == 1, f"Expected 1 edge, got {len(edges)}"
     edge = edges[0]
@@ -182,7 +185,8 @@ def test_link_all_skips_conftest() -> None:
     )
 
     linker = TestLinker(repo=None)  # type: ignore[arg-type]
-    edges, tags = linker.link_all([conftest_node, prod_node])
+    with patch("loom.indexer.test_linker._read_test_content", return_value=""):
+        edges, tags = linker.link_all([conftest_node, prod_node])
 
     assert edges == []
     assert tags == {}
@@ -207,7 +211,8 @@ def test_link_all_skips_setup_teardown() -> None:
     )
 
     linker = TestLinker(repo=None)  # type: ignore[arg-type]
-    edges, tags = linker.link_all([setup_node, prod_node])
+    with patch("loom.indexer.test_linker._read_test_content", return_value=""):
+        edges, tags = linker.link_all([setup_node, prod_node])
 
     assert edges == []
     assert tags == {}
@@ -235,7 +240,8 @@ def test_link_all_below_threshold_no_edge() -> None:
     )
 
     linker = TestLinker(repo=None)  # type: ignore[arg-type]
-    edges, tags = linker.link_all([test_node, prod_node])
+    with patch("loom.indexer.test_linker._read_test_content", return_value=""):
+        edges, tags = linker.link_all([test_node, prod_node])
 
     assert edges == []
     assert tags == {}
