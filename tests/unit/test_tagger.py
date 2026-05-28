@@ -183,13 +183,21 @@ def test_windows_path_separator(tagger: AutoTagger) -> None:
 # Test 10: Exact decorator match doesn't bleed into similar names
 # ---------------------------------------------------------------------------
 
-def test_staticmethod_does_not_match_longer_decorator(tagger: AutoTagger) -> None:
-    """@staticmethod key should not match @staticmethod_decorator via startswith."""
-    # '@staticmethod_decorator'.startswith('@staticmethod') is True, which is
-    # intentional per spec ("startswith for all keys").  But let's verify that
-    # '@staticmethod' itself does match and returns 'static'.
+def test_staticmethod_exact_match(tagger: AutoTagger) -> None:
+    """@staticmethod key should match exactly and return 'static' tag."""
     node = make_node("my_func", decorators=["@staticmethod"])
 
     result = tagger.tag_file([node], imports=[], path="src/utils.py")
 
     assert "static" in result[node.id]
+
+
+# ---------------------------------------------------------------------------
+# Test 11: Empty nodes list
+# ---------------------------------------------------------------------------
+
+def test_empty_nodes_list(tagger: AutoTagger) -> None:
+    """Empty nodes list should return empty dict."""
+    result = tagger.tag_file([], [], "src/utils/foo.py")
+
+    assert result == {}
