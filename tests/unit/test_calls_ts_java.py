@@ -19,7 +19,7 @@ function a() { b(); }
     nodes = parse_code(str(p))
     edges = trace_calls_for_ts_file(str(p), nodes)
 
-    assert any(e.kind.value == "calls" for e in edges)
+    assert any(e.kind.value == "CALLS" for e in edges)
     assert any("b" in e.to_id for e in edges)
 
 
@@ -38,5 +38,5 @@ class A {
     nodes = parse_code(str(p))
     edges = trace_calls_for_java_file(str(p), nodes)
 
-    assert any(e.kind.value == "calls" for e in edges)
+    assert any(e.kind.value == "CALLS" for e in edges)
     assert any("b" in e.to_id for e in edges)

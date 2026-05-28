@@ -11,6 +11,12 @@ else:
         pass
 
 
+class Complexity(StrEnum):
+    SIMPLE   = "simple"
+    MODERATE = "moderate"
+    COMPLEX  = "complex"
+
+
 class SummarySource(StrEnum):
     AGENT = "AGENT"
     AUTO = "AUTO"

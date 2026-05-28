@@ -15,6 +15,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from .enums import Complexity
+
 
 class NodeKind(StrEnum):
     FUNCTION = "function"
@@ -53,7 +55,7 @@ class Node(BaseModel):
     end_line: int | None = None
     language: str | None = None
 
-    is_dead_code: bool = False
+    complexity: Complexity | None = None
 
     community_id: str | None = None
 

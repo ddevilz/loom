@@ -55,7 +55,7 @@ class SearchRepository:
                     rows = conn.execute(
                         """SELECT n.*, -bm25(nodes_fts) AS _score,
                                   (SELECT COUNT(*) FROM edges
-                                   WHERE to_id = n.id AND kind = 'calls') AS _caller_count
+                                   WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
                              FROM nodes_fts
                              JOIN nodes n ON nodes_fts.rowid = n.rowid
                             WHERE nodes_fts MATCH ?
@@ -76,7 +76,7 @@ class SearchRepository:
             rows = conn.execute(
                 """SELECT n.*, 1.0 AS _score,
                           (SELECT COUNT(*) FROM edges
-                           WHERE to_id = n.id AND kind = 'calls') AS _caller_count
+                           WHERE to_id = n.id AND kind = 'CALLS') AS _caller_count
                      FROM nodes n
                     WHERE name LIKE ? AND deleted_at IS NULL
                     LIMIT ?""",
@@ -110,15 +110,14 @@ class SearchRepository:
             rows = conn.execute(
                 """SELECT n.id, n.name, n.path,
                           (SELECT COUNT(*) FROM edges
-                           WHERE to_id = n.id AND kind = 'calls') AS caller_count
+                           WHERE to_id = n.id AND kind = 'CALLS') AS caller_count
                      FROM nodes n
                     WHERE n.path = ?
                       AND n.kind IN ('function', 'method')
                       AND n.deleted_at IS NULL
-                      AND n.is_dead_code = 0
                       AND n.id != ?
                       AND (SELECT COUNT(*) FROM edges
-                           WHERE to_id = n.id AND kind = 'calls') > 0
+                           WHERE to_id = n.id AND kind = 'CALLS') > 0
                     ORDER BY caller_count DESC
                     LIMIT 3""",
                 (path, node_id),

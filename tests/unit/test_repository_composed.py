@@ -130,11 +130,6 @@ class TestSearchRepository:
         nodes_repo.upsert([dead, live_with_callers, caller])
         edges_repo.upsert([_edge(caller.id, live_with_callers.id)])
 
-        # Mark dead as dead code
-        db.connect().execute(
-            "UPDATE nodes SET is_dead_code = 1 WHERE id = ?", (dead.id,)
-        )
-
         candidates = repo.find_replacements(dead.id)
         assert len(candidates) >= 1
         assert any(c.name == "live_fn" for c in candidates)

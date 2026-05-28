@@ -53,6 +53,8 @@ def test_kept_edge_types_present():
         "CALLS",
         "CONTAINS",
         "COUPLED_WITH",
+        "IMPORTS",
+        "TESTED_BY",
     ):
         assert hasattr(EdgeType, kept)
 
@@ -60,7 +62,6 @@ def test_kept_edge_types_present():
 def test_dead_edge_types_absent():
     for removed in (
         "EXTENDS",
-        "IMPORTS",
         "MEMBER_OF",
         "CHILD_OF",
         "REFERENCES",

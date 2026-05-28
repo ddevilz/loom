@@ -56,6 +56,38 @@ def _load_schema() -> tuple[str, str]:
 _DDL_CORE, _DDL_FTS5 = _load_schema()
 
 
+def _derive_repo_name() -> str:
+    import os
+    # Try git remote origin
+    try:
+        url = subprocess.check_output(
+            ["git", "remote", "get-url", "origin"],
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        # Strip .git suffix, extract last path component
+        name = url.rstrip("/")
+        if name.endswith(".git"):
+            name = name[:-4]
+        name = name.rstrip("/")
+        name = name.split("/")[-1].split(":")[-1]
+        if name:
+            return name
+    except Exception:
+        pass
+    # Fallback: git root directory name
+    try:
+        root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        return os.path.basename(root)
+    except Exception:
+        pass
+    return "unknown"
+
+
 def _add_column_if_missing(conn: sqlite3.Connection, table: str, col: str, typedef: str) -> None:
     """Add a column to an existing table if it doesn't already exist.
 
@@ -87,6 +119,9 @@ def init_schema(conn: sqlite3.Connection) -> None:
     # Multi-agent authorship — added in 0.5.0
     _add_column_if_missing(conn, "nodes", "summary_author", "TEXT")
     _add_column_if_missing(conn, "nodes", "summary_session", "TEXT")
+    # v0.6.0 new columns
+    _add_column_if_missing(conn, "nodes", "complexity", "TEXT")
+    _add_column_if_missing(conn, "nodes", "tags_normalized", "TEXT DEFAULT ''")
     # Index on deleted_at must be created after the column migration
     conn.execute("CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at)")
     # node_visits table — added in 0.4.3
@@ -101,6 +136,48 @@ def init_schema(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_visits_session ON node_visits(session_id, visited_at DESC)"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_visits_node ON node_visits(node_id)")
+    # v0.6.0 new tables (idempotent via IF NOT EXISTS)
+    conn.execute("""CREATE TABLE IF NOT EXISTS file_fingerprints (
+        file_path    TEXT PRIMARY KEY,
+        content_sha  TEXT NOT NULL,
+        mtime_ns     INTEGER NOT NULL,
+        indexed_at   REAL NOT NULL
+    )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS node_tags (
+        node_id  TEXT NOT NULL,
+        tag      TEXT NOT NULL,
+        source   TEXT NOT NULL DEFAULT 'system',
+        UNIQUE(node_id, tag, source)
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_node_tags_tag  ON node_tags(tag, node_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_node_tags_node ON node_tags(node_id)")
+    # v0.6.0 EdgeType uppercase migration
+    conn.execute("UPDATE edges SET kind = UPPER(kind) WHERE kind != UPPER(kind)")
+    # v0.6.0 repo_name in meta (for 4-part node ID migration)
+    existing = conn.execute("SELECT value FROM meta WHERE key = 'repo_name'").fetchone()
+    if not existing:
+        repo_name = _derive_repo_name()
+        conn.execute("INSERT OR IGNORE INTO meta VALUES ('repo_name', ?)", (repo_name,))
+    # v0.6.0 migrate 3-part IDs to 4-part (idempotent: skip already-migrated IDs)
+    # Ensure parent_id column exists before migration
+    _add_column_if_missing(conn, "nodes", "parent_id", "TEXT")
+    repo_name = conn.execute("SELECT value FROM meta WHERE key = 'repo_name'").fetchone()[0]
+    conn.execute("""
+        UPDATE nodes SET id = (
+            kind || ':' || ? || ':' || substr(id, instr(id, ':') + 1)
+        ) WHERE id NOT LIKE '%:%:%:%'
+    """, (repo_name,))
+    conn.execute("""
+        UPDATE nodes SET parent_id = (
+            substr(parent_id, 1, instr(parent_id, ':') - 1) || ':' || ? || ':' ||
+            substr(parent_id, instr(parent_id, ':') + 1)
+        ) WHERE parent_id IS NOT NULL AND parent_id NOT LIKE '%:%:%:%'
+    """, (repo_name,))
+    # v0.6.0 remove is_dead_code column (replaced by "dead-code" tag)
+    try:
+        conn.execute("ALTER TABLE nodes DROP COLUMN is_dead_code")
+    except Exception:
+        pass  # Already removed or not supported
     conn.commit()
 
 

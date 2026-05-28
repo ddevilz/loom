@@ -46,24 +46,29 @@ async def mark_dead_code(db: DB) -> int:
             conn = db.connect()
             conn.execute("BEGIN IMMEDIATE")
             try:
-                conn.execute("UPDATE nodes SET is_dead_code = 0")
-                cur = conn.execute(
-                    """UPDATE nodes SET is_dead_code = 1
+                # Clear existing dead-code tags
+                conn.execute("DELETE FROM node_tags WHERE tag = 'dead-code' AND source = 'system'")
+                # Find dead nodes: function/method with zero incoming CALLS
+                dead_rows_cur = conn.execute(
+                    """SELECT id, name, path, summary, metadata FROM nodes
                         WHERE kind IN ('function','method')
+                          AND deleted_at IS NULL
                           AND id NOT IN (
-                              SELECT DISTINCT to_id FROM edges WHERE kind = 'calls'
+                              SELECT DISTINCT to_id FROM edges WHERE kind = 'CALLS'
                           )"""
                 )
-                dead_count = cur.rowcount
+                dead_rows = dead_rows_cur.fetchall()
+                dead_count = len(dead_rows)
 
                 if dead_count == 0:
                     conn.commit()
                     return 0
 
-                # Enrich dead nodes with reason + replacement candidates
-                dead_rows = conn.execute(
-                    "SELECT id, name, path, summary, metadata FROM nodes WHERE is_dead_code = 1"
-                ).fetchall()
+                # Tag dead nodes
+                conn.executemany(
+                    "INSERT OR IGNORE INTO node_tags (node_id, tag, source) VALUES (?, 'dead-code', 'system')",
+                    [(row["id"],) for row in dead_rows],
+                )
 
                 for row in dead_rows:
                     node_id = row["id"]
@@ -78,15 +83,14 @@ async def mark_dead_code(db: DB) -> int:
                     candidates = conn.execute(
                         """SELECT n.id, n.name, n.path,
                                   (SELECT COUNT(*) FROM edges
-                                   WHERE to_id = n.id AND kind = 'calls') AS caller_count
+                                   WHERE to_id = n.id AND kind = 'CALLS') AS caller_count
                              FROM nodes n
                             WHERE n.path = ?
                               AND n.kind IN ('function', 'method')
                               AND n.deleted_at IS NULL
-                              AND n.is_dead_code = 0
                               AND n.id != ?
                               AND (SELECT COUNT(*) FROM edges
-                                   WHERE to_id = n.id AND kind = 'calls') > 0
+                                   WHERE to_id = n.id AND kind = 'CALLS') > 0
                             ORDER BY caller_count DESC
                             LIMIT 3""",
                         (path, node_id),
