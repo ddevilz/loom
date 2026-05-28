@@ -7,6 +7,7 @@ Contains:
 Tracers (python.py, typescript.py, java.py) are NOT yet refactored to extend
 BaseCallTracer — that happens in a follow-up PR.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

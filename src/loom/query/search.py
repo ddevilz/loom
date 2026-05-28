@@ -9,7 +9,7 @@ from loom.graph.db import DB
 from loom.graph.models import Node
 from loom.store.nodes import row_to_node
 
-_TAG_RE = _re.compile(r'\btag:(\S+)')
+_TAG_RE = _re.compile(r"\btag:(\S+)")
 
 
 @dataclass

@@ -3,6 +3,7 @@
 Moved from ingest/code/languages/html.py. Private DOM helpers extracted
 into dom_utils.py to reduce module size.
 """
+
 from __future__ import annotations
 
 import logging
@@ -70,11 +71,20 @@ from loom.indexer.languages.constants import (
 )
 from loom.indexer.languages.markup.dom_utils import (
     _CUSTOM_TAG_RE,
-    _inputs_recursive,
+)
+from loom.indexer.languages.markup.dom_utils import (
     attr_map as _attr_map,
+)
+from loom.indexer.languages.markup.dom_utils import (
     collect_form_inputs as _collect_form_inputs_raw,
+)
+from loom.indexer.languages.markup.dom_utils import (
     detect_framework as _detect_framework,
+)
+from loom.indexer.languages.markup.dom_utils import (
     get_tag_name as _get_tag_name,
+)
+from loom.indexer.languages.markup.dom_utils import (
     slugify as _slugify,
 )
 

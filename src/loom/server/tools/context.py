@@ -1,11 +1,11 @@
 """context.py — get_context MCP tool."""
+
 from __future__ import annotations
 
 
 def register(mcp: object, db: object, session: dict, cache: object) -> None:
     from loom.graph.models import SummarySource
     from loom.query.context import get_context_packet
-
     from loom.server.enums import ErrorCode
     from loom.server.validation import MAX_ID, err, ok, validate_text
 

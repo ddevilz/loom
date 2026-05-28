@@ -3,6 +3,7 @@
 Extracted from src/loom/store/savings.py (async), converted to pure synchronous
 methods.
 """
+
 from __future__ import annotations
 
 import time

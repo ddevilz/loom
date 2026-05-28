@@ -3,6 +3,7 @@
 Calibrated against Loom codebase (415 functions): p50=13 lines, p90=58 lines.
 Thresholds target top ~10% as COMPLEX.
 """
+
 from __future__ import annotations
 
 from tree_sitter import Node as TSNode
@@ -11,36 +12,60 @@ from loom.graph.models.enums import Complexity
 
 # Threshold constants — tune these without touching logic
 COMPLEX_BRANCHES = 8
-COMPLEX_NESTING  = 4
-COMPLEX_LINES    = 60
-SIMPLE_BRANCHES  = 3
-SIMPLE_NESTING   = 2
-SIMPLE_LINES     = 25
+COMPLEX_NESTING = 4
+COMPLEX_LINES = 60
+SIMPLE_BRANCHES = 3
+SIMPLE_NESTING = 2
+SIMPLE_LINES = 25
 
 # OR for COMPLEX (any one signal sufficient), AND for SIMPLE (all three must be low)
-BRIDGE_MIN_INDEGREE  = 3  # used by GraphTagger
+BRIDGE_MIN_INDEGREE = 3  # used by GraphTagger
 BRIDGE_MIN_OUTDEGREE = 3
 
 BRANCH_NODES: dict[str, set[str]] = {
     "python": {
-        "if_statement", "for_statement", "while_statement",
-        "try_statement", "except_clause", "match_statement",
-        "case_clause", "conditional_expression", "boolean_operator",
+        "if_statement",
+        "for_statement",
+        "while_statement",
+        "try_statement",
+        "except_clause",
+        "match_statement",
+        "case_clause",
+        "conditional_expression",
+        "boolean_operator",
     },
     "typescript": {
-        "if_statement", "for_statement", "while_statement",
-        "for_in_statement", "switch_statement", "case",
-        "try_statement", "catch_clause", "ternary_expression",
+        "if_statement",
+        "for_statement",
+        "while_statement",
+        "for_in_statement",
+        "switch_statement",
+        "case",
+        "try_statement",
+        "catch_clause",
+        "ternary_expression",
     },
     "javascript": {
-        "if_statement", "for_statement", "while_statement",
-        "for_in_statement", "switch_statement", "case",
-        "try_statement", "catch_clause", "ternary_expression",
+        "if_statement",
+        "for_statement",
+        "while_statement",
+        "for_in_statement",
+        "switch_statement",
+        "case",
+        "try_statement",
+        "catch_clause",
+        "ternary_expression",
     },
     "java": {
-        "if_statement", "for_statement", "while_statement",
-        "enhanced_for_statement", "switch_expression", "case",
-        "try_statement", "catch_clause", "ternary_expression",
+        "if_statement",
+        "for_statement",
+        "while_statement",
+        "enhanced_for_statement",
+        "switch_expression",
+        "case",
+        "try_statement",
+        "catch_clause",
+        "ternary_expression",
     },
 }
 
@@ -83,8 +108,8 @@ def classify_complexity(ts_node: TSNode, language: str) -> Complexity:
     Uses OR for COMPLEX (any signal sufficient) and AND for SIMPLE (all must be low).
     """
     branches = count_branch_nodes(ts_node, language)
-    nesting  = compute_max_nesting(ts_node, language)
-    lines    = ts_node.end_point[0] - ts_node.start_point[0]
+    nesting = compute_max_nesting(ts_node, language)
+    lines = ts_node.end_point[0] - ts_node.start_point[0]
 
     if branches >= COMPLEX_BRANCHES or nesting >= COMPLEX_NESTING or lines >= COMPLEX_LINES:
         return Complexity.COMPLEX

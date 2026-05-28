@@ -6,6 +6,7 @@ Provides:
     parse_code(path) — parse single file into Node list
     parse_repo(root) — parse entire repo into Node list
 """
+
 from __future__ import annotations
 
 import logging

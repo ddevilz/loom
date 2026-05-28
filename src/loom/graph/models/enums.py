@@ -12,9 +12,9 @@ else:
 
 
 class Complexity(StrEnum):
-    SIMPLE   = "simple"
+    SIMPLE = "simple"
     MODERATE = "moderate"
-    COMPLEX  = "complex"
+    COMPLEX = "complex"
 
 
 class SummarySource(StrEnum):

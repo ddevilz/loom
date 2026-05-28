@@ -6,8 +6,7 @@ import sqlite3
 import time
 
 from loom.graph.db import DB
-from loom.graph.models import Edge
-from loom.graph.models import Node, NodeKind, NodeSource
+from loom.graph.models import Edge, Node, NodeKind, NodeSource
 
 _TOKENS_PER_LINE = 15  # avg chars/line ~60, chars/token ~4 → 15 tokens/line
 
@@ -371,8 +370,6 @@ def get_export_rows(db: DB) -> tuple[list[sqlite3.Row], list[sqlite3.Row]]:
     """Return (node_rows, edge_rows) for HTML graph export. Synchronous — call inside to_thread."""
     with db._lock:
         conn = db.connect()
-        node_rows = conn.execute(
-            "SELECT id, kind, name, path, language FROM nodes"
-        ).fetchall()
+        node_rows = conn.execute("SELECT id, kind, name, path, language FROM nodes").fetchall()
         edge_rows = conn.execute("SELECT from_id, to_id, kind FROM edges").fetchall()
     return node_rows, edge_rows

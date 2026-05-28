@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import tree_sitter_java as _ts_java
 from tree_sitter import Language as _Language
@@ -216,14 +216,14 @@ def _extract_from_def(
             metadata["is_record"] = True
 
         symbol = _qualname(ctx, name, package)
-        out.append(
-            build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata=metadata)
-        )
+        out.append(build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata=metadata))
 
         body = n.child_by_field_name("body")
         if body is not None:
             ctx.push_class(name)
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, package=package)
+            _walk(
+                path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, package=package
+            )
             ctx.pop_class()
         return
 
@@ -257,12 +257,12 @@ def _extract_from_def(
             if functional_counts["method_ref_count"] > 0:
                 metadata["method_ref_count"] = functional_counts["method_ref_count"]
 
-        out.append(
-            build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata=metadata)
-        )
+        out.append(build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata=metadata))
 
         if body is not None:
-            _walk(path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, package=package)
+            _walk(
+                path=path, src=src, n=body, ctx=ctx, out=out, build_node=build_node, package=package
+            )
         return
 
 
@@ -286,10 +286,26 @@ def _walk(
             TS_JAVA_METHOD_DECL,
             TS_JAVA_CTOR_DECL,
         }:
-            _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, package=package)
+            _extract_from_def(
+                path=path,
+                src=src,
+                n=child,
+                ctx=ctx,
+                out=out,
+                build_node=build_node,
+                package=package,
+            )
         else:
             if child.child_count:
-                _walk(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node, package=package)
+                _walk(
+                    path=path,
+                    src=src,
+                    n=child,
+                    ctx=ctx,
+                    out=out,
+                    build_node=build_node,
+                    package=package,
+                )
 
 
 def _extract_package(src: bytes, root: TSNode) -> str:

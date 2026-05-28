@@ -6,8 +6,7 @@ from typing import Any
 import networkx as nx
 
 from loom.graph.db import DB
-from loom.graph.models import EdgeType
-from loom.graph.models import Node
+from loom.graph.models import EdgeType, Node
 from loom.store.nodes import get_node as _get_node
 from loom.store.nodes import row_to_node
 

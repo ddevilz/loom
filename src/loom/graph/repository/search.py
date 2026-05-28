@@ -3,6 +3,7 @@
 Extracted from src/loom/query/search.py (async), converted to pure synchronous
 methods.
 """
+
 from __future__ import annotations
 
 import re
@@ -13,7 +14,7 @@ from loom.graph.db import DB
 from loom.graph.models import Node
 from loom.graph.repository.nodes import row_to_node
 
-_TAG_RE = re.compile(r'\btag:(\S+)')
+_TAG_RE = re.compile(r"\btag:(\S+)")
 
 
 def parse_tag_query(q: str) -> tuple[list[str], str]:
@@ -104,7 +105,11 @@ class SearchRepository:
                             (*tags, fts_query, limit),
                         ).fetchall()
                         return [
-                            SearchResult(node=row_to_node(r), score=r["_score"], caller_count=r["_caller_count"])
+                            SearchResult(
+                                node=row_to_node(r),
+                                score=r["_score"],
+                                caller_count=r["_caller_count"],
+                            )
                             for r in rows
                         ]
                     except sqlite3.OperationalError:
@@ -173,9 +178,7 @@ class SearchRepository:
                 (f"%{query}%", limit),
             ).fetchall()
             return [
-                SearchResult(
-                    node=row_to_node(r), score=1.0, caller_count=r["_caller_count"]
-                )
+                SearchResult(node=row_to_node(r), score=1.0, caller_count=r["_caller_count"])
                 for r in rows
             ]
 
@@ -190,9 +193,7 @@ class SearchRepository:
         with self._db._lock:
             conn = self._db.connect()
             # Look up the node's path first
-            row = conn.execute(
-                "SELECT path FROM nodes WHERE id = ?", (node_id,)
-            ).fetchone()
+            row = conn.execute("SELECT path FROM nodes WHERE id = ?", (node_id,)).fetchone()
             if row is None:
                 return []
             path = row["path"]

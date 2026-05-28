@@ -1,4 +1,5 @@
 """search.py — search_code MCP tool."""
+
 from __future__ import annotations
 
 
@@ -10,10 +11,15 @@ def _is_test_path(path: str) -> bool:
 def register(mcp: object, db: object, session: dict, cache: object) -> None:
     from loom.graph.models import SummarySource
     from loom.query.search import find_replacement_candidates, search
+    from loom.server.validation import (
+        MAX_QUERY,
+        clamp_limit,
+        compute_confidence,
+        err,
+        ok,
+        validate_text,
+    )
     from loom.store.savings import log_saving
-
-    from loom.server.enums import ErrorCode
-    from loom.server.validation import MAX_ID, MAX_QUERY, clamp_limit, compute_confidence, err, ok, validate_text
 
     async def _log(node_id: str, tool: str) -> None:
         from loom.store.node_visits import log_visit
@@ -31,7 +37,6 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         Test-file nodes are deprioritised (score penalty applied).
         Nodes that are dead but have a live replacement are injected with suggested_instead=true.
         """
-        from loom.server.validation import err, ok
 
         try:
             q = validate_text(query, field="query", max_length=MAX_QUERY)

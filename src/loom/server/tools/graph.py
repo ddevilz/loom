@@ -1,14 +1,14 @@
 """graph.py — graph traversal MCP tools."""
+
 from __future__ import annotations
 
 
 def register(mcp: object, db: object, session: dict, cache: object) -> None:
+    from loom.intelligence.cohesion import get_community_cohesion
     from loom.query import traversal
     from loom.query.blast_radius import build_blast_radius_payload
-    from loom.intelligence.cohesion import get_community_cohesion
-
-    from loom.server.validation import MAX_ID, clamp_depth, clamp_limit, err, ok, validate_text
     from loom.server.enums import ErrorCode
+    from loom.server.validation import MAX_ID, clamp_depth, clamp_limit, err, ok, validate_text
 
     async def _log(node_id: str, tool: str) -> None:
         from loom.store.node_visits import log_visit

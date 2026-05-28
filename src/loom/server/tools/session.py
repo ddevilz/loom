@@ -1,14 +1,14 @@
 """session.py — session management and status MCP tools."""
+
 from __future__ import annotations
 
 
 def register(mcp: object, db: object, session: dict, run_mod: object) -> None:
-    from loom.store.node_visits import get_annotation_gaps, get_unannotated_reads
-    from loom.store.sessions import create_session, get_latest_session_for_agent, get_session
     from loom.query.delta import get_delta_payload
-
     from loom.server.enums import ErrorCode
     from loom.server.validation import err, ok, validate_text
+    from loom.store.node_visits import get_annotation_gaps, get_unannotated_reads
+    from loom.store.sessions import create_session, get_latest_session_for_agent, get_session
 
     @mcp.tool()
     async def start_session(agent_id: str = "default") -> dict:

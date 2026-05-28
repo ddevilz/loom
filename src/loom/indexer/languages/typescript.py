@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import tree_sitter_typescript as _ts_typescript
 from tree_sitter import Language as _Language
@@ -103,12 +103,22 @@ def _extract_from_def(
         if declaration:
             # Try normal definition extraction first
             _extract_from_def(
-                path=path, src=src, n=declaration, ctx=ctx, out=out, language=language,
+                path=path,
+                src=src,
+                n=declaration,
+                ctx=ctx,
+                out=out,
+                language=language,
                 build_node=build_node,
             )
             # Also try const function pattern (export const x = () => {})
             _try_extract_const_function(
-                path=path, src=src, n=declaration, ctx=ctx, out=out, language=language,
+                path=path,
+                src=src,
+                n=declaration,
+                ctx=ctx,
+                out=out,
+                language=language,
                 build_node=build_node,
             )
         return
@@ -166,9 +176,7 @@ def _extract_from_def(
                 metadata["is_async"] = True
                 break
 
-        out.append(
-            build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata=metadata)
-        )
+        out.append(build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata=metadata))
 
         body = n.child_by_field_name("body")
         if body is not None:
@@ -195,7 +203,9 @@ def _extract_from_def(
         metadata = _function_metadata(src, n, name=name)
 
         out.append(
-            build_node(n, src, path, kind=NodeKind.METHOD, name=name, symbol=symbol, metadata=metadata)
+            build_node(
+                n, src, path, kind=NodeKind.METHOD, name=name, symbol=symbol, metadata=metadata
+            )
         )
 
         if body is not None:
@@ -287,7 +297,9 @@ def _try_extract_const_function(
         body = value_node.child_by_field_name("body")
 
         out.append(
-            build_node(n, src, path, kind=NodeKind.FUNCTION, name=name, symbol=name, metadata=metadata)
+            build_node(
+                n, src, path, kind=NodeKind.FUNCTION, name=name, symbol=name, metadata=metadata
+            )
         )
 
         if body is not None:
@@ -308,7 +320,13 @@ def _try_extract_const_function(
 
 
 def _walk(
-    *, path: str, src: bytes, n: TSNode, ctx: _BaseContext, out: list[Node], language: str,
+    *,
+    path: str,
+    src: bytes,
+    n: TSNode,
+    ctx: _BaseContext,
+    out: list[Node],
+    language: str,
     build_node: _BuildNodeFn,
 ) -> None:
     for child in n.children:
@@ -324,18 +342,33 @@ def _walk(
             TS_JS_EXPORT_STATEMENT,
         }:
             _extract_from_def(
-                path=path, src=src, n=child, ctx=ctx, out=out, language=language,
+                path=path,
+                src=src,
+                n=child,
+                ctx=ctx,
+                out=out,
+                language=language,
                 build_node=build_node,
             )
         elif _try_extract_const_function(
-            path=path, src=src, n=child, ctx=ctx, out=out, language=language,
+            path=path,
+            src=src,
+            n=child,
+            ctx=ctx,
+            out=out,
+            language=language,
             build_node=build_node,
         ):
             pass
         else:
             if child.child_count:
                 _walk(
-                    path=path, src=src, n=child, ctx=ctx, out=out, language=language,
+                    path=path,
+                    src=src,
+                    n=child,
+                    ctx=ctx,
+                    out=out,
+                    language=language,
                     build_node=build_node,
                 )
 
@@ -373,7 +406,11 @@ class TypeScriptHandler(BaseLanguageHandler):
         )
         if is_tsx:
             file_node_id = f"file:{rel_path}"
-            out.extend(extract_jsx_nodes(rel_path, source, tree.root_node, lang, file_node_id, build_node=build_node))
+            out.extend(
+                extract_jsx_nodes(
+                    rel_path, source, tree.root_node, lang, file_node_id, build_node=build_node
+                )
+            )
         return out
 
 
@@ -411,5 +448,9 @@ def parse_typescript(path: str, *, exclude_tests: bool = False) -> list[Node]:  
     )
     if is_tsx:
         file_node_id = f"file:{norm_path}"
-        out.extend(extract_jsx_nodes(norm_path, src, tree.root_node, lang, file_node_id, build_node=build_node))
+        out.extend(
+            extract_jsx_nodes(
+                norm_path, src, tree.root_node, lang, file_node_id, build_node=build_node
+            )
+        )
     return out

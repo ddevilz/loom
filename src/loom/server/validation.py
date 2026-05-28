@@ -1,4 +1,5 @@
 """validation.py — request validation helpers and response constructors."""
+
 from __future__ import annotations
 
 from .enums import Confidence, ConfidenceSignal, ErrorCode

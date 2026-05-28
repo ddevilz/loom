@@ -9,6 +9,7 @@ Usage:
     repo = Repository(db)
     node = repo.nodes.get("function:src/auth.py:validate_token")
 """
+
 from __future__ import annotations
 
 from loom.graph.db import DB

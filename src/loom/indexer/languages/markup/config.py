@@ -12,8 +12,8 @@ try:
 except ImportError:
     import tomli as tomllib  # type: ignore[no-redef]  # 3.10 fallback
 
-from loom.graph.models import Node, NodeKind, NodeSource
 from loom.graph.content_hash import content_hash_bytes
+from loom.graph.models import Node, NodeKind, NodeSource
 from loom.indexer.languages.constants import (
     FILETYPE_APPLICATION_CONFIG,
     FILETYPE_DOCKER_COMPOSE,

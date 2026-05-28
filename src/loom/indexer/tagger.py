@@ -5,6 +5,7 @@ metadata and returns a mapping of node_id -> [tags].  No database access occurs
 here; the pipeline is responsible for persisting the result via
 repo.tags.add_tags().
 """
+
 from __future__ import annotations
 
 import re
@@ -18,53 +19,53 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 DECORATOR_TAGS: dict[str, str] = {
-    "@app.route":       "api-endpoint",
-    "@router.":         "api-endpoint",
-    "@pytest.fixture":  "test-fixture",
-    "@abstractmethod":  "interface",
-    "@staticmethod":    "static",
-    "@classmethod":     "class-method",
-    "@property":        "property",
-    "@contextmanager":  "context-manager",
-    "@celery.task":     "async-task",
-    "@Controller":      "api-endpoint",
-    "@Injectable":      "service",
-    "@Component":       "framework-component",
-    "@RestController":  "api-endpoint",
-    "@Service":         "service",
-    "@Repository":      "repository",
-    "@Test":            "test",
+    "@app.route": "api-endpoint",
+    "@router.": "api-endpoint",
+    "@pytest.fixture": "test-fixture",
+    "@abstractmethod": "interface",
+    "@staticmethod": "static",
+    "@classmethod": "class-method",
+    "@property": "property",
+    "@contextmanager": "context-manager",
+    "@celery.task": "async-task",
+    "@Controller": "api-endpoint",
+    "@Injectable": "service",
+    "@Component": "framework-component",
+    "@RestController": "api-endpoint",
+    "@Service": "service",
+    "@Repository": "repository",
+    "@Test": "test",
 }
 
 IMPORT_TAGS: dict[str, list[str]] = {
-    "jwt":        ["auth", "jwt"],
-    "oauth":      ["auth", "oauth"],
-    "bcrypt":     ["auth", "crypto"],
-    "passlib":    ["auth", "crypto"],
+    "jwt": ["auth", "jwt"],
+    "oauth": ["auth", "oauth"],
+    "bcrypt": ["auth", "crypto"],
+    "passlib": ["auth", "crypto"],
     "sqlalchemy": ["database", "orm"],
-    "psycopg":    ["database"],
-    "redis":      ["cache"],
-    "celery":     ["async-task", "queue"],
-    "flask":      ["web"],
-    "fastapi":    ["web", "api"],
-    "django":     ["web"],
-    "express":    ["web"],
-    "logging":    ["observability"],
-    "structlog":  ["observability"],
+    "psycopg": ["database"],
+    "redis": ["cache"],
+    "celery": ["async-task", "queue"],
+    "flask": ["web"],
+    "fastapi": ["web", "api"],
+    "django": ["web"],
+    "express": ["web"],
+    "logging": ["observability"],
+    "structlog": ["observability"],
 }
 
 DIR_TAGS: dict[str, str] = {
     "middleware": "middleware",
-    "utils":      "utility",
-    "helpers":    "utility",
+    "utils": "utility",
+    "helpers": "utility",
     "migrations": "migration",
-    "fixtures":   "test-data",
-    "scripts":    "script",
-    "proto":      "grpc",
-    "graphql":    "graphql",
-    "commands":   "cli",
-    "workers":    "async-worker",
-    "hooks":      "hook",
+    "fixtures": "test-data",
+    "scripts": "script",
+    "proto": "grpc",
+    "graphql": "graphql",
+    "commands": "cli",
+    "workers": "async-worker",
+    "hooks": "hook",
 }
 
 # Precompile the path-segment splitter (handles both / and \)

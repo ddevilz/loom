@@ -1,8 +1,9 @@
 """FingerprintRepository — file-level change detection storage."""
+
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
+
 from loom.graph.db import DB
 
 

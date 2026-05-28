@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import tree_sitter_javascript as _ts_javascript
 from tree_sitter import Language as _Language
@@ -74,9 +74,7 @@ def _extract_from_def(
         kind = NodeKind.FUNCTION
         symbol = name
 
-        out.append(
-            build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata={})
-        )
+        out.append(build_node(n, src, path, kind=kind, name=name, symbol=symbol, metadata={}))
 
         body = n.child_by_field_name("body")
         if body is not None:
@@ -146,7 +144,9 @@ def _try_extract_const_function(
                 break
 
         out.append(
-            build_node(n, src, path, kind=NodeKind.FUNCTION, name=name, symbol=name, metadata=metadata)
+            build_node(
+                n, src, path, kind=NodeKind.FUNCTION, name=name, symbol=name, metadata=metadata
+            )
         )
 
         body = value_node.child_by_field_name("body")
@@ -177,7 +177,9 @@ def _walk(
             TS_JS_ARROW_FUNCTION,
         }:
             _extract_from_def(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node)
-        elif _try_extract_const_function(path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node):
+        elif _try_extract_const_function(
+            path=path, src=src, n=child, ctx=ctx, out=out, build_node=build_node
+        ):
             pass
         else:
             if child.child_count:
@@ -209,7 +211,16 @@ class JavaScriptHandler(BaseLanguageHandler):
         )
         if is_jsx:
             file_node_id = f"file:{rel_path}"
-            out.extend(extract_jsx_nodes(rel_path, source, tree.root_node, LANG_JAVASCRIPT, file_node_id, build_node=self._build_node))
+            out.extend(
+                extract_jsx_nodes(
+                    rel_path,
+                    source,
+                    tree.root_node,
+                    LANG_JAVASCRIPT,
+                    file_node_id,
+                    build_node=self._build_node,
+                )
+            )
         return out
 
 
@@ -239,5 +250,14 @@ def parse_javascript(path: str, *, exclude_tests: bool = False) -> list[Node]:  
     )
     if is_jsx:
         file_node_id = f"file:{norm_path}"
-        out.extend(extract_jsx_nodes(norm_path, src, tree.root_node, LANG_JAVASCRIPT, file_node_id, build_node=handler._build_node))
+        out.extend(
+            extract_jsx_nodes(
+                norm_path,
+                src,
+                tree.root_node,
+                LANG_JAVASCRIPT,
+                file_node_id,
+                build_node=handler._build_node,
+            )
+        )
     return out

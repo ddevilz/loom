@@ -1,4 +1,5 @@
 """cache.py — in-process memo cache for MCP tool results."""
+
 from __future__ import annotations
 
 import time

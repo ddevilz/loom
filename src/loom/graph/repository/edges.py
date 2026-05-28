@@ -3,6 +3,7 @@
 Extracted from src/loom/store/edges.py (async), converted to pure synchronous
 methods. Also adds get_for_node and delete_for_path which are new query methods.
 """
+
 from __future__ import annotations
 
 import json

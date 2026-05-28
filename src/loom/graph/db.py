@@ -64,9 +64,7 @@ def _derive_repo_name() -> str:
     # Try git remote origin
     try:
         url = subprocess.check_output(
-            ["git", "remote", "get-url", "origin"],
-            stderr=subprocess.DEVNULL,
-            text=True
+            ["git", "remote", "get-url", "origin"], stderr=subprocess.DEVNULL, text=True
         ).strip()
         # Strip .git suffix, extract last path component
         name = url.rstrip("/")
@@ -81,9 +79,7 @@ def _derive_repo_name() -> str:
     # Fallback: git root directory name
     try:
         root = subprocess.check_output(
-            ["git", "rev-parse", "--show-toplevel"],
-            stderr=subprocess.DEVNULL,
-            text=True
+            ["git", "rev-parse", "--show-toplevel"], stderr=subprocess.DEVNULL, text=True
         ).strip()
         return Path(root).name
     except Exception:
@@ -166,33 +162,45 @@ def init_schema(conn: sqlite3.Connection) -> None:
     repo_name = conn.execute("SELECT value FROM meta WHERE key = 'repo_name'").fetchone()[0]
     # Migrate non-file 3-part IDs (kind:path:symbol → kind:repo:path:symbol, 2 colons → 3 colons).
     # File nodes are already "complete" at 3 parts (file:repo:path), so exclude them.
-    conn.execute("""
+    conn.execute(
+        """
         UPDATE nodes SET id = kind || ':' || ? || ':' || substr(id, instr(id, ':') + 1)
         WHERE kind != 'file'
           AND (length(id) - length(replace(id, ':', ''))) = 2
-    """, (repo_name,))
+    """,
+        (repo_name,),
+    )
     # Migrate 2-part IDs (file:path → file:repo:path, 1 colon → 2 colons)
-    conn.execute("""
+    conn.execute(
+        """
         UPDATE nodes SET id = kind || ':' || ? || ':' || substr(id, instr(id, ':') + 1)
         WHERE (length(id) - length(replace(id, ':', ''))) = 1
-    """, (repo_name,))
+    """,
+        (repo_name,),
+    )
     # Migrate parent_id non-file 3-part → 4-part
-    conn.execute("""
+    conn.execute(
+        """
         UPDATE nodes SET parent_id = (
             substr(parent_id, 1, instr(parent_id, ':') - 1) || ':' || ? || ':' ||
             substr(parent_id, instr(parent_id, ':') + 1)
         ) WHERE parent_id IS NOT NULL
           AND substr(parent_id, 1, instr(parent_id, ':') - 1) != 'file'
           AND (length(parent_id) - length(replace(parent_id, ':', ''))) = 2
-    """, (repo_name,))
+    """,
+        (repo_name,),
+    )
     # Migrate parent_id 2-part → 3-part
-    conn.execute("""
+    conn.execute(
+        """
         UPDATE nodes SET parent_id = (
             substr(parent_id, 1, instr(parent_id, ':') - 1) || ':' || ? || ':' ||
             substr(parent_id, instr(parent_id, ':') + 1)
         ) WHERE parent_id IS NOT NULL
           AND (length(parent_id) - length(replace(parent_id, ':', ''))) = 1
-    """, (repo_name,))
+    """,
+        (repo_name,),
+    )
     # v0.6.0 remove is_dead_code column (replaced by "dead-code" tag)
     if sqlite3.sqlite_version_info < (3, 35, 0):
         log.warning(

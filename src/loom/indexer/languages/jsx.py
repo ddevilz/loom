@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from tree_sitter import Node as TSNode
 
-from loom.graph.models import Node, NodeKind, NodeSource
 from loom.graph.content_hash import content_hash_for_line_span
+from loom.graph.models import Node, NodeKind, NodeSource
 from loom.indexer.languages.constants import (
     HTML_ARIA_PREFIX,
     HTML_ATTR_CLASS,
@@ -170,9 +171,14 @@ def extract_jsx_nodes(
                 metadata=meta,
             )
             # Override line numbers to reflect actual usage span
-            node = node.model_copy(update={"start_line": first_line, "end_line": last_line,
-                                           "content_hash": content_hash_for_line_span(src, first_line, last_line),
-                                           "language": language})
+            node = node.model_copy(
+                update={
+                    "start_line": first_line,
+                    "end_line": last_line,
+                    "content_hash": content_hash_for_line_span(src, first_line, last_line),
+                    "language": language,
+                }
+            )
         else:
             node_id = Node.make_code_id(NodeKind.FUNCTION, path, f"jsx_{comp_name}")
             node = Node(
@@ -213,9 +219,14 @@ def extract_jsx_nodes(
                 parent_id=file_node_id,
                 metadata=el_meta,
             )
-            node = node.model_copy(update={"start_line": line, "end_line": line,
-                                           "content_hash": content_hash_for_line_span(src, line, line),
-                                           "language": language})
+            node = node.model_copy(
+                update={
+                    "start_line": line,
+                    "end_line": line,
+                    "content_hash": content_hash_for_line_span(src, line, line),
+                    "language": language,
+                }
+            )
         else:
             node_id = Node.make_code_id(NodeKind.FUNCTION, path, f"jsx_id_{element_id}")
             node = Node(

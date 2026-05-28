@@ -3,6 +3,7 @@
 Extracted from src/loom/store/nodes.py (async) and
 src/loom/query/node_lookup.py (async), converted to pure synchronous methods.
 """
+
 from __future__ import annotations
 
 import json
@@ -89,9 +90,7 @@ class NodeRepository:
         """Return a single node by its exact id, or None."""
         with self._db._lock:
             conn = self._db.connect()
-            row = conn.execute(
-                "SELECT * FROM nodes WHERE id = ?", (node_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
             return row_to_node(row) if row else None
 
     def get_by_name(self, name: str, limit: int = 10) -> list[Node]:
@@ -145,8 +144,7 @@ class NodeRepository:
             by_kind = {
                 r["kind"]: r["c"]
                 for r in conn.execute(
-                    "SELECT kind, COUNT(*) AS c FROM nodes "
-                    "WHERE deleted_at IS NULL GROUP BY kind"
+                    "SELECT kind, COUNT(*) AS c FROM nodes WHERE deleted_at IS NULL GROUP BY kind"
                 ).fetchall()
             }
             by_edge = {
@@ -241,8 +239,7 @@ class NodeRepository:
                     }
 
                     conn.execute(
-                        "DELETE FROM edges "
-                        "WHERE from_id IN (SELECT id FROM nodes WHERE path = ?)",
+                        "DELETE FROM edges WHERE from_id IN (SELECT id FROM nodes WHERE path = ?)",
                         (rel_path,),
                     )
                     conn.execute("DELETE FROM nodes WHERE path = ?", (rel_path,))

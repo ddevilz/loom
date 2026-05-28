@@ -7,6 +7,7 @@ Contains:
 All language handlers (python.py, typescript.py, javascript.py, java.py) extend
 BaseLanguageHandler and use _build_node for consistent 4-part node ID generation.
 """
+
 from __future__ import annotations
 
 import logging
@@ -17,11 +18,10 @@ from typing import Any
 
 from tree_sitter import Node as TSNode
 
-from loom.graph.models import Node, NodeKind, NodeSource
-from loom.graph.models.enums import Complexity
 from loom.graph.content_hash import content_hash_for_line_span
-from loom.indexer.languages._ts_utils import lines as _lines
+from loom.graph.models import Node, NodeKind, NodeSource
 from loom.indexer.complexity import classify_complexity
+from loom.indexer.languages._ts_utils import lines as _lines
 
 logger = logging.getLogger(__name__)
 

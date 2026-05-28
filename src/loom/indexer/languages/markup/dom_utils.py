@@ -3,6 +3,7 @@
 Extracted from ingest/code/languages/html.py to eliminate duplication
 and provide a clean utility layer for HTML tree-sitter parsers.
 """
+
 from __future__ import annotations
 
 import re

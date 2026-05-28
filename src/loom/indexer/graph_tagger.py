@@ -3,6 +3,7 @@
 Computes dead-code, entry-point, hub, and bridge tags from edge structure.
 Pure computation — returns dict[node_id, list[tags]]. Caller writes to DB.
 """
+
 from __future__ import annotations
 
 import statistics
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 from loom.indexer.complexity import BRIDGE_MIN_INDEGREE, BRIDGE_MIN_OUTDEGREE
 
 
-def _get_degree_stats(repo: "Repository") -> tuple[dict[str, int], dict[str, int], list[str]]:
+def _get_degree_stats(repo: Repository) -> tuple[dict[str, int], dict[str, int], list[str]]:
     """Single query: (in_degrees, out_degrees, all_function_node_ids)."""
     conn = repo.db.connect()
     rows = conn.execute(
@@ -44,7 +45,7 @@ def _get_degree_stats(repo: "Repository") -> tuple[dict[str, int], dict[str, int
 
 
 def _get_entry_tags_for_zero_indegree(
-    repo: "Repository", zero_in_ids: list[str]
+    repo: Repository, zero_in_ids: list[str]
 ) -> dict[str, set[str]]:
     """Bulk-fetch entry-facing tags for zero-in-degree nodes. One query regardless of count."""
     if not zero_in_ids:
@@ -66,7 +67,7 @@ def _get_entry_tags_for_zero_indegree(
 ENTRY_DECORATOR_TAGS = frozenset({"api-endpoint", "async-task", "cli", "hook"})
 
 
-def compute_graph_tags(repo: "Repository") -> dict[str, list[str]]:
+def compute_graph_tags(repo: Repository) -> dict[str, list[str]]:
     """Compute dead-code, entry-point, hub, and bridge tags from graph structure.
 
     Returns dict[node_id -> list[tags]]. Does NOT write to DB — caller handles persistence.
