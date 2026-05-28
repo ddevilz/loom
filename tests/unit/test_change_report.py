@@ -177,7 +177,8 @@ def test_files_to_index_is_new_plus_changed(sync: IncrementalSync, repo: Reposit
     sha_m = sha256_of_file(f_mtime)
     mtime_m = os.stat(str(f_mtime)).st_mtime_ns
     repo.fingerprints.upsert([FileFingerprint(str(f_mtime), sha_m, mtime_m, time.time())])
-    os.utime(str(f_mtime), (os.stat(str(f_mtime)).st_mtime + 1.0, os.stat(str(f_mtime)).st_mtime + 1.0))
+    s = os.stat(str(f_mtime))
+    os.utime(str(f_mtime), (s.st_mtime + 1.0, s.st_mtime + 1.0))
 
     # Changed file
     f_changed = tmp_path / "changed.py"
@@ -186,7 +187,8 @@ def test_files_to_index_is_new_plus_changed(sync: IncrementalSync, repo: Reposit
     old_mtime_ns = os.stat(str(f_changed)).st_mtime_ns
     repo.fingerprints.upsert([FileFingerprint(str(f_changed), old_sha, old_mtime_ns, time.time())])
     f_changed.write_text("def modified(): pass\n")
-    os.utime(str(f_changed), (os.stat(str(f_changed)).st_mtime + 1.0, os.stat(str(f_changed)).st_mtime + 1.0))
+    s = os.stat(str(f_changed))
+    os.utime(str(f_changed), (s.st_mtime + 1.0, s.st_mtime + 1.0))
 
     discovered = [str(f_new), str(f_unchanged), str(f_mtime), str(f_changed)]
     report = sync.classify_changes(discovered)
@@ -217,3 +219,17 @@ def test_empty_discovered_puts_all_stored_in_deleted(sync: IncrementalSync, repo
     assert report.mtime_only == []
     assert report.unchanged == []
     assert set(report.deleted) == set(paths)
+
+
+# ---------------------------------------------------------------------------
+# Test 8: Vanished file — discovered then deleted before stat (TOCTOU race)
+# ---------------------------------------------------------------------------
+
+def test_vanished_file_goes_to_deleted(sync: IncrementalSync, tmp_path: Path) -> None:
+    """File discovered by walk then deleted before stat → treated as deleted, no crash."""
+    vanished = tmp_path / "gone.py"
+    vanished.write_text("pass\n")
+    vanished.unlink()  # delete before classify_changes runs
+
+    report = sync.classify_changes([str(vanished)])
+    assert str(vanished) in report.deleted
