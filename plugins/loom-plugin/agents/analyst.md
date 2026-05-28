@@ -6,11 +6,8 @@ tools:
   - mcp__loom__search_code
   - mcp__loom__get_context
   - mcp__loom__get_blast_radius
-  - mcp__loom__get_callers
-  - mcp__loom__get_callees
   - mcp__loom__get_neighbors
   - mcp__loom__get_community
-  - mcp__loom__get_community_cohesion
   - mcp__loom__shortest_path
   - mcp__loom__get_surprising_connections
   - mcp__loom__suggest_questions
@@ -53,7 +50,7 @@ Non-obvious edges — cross-module, peripheral-to-hub. These are the ones engine
 
 ### Step 5 — Community analysis
 ```
-get_community_cohesion()
+graph_stats(include_cohesion=True)
 ```
 If the target's community has low cohesion (<0.2), a change here has wide-reaching effects.
 

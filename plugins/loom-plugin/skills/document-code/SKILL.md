@@ -5,7 +5,6 @@ argument-hint: "[module or keyword to focus on]"
 allowed-tools:
   - mcp__loom__search_code
   - mcp__loom__get_context
-  - mcp__loom__get_node
   - mcp__loom__store_understanding
   - mcp__loom__store_understanding_batch
   - mcp__loom__suggest_questions

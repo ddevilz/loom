@@ -29,15 +29,12 @@ This ADR defines the plugin contract: what surfaces Loom exposes, what namespace
 | Tool | Purpose |
 |------|---------|
 | `search_code(query, limit)` | FTS5 search — returns summary + signature if cached |
-| `get_node(node_id)` | Single node lookup |
-| `get_context(node_id)` | Full context packet: summary, signature, callers, callees, staleness |
-| `get_callers(node_id)` | One-hop incoming CALLS |
-| `get_callees(node_id)` | One-hop outgoing CALLS |
+| `get_context(node_id, brief?, callers_limit?, callees_limit?)` | Full context packet: summary, callers, callees. `brief=True` = metadata only. |
 | `get_blast_radius(node_id, depth)` | Transitive callers via recursive CTE |
 | `get_neighbors(node_id, depth)` | All edges, both directions |
 | `get_community(community_id)` | Community member nodes |
 | `shortest_path(from_id, to_id)` | Shortest CALLS path |
-| `graph_stats()` | Node/edge counts by kind |
+| `graph_stats(include_cohesion?)` | Node/edge counts by kind. `include_cohesion=True` adds per-cluster scores. |
 | `god_nodes(limit)` | Most-called functions |
 | `store_understanding(node_id, summary, force)` | Write agent summary to SQLite |
 | `store_understanding_batch(updates)` | Batch summary writes (max 50) |
@@ -47,7 +44,6 @@ This ADR defines the plugin contract: what surfaces Loom exposes, what namespace
 | `get_delta(previous_session_id, agent_id)` | Changed nodes since last session |
 | `get_surprising_connections(limit)` | Non-obvious cross-module CALLS edges |
 | `suggest_questions(limit)` | Graph-topology-based investigation priorities |
-| `get_community_cohesion()` | Cohesion scores per cluster |
 | `get_work_plan()` | Prioritized action list: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING |
 
 **Resources (2):**

@@ -4,10 +4,7 @@ description: Navigate and understand a codebase using Loom context packets. Find
 argument-hint: "<keyword or question>"
 allowed-tools:
   - mcp__loom__search_code
-  - mcp__loom__get_node
   - mcp__loom__get_context
-  - mcp__loom__get_callers
-  - mcp__loom__get_callees
   - mcp__loom__get_blast_radius
   - mcp__loom__get_neighbors
   - mcp__loom__get_community
@@ -68,13 +65,13 @@ If `summary_stale: true` — mention to user that source changed and summary may
 
 For "who calls this?" questions:
 ```
-get_callers("<node_id>")
+get_context("<node_id>", callees_limit=0)
 get_blast_radius("<node_id>", depth=2)
 ```
 
 For "what does this depend on?":
 ```
-get_callees("<node_id>")
+get_context("<node_id>", callers_limit=0)
 ```
 
 For "how does A connect to B?":

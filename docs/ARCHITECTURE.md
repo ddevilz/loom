@@ -49,7 +49,7 @@ src/loom/
 │   ├── communities.py       # Louvain community detection (NetworkX)
 │   ├── coupling.py          # git co-change analysis → COUPLED_WITH edges
 │   ├── dead_code.py         # mark functions with no incoming CALLS
-│   ├── graph_insights.py    # get_surprising_connections(), suggest_questions(), get_community_cohesion()
+│   ├── graph_insights.py    # get_surprising_connections(), suggest_questions()
 │   └── code/
 │       ├── parser.py        # parse_code(), parse_repo()
 │       ├── extractor.py     # extract_summary() — static summary from metadata

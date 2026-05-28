@@ -4,10 +4,7 @@ description: Code exploration specialist. Uses Loom search tools to navigate unf
 model: sonnet
 tools:
   - mcp__loom__search_code
-  - mcp__loom__get_node
   - mcp__loom__get_context
-  - mcp__loom__get_callers
-  - mcp__loom__get_callees
   - mcp__loom__get_blast_radius
   - mcp__loom__get_neighbors
   - mcp__loom__get_community
@@ -16,7 +13,6 @@ tools:
   - mcp__loom__god_nodes
   - mcp__loom__suggest_questions
   - mcp__loom__get_surprising_connections
-  - mcp__loom__get_community_cohesion
   - mcp__loom__start_session
   - mcp__loom__get_delta
   - mcp__loom__get_status
@@ -59,14 +55,14 @@ If `summary_stale: true` — source changed, re-read and update summary.
 ## Answering "What calls X?"
 
 ```
-get_callers("function:src/auth.py:validate_token")   # one-hop
-get_blast_radius("function:src/auth.py:validate_token", depth=3)  # transitive
+get_context("function:src/auth.py:validate_token", callees_limit=0)  # callers only
+get_blast_radius("function:src/auth.py:validate_token", depth=3)     # transitive
 ```
 
 ## Answering "What does X depend on?"
 
 ```
-get_callees("function:src/auth.py:validate_token")
+get_context("function:src/auth.py:validate_token", callers_limit=0)  # callees only
 get_neighbors("function:src/auth.py:validate_token", depth=2)
 ```
 
@@ -81,7 +77,7 @@ shortest_path("function:src/api.py:handle_request", "function:src/db.py:execute"
 ```
 graph_stats()                    # node/edge counts by kind
 god_nodes(limit=10)              # most-called functions (entry points)
-get_community_cohesion()         # cluster cohesion — low = refactor candidate
+graph_stats(include_cohesion=True)   # per-cluster cohesion — low = refactor candidate
 get_surprising_connections()     # unexpected cross-module dependencies
 ```
 

@@ -4,7 +4,6 @@ description: Documentation specialist. Reads functions and stores one-sentence s
 model: sonnet
 tools:
   - mcp__loom__search_code
-  - mcp__loom__get_node
   - mcp__loom__get_context
   - mcp__loom__store_understanding
   - mcp__loom__store_understanding_batch

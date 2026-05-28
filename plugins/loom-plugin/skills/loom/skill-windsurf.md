@@ -52,8 +52,8 @@ Returns: summary, signature, callers (top 10), callees (top 10), staleness flag.
 
 ```
 get_blast_radius("function:src/auth.py:validate_token", depth=3)
-get_callers(node_id)
-get_callees(node_id)
+get_context(node_id, callees_limit=0)   # callers only
+get_context(node_id, callers_limit=0)   # callees only
 ```
 
 ## Storing understanding (do this every time)
@@ -74,7 +74,7 @@ store_understanding_batch([{"node_id": "...", "summary": "..."}, ...])
 ```
 suggest_questions()           # dead code, bridge nodes, missing summaries
 get_surprising_connections()  # cross-module hidden coupling
-get_community_cohesion()      # cluster cohesion scores — low (<0.2) = refactor
+graph_stats(include_cohesion=True)   # per-cluster cohesion — low (<0.2) = refactor
 get_work_plan()               # prioritized next actions: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING
 ```
 

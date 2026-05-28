@@ -78,8 +78,8 @@ If `summary_stale: true` → read source, update summary.
 
 ```
 get_blast_radius("function:src/auth.py:validate_token", depth=3)
-get_callers("function:src/auth.py:validate_token")
-get_callees("function:src/auth.py:validate_token")
+get_context("function:src/auth.py:validate_token", callees_limit=0)  # callers only
+get_context("function:src/auth.py:validate_token", callers_limit=0)  # callees only
 ```
 
 ---
@@ -128,8 +128,8 @@ store_understanding_batch([
 | `search_code(query)` | Find symbols by name/keyword |
 | `get_context(node_id)` | Full picture before reading source |
 | `get_blast_radius(node_id)` | Impact of changing a function |
-| `get_callers(node_id)` | Who depends on this |
-| `get_callees(node_id)` | What this depends on |
+| `get_context(node_id, callees_limit=0)` | Who depends on this (callers only) |
+| `get_context(node_id, callers_limit=0)` | What this depends on (callees only) |
 | `store_understanding(node_id, summary)` | After reading any function |
 | `store_understanding_batch(updates)` | Multiple functions at once |
 | `start_session(agent_id)` | Register session start |

@@ -9,14 +9,10 @@ trigger: >
   OR when search_code / get_context / store_understanding tools are available.
 allowed-tools:
   - mcp__loom__search_code
-  - mcp__loom__get_node
   - mcp__loom__get_context
-  - mcp__loom__get_callers
-  - mcp__loom__get_callees
   - mcp__loom__get_blast_radius
   - mcp__loom__get_neighbors
   - mcp__loom__get_community
-  - mcp__loom__get_community_cohesion
   - mcp__loom__shortest_path
   - mcp__loom__graph_stats
   - mcp__loom__god_nodes
@@ -123,9 +119,9 @@ Returns: `id, name, path, kind, line, score, summary, signature, tokens_saved`.
 
 | Need | Tool | Response Size |
 |------|------|---------------|
-| "Does this exist?" | `get_node(id)` | ~50 tokens |
+| "Does this exist?" | `get_context(id, brief=True)` | ~50 tokens |
 | "What does this do?" | `get_context(id)` | ~200 tokens |
-| "What calls/uses this?" | `get_callers(id)` / `get_callees(id)` | ~100-300 tokens |
+| "What calls/uses this?" | `get_context(id, callees_limit=0)` / `get_context(id, callers_limit=0)` | ~100-300 tokens |
 | "What breaks if I change this?" | `get_blast_radius(id, depth=3)` | ~500-2000 tokens |
 
 Don't jump to `get_blast_radius` when `get_context` would suffice.
@@ -169,8 +165,8 @@ Each result includes `summary`. Read summaries directly — only call `get_conte
 nodes where summary is null or you need their callers/callees too.
 
 ```
-get_callers("function:src/auth.py:validate_token")   → [{id, name, path, summary}, ...]
-get_callees("function:src/auth.py:validate_token")   → [{id, name, path, summary}, ...]
+get_context("function:src/auth.py:validate_token", callees_limit=0)  → callers list
+get_context("function:src/auth.py:validate_token", callers_limit=0)  → callees list
 ```
 
 **If callers/callees returns `[]`:** Function is a leaf (no callers = dead code or entry point, no callees = leaf function). Check `suggest_questions()` — it flags dead code automatically.
@@ -186,7 +182,7 @@ Returns `caller_summary` and `callee_summary` on each result. Read these before
 deciding whether to investigate further.
 
 ```
-get_community_cohesion()
+graph_stats(include_cohesion=True)
 ```
 Cohesion score per community (0.0–1.0). Low cohesion (<0.2) = refactor candidate.
 
@@ -239,10 +235,9 @@ Max 50 per call.
 
 | Tool | Returns on "not found" | What to do |
 |------|----------------------|------------|
-| `get_node(id)` | `None` | ID is wrong — use `search_code` |
 | `get_context(id)` | `None` | ID is wrong — use `search_code` |
-| `get_callers(id)` | `[]` | No callers exist (dead code or entry point) |
-| `get_callees(id)` | `[]` | Leaf function — no outgoing calls |
+| `get_context(id, callees_limit=0)` | `callers: []` | No callers exist (dead code or entry point) |
+| `get_context(id, callers_limit=0)` | `callees: []` | Leaf function — no outgoing calls |
 | `shortest_path(a, b)` | `None` | No path exists between these nodes |
 | `store_understanding(id)` | `{ok: false}` | Node not found — verify ID |
 | `get_delta(session_id)` | `{error: "session_not_found"}` | Session expired — skip delta |
@@ -281,11 +276,9 @@ Resolved in order:
 | `start_session(agent_id)` | Session start — always first | ~20 tok |
 | `get_delta(prev_session_id)` | Session start — see what changed | ~50-500 tok |
 | `search_code(query)` | Finding symbols by name/keyword | ~100 tok |
-| `get_node(node_id)` | Quick existence check / basic info | ~50 tok |
+| `get_context(node_id, brief=True)` | Quick existence check / basic info | ~50 tok |
 | `get_context(node_id)` | Full picture: summary + callers + callees + staleness | ~200 tok |
 | `get_blast_radius(node_id)` | Transitive callers — impact of a change | ~500-2000 tok |
-| `get_callers(node_id)` | Direct callers with summaries | ~100-300 tok |
-| `get_callees(node_id)` | Direct callees with summaries | ~100-300 tok |
 | `get_neighbors(node_id)` | All connected nodes (any edge type) | ~100-300 tok |
 | `get_community(community_id)` | All members of a cluster | ~200-500 tok |
 | `shortest_path(from, to)` | Dependency chain between two functions | ~100-300 tok |
@@ -295,7 +288,7 @@ Resolved in order:
 | `god_nodes()` | Most-called functions (entry points) | ~100-200 tok |
 | `suggest_questions()` | Investigation priorities from graph topology | ~100-200 tok |
 | `get_surprising_connections()` | Hidden coupling with caller/callee summaries | ~200-500 tok |
-| `get_community_cohesion()` | Cluster quality scores for refactoring | ~100-200 tok |
+| `graph_stats(include_cohesion=True)` | Cluster quality scores for refactoring | ~100-200 tok |
 | `get_savings()` | Token savings report from cache hits | ~50 tok |
 | `get_status()` | Node count + DB health check | ~20 tok |
 | `get_work_plan()` | Prioritized task list: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING | ~100 tok |

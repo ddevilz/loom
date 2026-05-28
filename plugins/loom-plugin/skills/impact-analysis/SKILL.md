@@ -6,11 +6,8 @@ allowed-tools:
   - mcp__loom__search_code
   - mcp__loom__get_context
   - mcp__loom__get_blast_radius
-  - mcp__loom__get_callers
-  - mcp__loom__get_callees
   - mcp__loom__get_neighbors
   - mcp__loom__get_community
-  - mcp__loom__get_community_cohesion
   - mcp__loom__shortest_path
   - mcp__loom__get_surprising_connections
   - mcp__loom__god_nodes
@@ -51,10 +48,10 @@ Depth 3 covers most real-world chains. If result is large (>50 nodes), note whic
 ### 4. Direct callers (one-hop)
 
 ```
-get_callers("<node_id>")
+get_context("<node_id>", callees_limit=0)
 ```
 
-These are the immediate dependents — the minimum surface area affected.
+Returns the immediate dependents — the minimum surface area affected.
 
 ### 5. Surprising connections
 
@@ -67,7 +64,7 @@ Look for entries that involve the target node or its module. These are the hidde
 ### 6. Community cohesion
 
 ```
-get_community_cohesion()
+graph_stats(include_cohesion=True)
 ```
 
 Find the target's community. If cohesion < 0.2, the cluster is poorly bounded and changes propagate unexpectedly.

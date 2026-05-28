@@ -52,20 +52,17 @@ Both `loom analyze` and `loom-mcp` use the same resolution logic via `resolve_db
 
 If the resolved DB is empty, `loom-mcp` auto-indexes the current directory in the background before serving. You don't need to run `loom analyze` manually on first use.
 
-## MCP Tools (21)
+## MCP Tools (17)
 
 | Tool | Purpose |
 |------|---------|
 | `search_code(query)` | FTS5 — returns summary + signature if cached |
-| `get_context(node_id)` | Full context: summary, signature, callers, callees, staleness |
-| `get_node(node_id)` | Lightweight existence check + basic metadata |
+| `get_context(node_id, brief?, callers_limit?, callees_limit?)` | Full context: summary, callers, callees. `brief=True` = metadata only. `callers_limit=0` / `callees_limit=0` = skip traversal. |
 | `get_blast_radius(node_id, depth)` | Transitive callers — what breaks if this changes |
-| `get_callers(node_id)` | Direct callers (one-hop incoming CALLS) |
-| `get_callees(node_id)` | Direct callees (one-hop outgoing CALLS) |
-| `get_neighbors(node_id, depth)` | All connected nodes across all edge types |
-| `get_community(community_id)` | All members of a Louvain community cluster |
+| `get_neighbors(node_id, depth, limit)` | All connected nodes across all edge types |
+| `get_community(community_id, limit)` | All members of a Louvain community cluster |
 | `shortest_path(from_id, to_id)` | Shortest path on CALLS subgraph |
-| `graph_stats()` | Node/edge counts by kind |
+| `graph_stats(include_cohesion?)` | Node/edge counts. `include_cohesion=True` adds per-cluster scores. |
 | `god_nodes(limit)` | Most-called functions (unofficial entry points) |
 | `store_understanding(node_id, summary)` | Write agent-generated summary to SQLite |
 | `store_understanding_batch(updates)` | Batch summary writes (max 50) |
@@ -75,7 +72,6 @@ If the resolved DB is empty, `loom-mcp` auto-indexes the current directory in th
 | `get_delta(previous_session_id)` | Changed nodes since last session |
 | `get_surprising_connections(limit)` | Non-obvious cross-module CALLS edges |
 | `suggest_questions(limit)` | Graph-topology investigation priorities |
-| `get_community_cohesion()` | Cohesion score per cluster (< 0.2 = refactor candidate) |
 | `get_work_plan()` | Prioritized next actions: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING |
 
 ## MCP Resources

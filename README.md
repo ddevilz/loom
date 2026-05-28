@@ -118,15 +118,12 @@ Override with `LOOM_DB_PATH` env var or `--db` flag.
 | Tool | Purpose |
 |------|---------|
 | `search_code(query, limit)` | FTS5 search — returns summary + signature when cached |
-| `get_node(node_id)` | Single node by id |
-| `get_context(node_id)` | Full context packet: summary, signature, callers, callees, staleness |
-| `get_callers(node_id)` | One-hop incoming CALLS — each result includes `summary` |
-| `get_callees(node_id)` | One-hop outgoing CALLS — each result includes `summary` |
+| `get_context(node_id, brief?, callers_limit?, callees_limit?)` | Full context packet: summary, signature, callers, callees, staleness. Use `brief=True` for metadata-only. Use `callers_limit=0` / `callees_limit=0` to skip traversal. |
 | `get_blast_radius(node_id, depth)` | Transitive callers via recursive CTE — each result includes `summary` |
-| `get_neighbors(node_id, depth)` | All edges, both directions — each result includes `summary` |
-| `get_community(community_id)` | All members of a community cluster — each result includes `summary` |
+| `get_neighbors(node_id, depth, limit)` | All edges, both directions — each result includes `summary` |
+| `get_community(community_id, limit)` | All members of a community cluster — each result includes `summary` |
 | `shortest_path(from_id, to_id)` | Shortest directed path on CALLS subgraph — each hop includes `summary` |
-| `graph_stats()` | Node/edge counts by kind |
+| `graph_stats(include_cohesion?)` | Node/edge counts by kind. `include_cohesion=True` adds per-cluster cohesion scores (0.0–1.0, < 0.2 = refactor candidate). |
 | `god_nodes(limit)` | Most-called functions (highest in-degree) — each result includes `summary` |
 | `store_understanding(node_id, summary, force?)` | Cache agent-generated summary permanently. Returns `skipped: true` if summary already fresh — no re-write needed. |
 | `store_understanding_batch(updates)` | Batch version, max 50 per call |
@@ -135,7 +132,8 @@ Override with `LOOM_DB_PATH` env var or `--db` flag.
 | `get_delta(previous_session_id)` | What changed since last session (changed + deleted nodes) |
 | `suggest_questions(limit)` | Graph-topology investigation priorities: dead code, bridge nodes, missing summaries, low-cohesion clusters |
 | `get_surprising_connections(limit)` | Non-obvious cross-module CALLS edges — returns `caller_summary` and `callee_summary` per result |
-| `get_community_cohesion()` | Cohesion score per cluster (0.0–1.0). Below 0.2 = refactor candidate |
+| `get_status()` | Live indexing progress + DB health |
+| `get_work_plan()` | Prioritized next actions: DOCUMENT / INVESTIGATE / EXPLORE / NOTHING |
 
 **MCP resources:**
 
