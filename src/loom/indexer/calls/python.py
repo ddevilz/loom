@@ -9,7 +9,7 @@ from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 
 from loom.graph.models import Edge, EdgeType, Node, NodeKind
-from loom.indexer.calls._base import node_text
+from loom.indexer.calls._base import extract_call_context, node_text
 from loom.indexer.calls.noise_filter import should_ignore_call
 from loom.indexer.languages.constants import (
     TS_PY_ATTRIBUTE,
@@ -44,7 +44,7 @@ def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float
     return None, 0.5
 
 
-def _find_calls_in_node(src: bytes, n: TSNode, calls: list[tuple[str, float, bool]]) -> None:
+def _find_calls_in_node(src: bytes, n: TSNode, calls: list[tuple[str, float, bool, TSNode]]) -> None:
     """Recursively find all call nodes and extract their names."""
     if n.type == TS_PY_CALL:
         func_node = n.child_by_field_name("function")
@@ -52,7 +52,7 @@ def _find_calls_in_node(src: bytes, n: TSNode, calls: list[tuple[str, float, boo
             name, confidence = _extract_call_name(src, func_node)
             is_method_call = func_node.type == TS_PY_ATTRIBUTE
             if name and not should_ignore_call(name):
-                calls.append((name, confidence, is_method_call))
+                calls.append((name, confidence, is_method_call, n))
 
     for child in n.children:
         _find_calls_in_node(src, child, calls)
@@ -102,11 +102,11 @@ def trace_calls(
     if src is None:
         src = Path(function_node.path).read_bytes()
 
-    calls: list[tuple[str, float, bool]] = []
+    calls: list[tuple[str, float, bool, TSNode]] = []
     _find_calls_in_node(src, subtree, calls)
 
     edges: list[Edge] = []
-    for callee_name, confidence, is_method_call in calls:
+    for callee_name, confidence, is_method_call, call_node in calls:
         candidates = all_symbols.get(callee_name, [])
 
         if not candidates:
@@ -137,10 +137,13 @@ def trace_calls(
                 # consumers can filter by confidence if needed.
                 resolved = pool
 
+        ctx = extract_call_context(call_node, src)
         for callee_node in resolved:
             metadata: dict[str, Any] = {}
             if len(resolved) > 1:
                 metadata["ambiguous"] = True
+            if ctx:
+                metadata["call_context"] = ctx
             edges.append(
                 Edge(
                     from_id=function_node.id,

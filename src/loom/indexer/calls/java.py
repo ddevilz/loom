@@ -8,7 +8,7 @@ from tree_sitter import Node as TSNode
 from tree_sitter import Parser
 
 from loom.graph.models import Edge, EdgeType, Node, NodeKind
-from loom.indexer.calls._base import node_text
+from loom.indexer.calls._base import extract_call_context, node_text
 from loom.indexer.calls.noise_filter import should_ignore_call
 
 _JAVA_LANGUAGE = _Language(_ts_java.language())
@@ -116,12 +116,17 @@ def trace_calls_for_java_file(path: str, nodes: list[Node]) -> list[Edge]:
         if callee_node is None:
             continue
 
+        metadata: dict = {}
+        ctx = extract_call_context(call_node, src)
+        if ctx:
+            metadata["call_context"] = ctx
         edges.append(
             Edge(
                 from_id=caller.id,
                 to_id=callee_node.id,
                 kind=EdgeType.CALLS,
                 confidence=confidence,
+                metadata=metadata,
             )
         )
 

@@ -22,6 +22,24 @@ def node_text(src: bytes, n: TSNode) -> str:
     return src[n.start_byte : n.end_byte].decode("utf-8", errors="replace")
 
 
+ENCLOSING_STATEMENT_TYPES = frozenset({
+    "expression_statement", "assignment", "augmented_assignment",
+    "return_statement", "variable_declaration", "lexical_declaration",
+    "yield_statement", "call_statement",
+})
+
+
+def extract_call_context(call_node: TSNode, src: bytes) -> str | None:
+    """Walk up from call node to enclosing statement. Return source text, max 200 chars."""
+    parent = call_node.parent
+    while parent is not None:
+        if parent.type in ENCLOSING_STATEMENT_TYPES:
+            text = src[parent.start_byte:parent.end_byte].decode("utf-8", errors="replace").strip()
+            return text[:200]
+        parent = parent.parent
+    return None
+
+
 class BaseCallTracer(ABC):
     """Shared call extraction skeleton.
 
