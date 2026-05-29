@@ -180,7 +180,8 @@ def detect_go_channel(n: TSNode, s: bytes) -> str | None:
 
 
 def detect_go_error_return(n: TSNode, s: bytes) -> str | None:
-    return "error-returning" if b"error" in s else None
+    # Match idiomatic Go error returns: 'return ... err' or 'if err != nil'
+    return "error-returning" if (b" err" in s or b"error)" in s or b", error" in s) else None
 
 
 GO_PATTERNS: list[Callable[[TSNode, bytes], str | None]] = [
