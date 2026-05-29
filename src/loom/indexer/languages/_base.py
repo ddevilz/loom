@@ -143,6 +143,10 @@ class BaseLanguageHandler(ABC):
             parent_id: ID of containing node, if any.
             metadata: Language-specific extras (decorators, signature, etc.).
         """
+        # Local import avoids circular dep: language_notes → languages._ts_utils →
+        # languages.__init__ → _base → language_notes
+        from loom.indexer.language_notes import extract_language_notes
+
         start_line, end_line = _lines(ts_node)
         repo_name = self._repo_name
         return Node(
@@ -157,6 +161,7 @@ class BaseLanguageHandler(ABC):
             end_line=end_line,
             parent_id=parent_id,
             complexity=classify_complexity(ts_node, self.language_name),
+            language_notes=extract_language_notes(ts_node, self.language_name, src),
             metadata=metadata or {},
         )
 
