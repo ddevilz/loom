@@ -1,6 +1,39 @@
 """graph.py — graph traversal MCP tools."""
 
 from __future__ import annotations
+import asyncio as _asyncio
+
+
+async def _store_tags_impl(
+    db,
+    node_id: str,
+    add: list[str] | None = None,
+    remove: list[str] | None = None,
+    clear: bool = False,
+) -> dict:
+    from loom.graph.repository.tags import TagRepository
+
+    def _run() -> dict:
+        tr = TagRepository(db)
+        if clear:
+            tr.clear_node_tags(node_id, source="agent")
+        if remove:
+            tr.remove_tags(node_id, remove, source="agent")
+        if add:
+            valid = [t.strip() for t in add if isinstance(t, str) and t.strip()]
+            if valid:
+                tr.add_tags(node_id, valid, source="agent")
+        with db._lock:
+            conn = db.connect()
+            rows = conn.execute(
+                "SELECT tag FROM node_tags WHERE node_id = ? AND source = 'agent'",
+                (node_id,),
+            ).fetchall()
+        agent_tags = [r["tag"] for r in rows]
+        all_tags = tr.get_tags(node_id)
+        return {"node_id": node_id, "agent_tags": agent_tags, "total_tags": all_tags}
+
+    return await _asyncio.to_thread(_run)
 
 
 def register(mcp: object, db: object, session: dict, cache: object) -> None:
@@ -182,3 +215,19 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         return ok(
             [{"id": n.id, "name": n.name, "path": n.path, "in_degree": deg} for n, deg in pairs]
         )
+
+    @mcp.tool()
+    async def store_tags(
+        node_id: str,
+        add: list[str] | None = None,
+        remove: list[str] | None = None,
+        clear: bool = False,
+    ) -> dict:
+        """Manage agent tags on a node.
+
+        add: tags to add (source='agent')
+        remove: specific tags to remove
+        clear: if True, wipe all agent tags first (then apply `add`)
+        """
+        cache.invalidate(node_id)
+        return await _store_tags_impl(db, node_id, add=add, remove=remove, clear=clear)
