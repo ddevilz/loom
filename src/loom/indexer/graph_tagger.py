@@ -7,13 +7,69 @@ Pure computation — returns dict[node_id, list[tags]]. Caller writes to DB.
 from __future__ import annotations
 
 import statistics
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from loom.graph.repository import Repository
 
-from loom.indexer.complexity import BRIDGE_MIN_INDEGREE, BRIDGE_MIN_OUTDEGREE
+from loom.indexer.complexity import BRANDES_NODE_LIMIT, BRIDGE_MIN_INDEGREE, BRIDGE_MIN_OUTDEGREE
+
+
+def _compute_bridge_scores(
+    node_ids: list[str],
+    edges: list[tuple[str, str]],
+) -> dict[str, float]:
+    """Brandes (2001) betweenness centrality, undirected.
+
+    Returns node_id → normalized score in [0.0, 1.0]. Empty dict if above gate or too small.
+    """
+    n = len(node_ids)
+    if n >= BRANDES_NODE_LIMIT or n < 3:
+        return {}
+
+    adj: dict[str, list[str]] = defaultdict(list)
+    for u, v in edges:
+        adj[u].append(v)
+        adj[v].append(u)
+
+    cb: dict[str, float] = {nid: 0.0 for nid in node_ids}
+
+    for s in node_ids:
+        stack: list[str] = []
+        pred: dict[str, list[str]] = defaultdict(list)
+        sigma: dict[str, int] = defaultdict(int)
+        dist: dict[str, int] = {nid: -1 for nid in node_ids}
+        sigma[s] = 1
+        dist[s] = 0
+        q: deque[str] = deque([s])
+        while q:
+            v = q.popleft()
+            stack.append(v)
+            for w in adj[v]:
+                if dist[w] < 0:
+                    dist[w] = dist[v] + 1
+                    q.append(w)
+                if dist[w] == dist[v] + 1:
+                    sigma[w] += sigma[v]
+                    pred[w].append(v)
+
+        delta: dict[str, float] = defaultdict(float)
+        while stack:
+            w = stack.pop()
+            for v in pred[w]:
+                if sigma[w] > 0:
+                    delta[v] += (sigma[v] / sigma[w]) * (1 + delta[w])
+            if w != s:
+                cb[w] += delta[w]
+
+    # Normalize for undirected: divide by 2 (each pair counted twice) and by (n-1)(n-2)/2
+    max_score = (n - 1) * (n - 2) / 2
+    if max_score <= 0:
+        return cb
+    for k in cb:
+        cb[k] = (cb[k] / 2) / max_score
+    return cb
 
 
 def _get_degree_stats(repo: Repository) -> tuple[dict[str, int], dict[str, int], list[str]]:
@@ -106,11 +162,27 @@ def compute_graph_tags(repo: Repository) -> dict[str, list[str]]:
             if in_degrees.get(node_id, 0) > threshold:
                 tags[node_id].append("hub")
 
-    # bridge: in-degree > BRIDGE_MIN AND out-degree > BRIDGE_MIN
-    for node_id in all_node_ids:
-        in_deg = in_degrees.get(node_id, 0)
-        out_deg = out_degrees.get(node_id, 0)
-        if in_deg > BRIDGE_MIN_INDEGREE and out_deg > BRIDGE_MIN_OUTDEGREE:
-            tags[node_id].append("bridge")
+    # bridge: Brandes betweenness (exact) with degree-heuristic fallback for large graphs
+    all_nodes_full = repo.nodes.list_all_undeleted()
+    all_node_ids_full = [n.id for n in all_nodes_full]
+    edge_pairs = [(e.from_id, e.to_id) for e in repo.edges.get_all()]
+    scores = _compute_bridge_scores(all_node_ids_full, edge_pairs)
+
+    if scores:
+        values = list(scores.values())
+        mean_s = statistics.mean(values) if values else 0.0
+        std_s = statistics.stdev(values) if len(values) > 1 else 0.0
+        threshold = mean_s + 2 * std_s
+        for nid, sc in scores.items():
+            repo.nodes.update_bridge_score(nid, sc)
+            if sc > threshold and sc > 0:
+                tags[nid].append("bridge")
+    else:
+        # Fallback: degree heuristic when graph exceeds Brandes limit
+        for node_id in all_node_ids:
+            in_deg = in_degrees.get(node_id, 0)
+            out_deg = out_degrees.get(node_id, 0)
+            if in_deg > BRIDGE_MIN_INDEGREE and out_deg > BRIDGE_MIN_OUTDEGREE:
+                tags[node_id].append("bridge")
 
     return dict(tags)

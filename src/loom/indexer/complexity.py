@@ -19,8 +19,10 @@ SIMPLE_NESTING = 2
 SIMPLE_LINES = 25
 
 # OR for COMPLEX (any one signal sufficient), AND for SIMPLE (all three must be low)
-BRIDGE_MIN_INDEGREE = 3  # used by GraphTagger
+BRIDGE_MIN_INDEGREE = 3  # used by GraphTagger fallback when graph too large for Brandes
 BRIDGE_MIN_OUTDEGREE = 3
+
+BRANDES_NODE_LIMIT = 2000  # skip Brandes on repos larger than this (O(VE) cost)
 
 BRANCH_NODES: dict[str, set[str]] = {
     "python": {
