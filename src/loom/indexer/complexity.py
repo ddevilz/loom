@@ -72,34 +72,26 @@ BRANCH_NODES: dict[str, set[str]] = {
 
 def count_branch_nodes(ts_node: TSNode, language: str) -> int:
     """Count branch/decision points in a tree-sitter AST node."""
+    from loom.indexer.languages._ts_utils import walk_all  # local import avoids circular dep
+
     branch_types = BRANCH_NODES.get(language, set())
-    count = 0
-
-    def walk(n: TSNode) -> None:
-        nonlocal count
-        if n.type in branch_types:
-            count += 1
-        for child in n.children:
-            walk(child)
-
-    walk(ts_node)
-    return count
+    return sum(1 for n in walk_all(ts_node) if n.type in branch_types)
 
 
 def compute_max_nesting(ts_node: TSNode, language: str) -> int:
     """Walk tree-sitter AST, track max nesting depth of control flow."""
     branch_types = BRANCH_NODES.get(language, set())
 
-    def walk(n: TSNode, depth: int) -> int:
+    def _walk_depth(n: TSNode, depth: int) -> int:
         current = depth + 1 if n.type in branch_types else depth
         max_depth = current
         for child in n.children:
-            child_depth = walk(child, current)
+            child_depth = _walk_depth(child, current)
             if child_depth > max_depth:
                 max_depth = child_depth
         return max_depth
 
-    return walk(ts_node, 0)
+    return _walk_depth(ts_node, 0)
 
 
 def classify_complexity(ts_node: TSNode, language: str) -> Complexity:

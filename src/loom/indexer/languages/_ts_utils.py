@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 from tree_sitter import Node as TSNode
 
 
@@ -25,3 +27,36 @@ def split_params(text: str) -> list[str]:
     if raw.startswith("(") and raw.endswith(")"):
         raw = raw[1:-1]
     return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def walk_all(node: TSNode) -> Iterator[TSNode]:
+    """Yield this node and all descendants depth-first."""
+    yield node
+    for child in node.children:
+        yield from walk_all(child)
+
+
+def count_node_type(node: TSNode, type_name: str) -> int:
+    """Count descendants (including node itself) matching type_name."""
+    return sum(1 for n in walk_all(node) if n.type == type_name)
+
+
+def has_decorator(node: TSNode, name: str) -> bool:
+    """Return True if any decorator child's text contains `name`."""
+    for child in node.children:
+        if child.type == "decorator":
+            text = child.text.decode("utf-8", errors="replace") if child.text else ""
+            if name in text:
+                return True
+    return False
+
+
+def has_decorator_prefix(node: TSNode, prefixes: tuple) -> bool:
+    """Return True if any decorator (with leading @ stripped) starts with one of prefixes."""
+    for child in node.children:
+        if child.type == "decorator":
+            text = child.text.decode("utf-8", errors="replace") if child.text else ""
+            stripped = text.lstrip("@").strip()
+            if any(stripped.startswith(p) for p in prefixes):
+                return True
+    return False
