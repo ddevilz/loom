@@ -257,6 +257,7 @@ def _file_merge(
             n.community_id,
             n.complexity.value if n.complexity is not None else None,
             json.dumps(n.metadata, default=str) if n.metadata else "{}",
+            n.language_notes,
             now,
         )
         for n in nodes
@@ -320,8 +321,9 @@ def _file_merge(
                     """INSERT OR IGNORE INTO nodes
                          (id, kind, source, name, path, start_line, end_line,
                           language, content_hash, file_hash, file_mtime, summary,
-                          token_count, community_id, complexity, metadata, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                          token_count, community_id, complexity, metadata, language_notes,
+                          updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     node_rows,
                 )
 

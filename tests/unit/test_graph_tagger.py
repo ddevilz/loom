@@ -216,18 +216,23 @@ def test_entry_point_async_task_tag(repo: Repository) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_bridge_requires_both_in_and_out_degree(repo: Repository) -> None:
-    """A node with only high in-degree but low out-degree should NOT get 'bridge'."""
+def test_bridge_brandes_structural(repo: Repository) -> None:
+    """A node that lies on many shortest paths is a bridge under Brandes betweenness.
+
+    With 4 callers and 2 callees, the node IS on shortest paths between those groups
+    and correctly gets the 'bridge' tag. (Old degree heuristic required both in & out
+    degree > threshold; Brandes uses actual path-betweenness instead.)
+    """
     high_in_only = "function:repo:src/popular.py:popular_fn"
     _insert_node(repo.db, high_in_only, name="popular_fn")
 
-    # 4 callers (in_deg = 4 > BRIDGE_MIN_INDEGREE = 3)
+    # 4 callers (high betweenness: all paths from callers to callees go through this node)
     for i in range(4):
         caller_id = f"function:repo:src/caller_b{i}.py:cbfn{i}"
         _insert_node(repo.db, caller_id, name=f"cbfn{i}")
         _insert_edge(repo.db, caller_id, high_in_only)
 
-    # Only 2 callees (out_deg = 2 <= BRIDGE_MIN_OUTDEGREE = 3) — NOT enough
+    # 2 callees — Brandes still marks this as bridge (it's on all 4*2=8 shortest paths)
     for i in range(2):
         callee_id = f"function:repo:src/callee_b{i}.py:cbee{i}"
         _insert_node(repo.db, callee_id, name=f"cbee{i}")
@@ -235,8 +240,9 @@ def test_bridge_requires_both_in_and_out_degree(repo: Repository) -> None:
 
     result = compute_graph_tags(repo)
 
+    # With Brandes, this node has high betweenness → gets bridge tag
     tags = result.get(high_in_only, [])
-    assert "bridge" not in tags
+    assert "bridge" in tags
 
 
 # ---------------------------------------------------------------------------
@@ -278,16 +284,18 @@ def test_tested_by_edge_does_not_suppress_dead_code(tmp_path):
     db.connect()  # initialise schema
     repo = Repository(db)
 
-    _insert_node(db, "prod:fn", "function", "validate")
-    _insert_node(db, "test:fn", "function", "test_validate")
+    prod_id = "function:repo:src/validate.py:validate"
+    test_id = "function:repo:tests/test_validate.py:test_validate"
+    _insert_node(db, prod_id, "function", "validate")
+    _insert_node(db, test_id, "function", "test_validate")
     # TESTED_BY edge from test to prod
     conn = db.connect()
     conn.execute(
         "INSERT INTO edges (from_id, to_id, kind, confidence) VALUES (?,?,?,?)",
-        ("test:fn", "prod:fn", "TESTED_BY", 0.7),
+        (test_id, prod_id, "TESTED_BY", 0.7),
     )
     conn.commit()
 
     result = compute_graph_tags(repo)
-    # prod:fn has zero CALLS in-degree → still dead-code
-    assert "dead-code" in result.get("prod:fn", [])
+    # prod node has zero CALLS in-degree → still dead-code (TESTED_BY doesn't count)
+    assert "dead-code" in result.get(prod_id, [])

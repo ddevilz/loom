@@ -50,6 +50,8 @@ async def test_build_server_registers_all_tools(tmp_path: Path) -> None:
         "suggest_questions",
         "get_status",
         "get_work_plan",
+        "get_architecture",
+        "store_tags",
     }
     db = DB(path=tmp_path / "loom.db")
     try:

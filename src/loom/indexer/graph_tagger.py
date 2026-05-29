@@ -47,6 +47,8 @@ def _compute_bridge_scores(
             v = q.popleft()
             stack.append(v)
             for w in adj[v]:
+                if w not in dist:
+                    continue  # skip nodes not in our node_ids set (e.g. deleted nodes in edges)
                 if dist[w] < 0:
                     dist[w] = dist[v] + 1
                     q.append(w)
