@@ -205,6 +205,7 @@ def match_test_to_production(
             score += 0.25
         if _has_direct_call_edge(test_node.id, prod.id, repo):
             score += 0.40
+        score = min(score, 1.0)  # cap: max signals sum to 1.25
         if score >= MIN_CONFIDENCE:
             results.append((prod, score, "HIGH"))
         elif score >= MEDIUM_MIN_CONFIDENCE:
