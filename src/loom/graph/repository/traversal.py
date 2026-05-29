@@ -279,6 +279,21 @@ class TraversalRepository:
                 "edges_by_kind": by_edge,
             }
 
+    def get_layer_summary(self) -> list[tuple[str, int]]:
+        """Return [(layer, count)] sorted by count desc."""
+        with self._db._lock:
+            conn = self._db.connect()
+            rows = conn.execute(
+                """
+                SELECT layer, COUNT(*) AS cnt
+                FROM nodes
+                WHERE layer IS NOT NULL AND deleted_at IS NULL
+                GROUP BY layer
+                ORDER BY cnt DESC
+                """
+            ).fetchall()
+        return [(r["layer"], r["cnt"]) for r in rows]
+
     def community_members(self, community_id: str) -> list[Node]:
         """Return all nodes belonging to a community.
 
