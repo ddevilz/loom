@@ -3,6 +3,71 @@
 from __future__ import annotations
 
 
+def _build_architecture_response(db) -> dict:
+    """Pure helper — assembles layer summary, gateways, dep graph, framework + violations from meta."""
+    import json as _json
+
+    from loom.graph.repository import Repository
+
+    repo = Repository(db)
+    layers = repo.traversal.get_layer_summary()
+
+    with db._lock:
+        conn = db.connect()
+        row = conn.execute("SELECT value FROM meta WHERE key = 'framework'").fetchone()
+        framework = row["value"] if row else "generic"
+        vrow = conn.execute("SELECT value FROM meta WHERE key = 'layer_violations'").fetchone()
+        violations = _json.loads(vrow["value"]) if vrow else []
+
+    gateways: dict[str, list[dict]] = {}
+    with db._lock:
+        conn = db.connect()
+        for layer_name, _ in layers:
+            rows = conn.execute(
+                """
+                SELECT n.id, n.name, n.path, COUNT(*) AS cnt
+                FROM nodes n
+                JOIN edges e ON (e.from_id = n.id OR e.to_id = n.id)
+                JOIN nodes n2 ON (
+                    CASE WHEN e.from_id = n.id THEN e.to_id ELSE e.from_id END = n2.id
+                )
+                WHERE n.layer = ? AND e.kind = 'CALLS'
+                  AND n2.layer IS NOT NULL AND n2.layer != n.layer
+                  AND n.deleted_at IS NULL AND n2.deleted_at IS NULL
+                GROUP BY n.id ORDER BY cnt DESC LIMIT 5
+                """,
+                (layer_name,),
+            ).fetchall()
+            gateways[layer_name] = [
+                {"id": r["id"], "name": r["name"], "path": r["path"], "cross_layer_calls": r["cnt"]}
+                for r in rows
+            ]
+
+        dep_rows = conn.execute(
+            """
+            SELECT DISTINCT n1.layer AS fl, n2.layer AS tl
+            FROM edges e
+            JOIN nodes n1 ON n1.id = e.from_id
+            JOIN nodes n2 ON n2.id = e.to_id
+            WHERE n1.layer IS NOT NULL AND n2.layer IS NOT NULL
+              AND n1.layer != n2.layer
+              AND e.kind IN ('CALLS', 'IMPORTS')
+              AND n1.deleted_at IS NULL AND n2.deleted_at IS NULL
+            """
+        ).fetchall()
+
+    deps: dict[str, list[str]] = {}
+    for r in dep_rows:
+        deps.setdefault(r["fl"], []).append(r["tl"])
+
+    return {
+        "layers": {name: {"node_count": cnt, "key_nodes": gateways.get(name, [])} for name, cnt in layers},
+        "dependencies": deps,
+        "violations": violations,
+        "framework_detected": framework,
+    }
+
+
 def register(mcp: object, db: object, session: dict, cache: object) -> None:
     from loom.intelligence.cohesion import get_community_cohesion as _get_cohesion  # noqa: F401
     from loom.intelligence.suggested_questions import suggest_questions as _suggest_questions
@@ -262,3 +327,18 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
                 "session_id": session.get("id"),
             }
         )
+
+    @mcp.tool()
+    async def get_architecture() -> dict:
+        """Architecture overview: layer counts, cross-layer gateways, dep graph, violations.
+
+        Cached for 5 minutes (matches MemoCache default TTL).
+        """
+        import asyncio as _asyncio
+
+        cached = cache.get("get_architecture:_")
+        if cached is not None:
+            return cached
+        result = await _asyncio.to_thread(_build_architecture_response, db)
+        cache.set("get_architecture:_", result)
+        return result
