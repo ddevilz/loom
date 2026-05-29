@@ -457,12 +457,19 @@ async def index_repo(
             by_path[n.path] = ([], [])
         by_path[n.path][0].append(n)
 
+    # Build id→path lookup for routing — handles both 3-part and 4-part IDs
+    _id_to_path: dict[str, str] = {n.id: n.path for n in nodes_all if n.path}
+
     for e in edges_all:
-        src_path = ""
-        if e.from_id.count(":") >= 2:
-            src_path = e.from_id.split(":", 2)[1]
-        elif e.from_id.startswith("file:"):
-            src_path = e.from_id[5:]
+        src_path = _id_to_path.get(e.from_id, "")
+        if not src_path:
+            # Fallback: parse from ID format
+            if e.from_id.startswith("file:"):
+                src_path = e.from_id[5:]
+            elif e.from_id.count(":") == 2:
+                src_path = e.from_id.split(":", 2)[1]  # 3-part: kind:path:symbol
+            elif e.from_id.count(":") >= 3:
+                src_path = e.from_id.split(":", 3)[2]  # 4-part: kind:repo:path:symbol
         if src_path in by_path:
             by_path[src_path][1].append(e)
 
@@ -635,6 +642,57 @@ async def index_repo(
             )
         except Exception as exc:
             logger.warning("[graph_tagger] failed in %.1fs: %s", time.perf_counter() - t, exc)
+
+    # --- Phase 12b: EdgeDescriber sweep ---
+    try:
+        from loom.indexer.edge_describer import describe_edges  # noqa: PLC0415
+
+        def _run_describer() -> int:
+            all_nodes = repo.nodes.list_all_undeleted()
+            nodes_by_id = {n.id: n for n in all_nodes}
+            all_edges = repo.edges.get_all()
+            count = describe_edges(all_edges, nodes_by_id)
+            if count:
+                with repo.db._lock:
+                    conn = repo.db.connect()
+                    for e in all_edges:
+                        if e.description:
+                            conn.execute(
+                                "UPDATE edges SET description = ? "
+                                "WHERE from_id = ? AND to_id = ? AND kind = ?",
+                                (
+                                    e.description,
+                                    e.from_id,
+                                    e.to_id,
+                                    e.kind.value if hasattr(e.kind, "value") else str(e.kind),
+                                ),
+                            )
+                    conn.commit()
+            return count
+
+        t = time.perf_counter()
+        n = await asyncio.to_thread(_run_describer)
+        logger.info("[edge_describer] %d edges described in %.1fs", n, time.perf_counter() - t)
+    except Exception as exc:
+        logger.warning("[edge_describer] failed: %s", exc)
+
+    # --- Phase 12c: Architecture layer assignment ---
+    try:
+        from loom.intelligence.architecture import assign_and_store_layers  # noqa: PLC0415
+
+        def _run_arch() -> dict:
+            return assign_and_store_layers(repo, repo_path)
+
+        t = time.perf_counter()
+        layer_counts = await asyncio.to_thread(_run_arch)
+        logger.info(
+            "[architecture] %d nodes layered in %.1fs — %s",
+            sum(layer_counts.values()),
+            time.perf_counter() - t,
+            layer_counts,
+        )
+    except Exception as exc:
+        logger.warning("[architecture] failed: %s", exc)
 
     # --- Phase 12: soft-delete removed files ---
     try:
