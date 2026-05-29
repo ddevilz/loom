@@ -36,6 +36,13 @@ dependencies = [
     "typer>=0.24.1",
     "tomli>=2.0.0; python_version < '3.11'",
     "tree-sitter-html>=0.23.2",
+    "tree-sitter-go>=0.25.0",
+    "tree-sitter-rust>=0.24.0",
+    "tree-sitter-kotlin>=1.1.0",
+    "tree-sitter-ruby>=0.23.0",
+    "tree-sitter-c-sharp>=0.23.0",
+    "tree-sitter-php>=0.24.0",
+    "tree-sitter-cpp>=0.23.0",
 ]
 
 [project.urls]
