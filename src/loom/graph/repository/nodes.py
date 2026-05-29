@@ -383,6 +383,42 @@ class NodeRepository:
             conn.commit()
             return cur.rowcount
 
+    def update_layer(self, node_id: str, layer: str | None) -> None:
+        """Set the layer field for a node.
+
+        Args:
+            node_id: Target node id.
+            layer: Layer string value (or None to clear).
+        """
+        with self._db._lock:
+            conn = self._db.connect()
+            conn.execute("UPDATE nodes SET layer = ? WHERE id = ?", (layer, node_id))
+            conn.commit()
+
+    def update_bridge_score(self, node_id: str, score: float | None) -> None:
+        """Set the bridge_score field for a node.
+
+        Args:
+            node_id: Target node id.
+            score: Bridge score value (or None to clear).
+        """
+        with self._db._lock:
+            conn = self._db.connect()
+            conn.execute("UPDATE nodes SET bridge_score = ? WHERE id = ?", (score, node_id))
+            conn.commit()
+
+    def update_language_notes(self, node_id: str, notes: str | None) -> None:
+        """Set the language_notes field for a node.
+
+        Args:
+            node_id: Target node id.
+            notes: Language notes text (or None to clear).
+        """
+        with self._db._lock:
+            conn = self._db.connect()
+            conn.execute("UPDATE nodes SET language_notes = ? WHERE id = ?", (notes, node_id))
+            conn.commit()
+
     # ------------------------------------------------------------------
     # ID resolution (ported from query/node_lookup.py)
     # ------------------------------------------------------------------

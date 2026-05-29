@@ -120,6 +120,11 @@ def init_schema(conn: sqlite3.Connection) -> None:
     # v0.6.1 new columns
     _add_column_if_missing(conn, "nodes", "complexity", "TEXT")
     _add_column_if_missing(conn, "nodes", "tags_normalized", "TEXT DEFAULT ''")
+    # v0.6.2 new columns
+    _add_column_if_missing(conn, "edges", "description", "TEXT")
+    _add_column_if_missing(conn, "nodes", "language_notes", "TEXT")
+    _add_column_if_missing(conn, "nodes", "layer", "TEXT")
+    _add_column_if_missing(conn, "nodes", "bridge_score", "REAL")
     # Index on deleted_at must be created after the column migration
     conn.execute("CREATE INDEX IF NOT EXISTS idx_nodes_deleted ON nodes(deleted_at)")
     # node_visits table — added in 0.4.3

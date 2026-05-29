@@ -56,6 +56,9 @@ class Node(BaseModel):
     language: str | None = None
 
     complexity: Complexity | None = None
+    language_notes: str | None = None
+    layer: str | None = None
+    bridge_score: float | None = None
 
     community_id: str | None = None
 

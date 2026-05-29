@@ -40,6 +40,7 @@ class Edge(BaseModel):
     confidence: float = 1.0
     confidence_tier: ConfidenceTier = ConfidenceTier.EXTRACTED
     metadata: dict[str, Any] = Field(default_factory=dict)
+    description: str | None = None
 
     @model_validator(mode="after")
     def _validate_edge(self) -> Edge:

@@ -18,6 +18,18 @@ class EdgeRepository:
     def __init__(self, db: DB) -> None:
         self._db = db
 
+    @staticmethod
+    def _row_to_edge(r: object) -> Edge:
+        return Edge(
+            from_id=r["from_id"],
+            to_id=r["to_id"],
+            kind=EdgeType(r["kind"]),
+            confidence=r["confidence"],
+            confidence_tier=r["confidence_tier"],
+            metadata=json.loads(r["metadata"]) if r["metadata"] else {},
+            description=r["description"],
+        )
+
     def upsert(self, edges: list[Edge]) -> int:
         """Insert or replace edges in bulk.
 
@@ -38,6 +50,7 @@ class EdgeRepository:
                 e.confidence,
                 e.confidence_tier.value,
                 json.dumps(e.metadata, default=str),
+                e.description,
             )
             for e in edges
         ]
@@ -46,8 +59,8 @@ class EdgeRepository:
             conn = self._db.connect()
             conn.executemany(
                 """INSERT OR REPLACE INTO edges
-                     (from_id, to_id, kind, confidence, confidence_tier, metadata)
-                   VALUES (?,?,?,?,?,?)""",
+                     (from_id, to_id, kind, confidence, confidence_tier, metadata, description)
+                   VALUES (?,?,?,?,?,?,?)""",
                 rows,
             )
             conn.commit()
@@ -68,7 +81,8 @@ class EdgeRepository:
             conn = self._db.connect()
             if kind is not None:
                 rows = conn.execute(
-                    """SELECT from_id, to_id, kind, confidence, confidence_tier, metadata
+                    """SELECT from_id, to_id, kind, confidence, confidence_tier, metadata,
+                              description
                          FROM edges
                         WHERE (from_id = ? OR to_id = ?)
                           AND kind = ?""",
@@ -76,23 +90,32 @@ class EdgeRepository:
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    """SELECT from_id, to_id, kind, confidence, confidence_tier, metadata
+                    """SELECT from_id, to_id, kind, confidence, confidence_tier, metadata,
+                              description
                          FROM edges
                         WHERE from_id = ? OR to_id = ?""",
                     (node_id, node_id),
                 ).fetchall()
 
-        return [
-            Edge(
-                from_id=r["from_id"],
-                to_id=r["to_id"],
-                kind=EdgeType(r["kind"]),
-                confidence=r["confidence"],
-                confidence_tier=r["confidence_tier"],
-                metadata=json.loads(r["metadata"]) if r["metadata"] else {},
-            )
-            for r in rows
-        ]
+        return [self._row_to_edge(r) for r in rows]
+
+    def edge_exists(self, from_id: str, to_id: str, kind: object) -> bool:
+        """Return True if an edge with the given from_id, to_id, and kind exists.
+
+        Args:
+            from_id: Source node id.
+            to_id: Target node id.
+            kind: EdgeType (or str-compatible value).
+
+        Returns:
+            True if a matching edge exists, False otherwise.
+        """
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM edges WHERE from_id = ? AND to_id = ? AND kind = ? LIMIT 1",
+                (from_id, to_id, kind.value if hasattr(kind, "value") else str(kind)),
+            ).fetchone()
+        return row is not None
 
     def delete_for_path(self, path: str) -> int:
         """Delete edges whose from_id or to_id contains the given path.
