@@ -62,7 +62,8 @@ STRIP_RULES: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
-MIN_CONFIDENCE = 0.55  # HIGH only — minimum 2 signals
+MIN_CONFIDENCE = 0.55  # HIGH tier — minimum 2 signals
+MEDIUM_MIN_CONFIDENCE = 0.30  # MEDIUM tier — single strong signal (e.g. CALLS edge alone)
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +172,46 @@ def name_match(stripped: str, prod_name: str) -> bool:
     return stripped.lower() == prod_name.lower()
 
 
+def _has_direct_call_edge(test_node_id: str, prod_node_id: str, repo) -> bool:
+    """Return True if a CALLS edge exists from test_node to prod_node in the graph."""
+    if repo is None:
+        return False
+    from loom.graph.models.edge import EdgeType
+
+    return repo.edges.edge_exists(test_node_id, prod_node_id, EdgeType.CALLS)
+
+
+def match_test_to_production(
+    test_node,
+    prod_nodes: list,
+    repo,
+) -> list[tuple]:
+    """Score test_node against each prod_node and return (prod, score, tier) triples.
+
+    Tiers: 'HIGH' (score >= MIN_CONFIDENCE) or 'MEDIUM' (score >= MEDIUM_MIN_CONFIDENCE).
+    """
+    lang = test_node.language or ""
+    path = test_node.path or ""
+    stripped = strip_test_name(test_node.name or "", lang)
+    test_content = _read_test_content(path)
+    results = []
+    for prod in prod_nodes:
+        score = 0.0
+        if path_convention_match(path, prod.path or "", lang):
+            score += 0.30
+        if _check_import(test_content, prod.path or ""):
+            score += 0.30
+        if name_match(stripped, prod.name or ""):
+            score += 0.25
+        if _has_direct_call_edge(test_node.id, prod.id, repo):
+            score += 0.40
+        if score >= MIN_CONFIDENCE:
+            results.append((prod, score, "HIGH"))
+        elif score >= MEDIUM_MIN_CONFIDENCE:
+            results.append((prod, score, "MEDIUM"))
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Core class
 # ---------------------------------------------------------------------------
@@ -204,8 +245,6 @@ class TestLinker:
         tags: dict[str, list[str]] = {}
 
         for test_node in test_nodes:
-            lang = test_node.language or ""
-
             # Guard: skip test fixtures (conftest.py files, setUp methods)
             path = test_node.path or ""
             name = test_node.name or ""
@@ -217,22 +256,8 @@ class TestLinker:
             ):
                 continue
 
-            stripped = strip_test_name(name, lang)
-
-            # Pre-read test file content once per test node (avoid repeated I/O)
-            test_content = _read_test_content(path)
-
-            for prod in prod_nodes:
-                score = 0.0
-
-                if path_convention_match(path, prod.path or "", lang):
-                    score += 0.3
-                if _check_import(test_content, prod.path or ""):
-                    score += 0.3
-                if name_match(stripped, prod.name or ""):
-                    score += 0.25
-
-                if score >= MIN_CONFIDENCE:
+            for prod, score, tier in match_test_to_production(test_node, prod_nodes, self.repo):
+                if tier == "HIGH":
                     edges.append(
                         Edge(
                             from_id=test_node.id,
@@ -246,5 +271,10 @@ class TestLinker:
                         tags[prod.id] = []
                     if "tested" not in tags[prod.id]:
                         tags[prod.id].append("tested")
+                elif tier == "MEDIUM":
+                    if prod.id not in tags:
+                        tags[prod.id] = []
+                    if "partially-tested" not in tags[prod.id]:
+                        tags[prod.id].append("partially-tested")
 
         return edges, tags
