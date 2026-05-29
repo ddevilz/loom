@@ -30,10 +30,12 @@ def split_params(text: str) -> list[str]:
 
 
 def walk_all(node: TSNode) -> Iterator[TSNode]:
-    """Yield this node and all descendants depth-first."""
-    yield node
-    for child in node.children:
-        yield from walk_all(child)
+    """Yield this node and all descendants depth-first (iterative, no stack limit)."""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        yield current
+        stack.extend(reversed(current.children))
 
 
 def count_node_type(node: TSNode, type_name: str) -> int:
@@ -42,7 +44,11 @@ def count_node_type(node: TSNode, type_name: str) -> int:
 
 
 def has_decorator(node: TSNode, name: str) -> bool:
-    """Return True if any decorator child's text contains `name`."""
+    """Return True if any decorator child's text contains `name`.
+
+    For Python, pass the `decorated_definition` node (not `function_definition`);
+    decorators are not direct children of the inner definition.
+    """
     for child in node.children:
         if child.type == "decorator":
             text = child.text.decode("utf-8", errors="replace") if child.text else ""
@@ -51,8 +57,12 @@ def has_decorator(node: TSNode, name: str) -> bool:
     return False
 
 
-def has_decorator_prefix(node: TSNode, prefixes: tuple) -> bool:
-    """Return True if any decorator (with leading @ stripped) starts with one of prefixes."""
+def has_decorator_prefix(node: TSNode, prefixes: tuple[str, ...]) -> bool:
+    """Return True if any decorator (with leading @ stripped) starts with one of prefixes.
+
+    For Python, pass the `decorated_definition` node (not `function_definition`);
+    decorators are not direct children of the inner definition.
+    """
     for child in node.children:
         if child.type == "decorator":
             text = child.text.decode("utf-8", errors="replace") if child.text else ""

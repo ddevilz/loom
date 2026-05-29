@@ -72,7 +72,9 @@ BRANCH_NODES: dict[str, set[str]] = {
 
 def count_branch_nodes(ts_node: TSNode, language: str) -> int:
     """Count branch/decision points in a tree-sitter AST node."""
-    from loom.indexer.languages._ts_utils import walk_all  # local import avoids circular dep
+    # Local import avoids circular dep: complexity → languages._ts_utils →
+    # languages.__init__ → _base → complexity
+    from loom.indexer.languages._ts_utils import walk_all
 
     branch_types = BRANCH_NODES.get(language, set())
     return sum(1 for n in walk_all(ts_node) if n.type in branch_types)
