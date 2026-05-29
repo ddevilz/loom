@@ -77,6 +77,10 @@ def compute_graph_tags(repo: Repository) -> dict[str, list[str]]:
     suppress dead-code — a tested function with zero CALLS in-degree is still unreachable
     in production code.
     """
+    repo.tags.clear_by_tags(
+        ["dead-code", "entry-point", "hub", "bridge"], source="system"
+    )
+
     tags: dict[str, list[str]] = defaultdict(list)
 
     in_degrees, out_degrees, all_node_ids = _get_degree_stats(repo)

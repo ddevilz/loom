@@ -75,6 +75,31 @@ class TagRepository:
                 self._rebuild_normalized(conn, node_id)
             conn.commit()
 
+    def clear_by_tags(self, tags: list[str], source: str = "system") -> int:
+        """Remove all (node_id, tag, source) rows matching any tag in `tags`.
+
+        Returns the number of rows deleted. Rebuilds tags_normalized for affected nodes.
+        """
+        if not tags:
+            return 0
+        placeholders = ",".join("?" * len(tags))
+        with self._db._lock:
+            conn = self._db.connect()
+            rows = conn.execute(
+                f"SELECT DISTINCT node_id FROM node_tags WHERE tag IN ({placeholders}) AND source = ?",
+                (*tags, source),
+            ).fetchall()
+            affected = [r["node_id"] for r in rows]
+            cur = conn.execute(
+                f"DELETE FROM node_tags WHERE tag IN ({placeholders}) AND source = ?",
+                (*tags, source),
+            )
+            deleted = cur.rowcount
+            for node_id in affected:
+                self._rebuild_normalized(conn, node_id)
+            conn.commit()
+        return deleted
+
     def _rebuild_normalized(self, conn, node_id: str) -> None:
         """Rebuild tags_normalized on nodes table from node_tags. Internal only."""
         rows = conn.execute(
