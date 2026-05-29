@@ -30,7 +30,7 @@ def test_parse_ruby_basic():
     assert by_name["Greeting"] == NodeKind.CLASS
     assert by_name["Greeter"] == NodeKind.CLASS
     assert any(n.name == "greet" and n.kind == NodeKind.METHOD for n in nodes)
-    assert any(n.name == "shout" and n.kind == NodeKind.FUNCTION for n in nodes)
+    assert any(n.name == "shout" and n.kind == NodeKind.METHOD for n in nodes)  # class-level method
 
 
 def test_parse_ruby_assigns_paths_and_language():

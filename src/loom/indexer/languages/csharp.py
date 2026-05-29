@@ -84,7 +84,8 @@ class CSharpHandler(BaseLanguageHandler):
                 out.append(
                     self._build_node(
                         child, src, path,
-                        kind=NodeKind.FUNCTION, name=name, symbol=name,
+                        kind=NodeKind.METHOD,  # constructors are class members
+                        name=name, symbol=name,
                         parent_id=parent_id,
                     )
                 )

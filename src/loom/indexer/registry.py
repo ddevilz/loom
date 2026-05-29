@@ -270,13 +270,13 @@ def _register_defaults(reg: LanguageRegistry) -> None:
     reg.register(EXT_INI, "ini", parse_ini)
     reg.register(EXT_ENV, "env", parse_env)
 
-    from loom.indexer.languages.go import parse_go
-    from loom.indexer.languages.rust import parse_rust
-    from loom.indexer.languages.kotlin import parse_kotlin
-    from loom.indexer.languages.ruby import parse_ruby
-    from loom.indexer.languages.csharp import parse_csharp
-    from loom.indexer.languages.php import parse_php
     from loom.indexer.languages.cpp import parse_cpp
+    from loom.indexer.languages.csharp import parse_csharp
+    from loom.indexer.languages.go import parse_go
+    from loom.indexer.languages.kotlin import parse_kotlin
+    from loom.indexer.languages.php import parse_php
+    from loom.indexer.languages.ruby import parse_ruby
+    from loom.indexer.languages.rust import parse_rust
 
     reg.register(".go", "go", parse_go)
     reg.register(".rs", "rust", parse_rust)
@@ -286,5 +286,5 @@ def _register_defaults(reg: LanguageRegistry) -> None:
     reg.register(".rake", "ruby", parse_ruby)
     reg.register(".cs", "csharp", parse_csharp)
     reg.register(".php", "php", parse_php)
-    for _ext in (".cpp", ".cc", ".cxx", ".hpp", ".hxx"):
+    for _ext in (".cpp", ".cc", ".cxx", ".hpp", ".hxx", ".h", ".c"):
         reg.register(_ext, "cpp", parse_cpp)

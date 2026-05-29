@@ -53,7 +53,7 @@ class RubyHandler(BaseLanguageHandler):
                 )
                 out.append(n_obj)
                 self._walk(child, src, path, out, n_obj.id, inside_class=True)
-            elif t == "method":
+            elif t == "method" or t == "singleton_method":
                 name_node = child.child_by_field_name("name")
                 if name_node is None:
                     continue
@@ -63,18 +63,6 @@ class RubyHandler(BaseLanguageHandler):
                     self._build_node(
                         child, src, path,
                         kind=kind, name=name, symbol=name,
-                        parent_id=parent_id,
-                    )
-                )
-            elif t == "singleton_method":
-                name_node = child.child_by_field_name("name")
-                if name_node is None:
-                    continue
-                name = _node_text(src, name_node)
-                out.append(
-                    self._build_node(
-                        child, src, path,
-                        kind=NodeKind.FUNCTION, name=name, symbol=name,
                         parent_id=parent_id,
                     )
                 )

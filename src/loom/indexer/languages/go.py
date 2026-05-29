@@ -56,10 +56,30 @@ class GoHandler(BaseLanguageHandler):
                 if name_node is None:
                     continue
                 name = _node_text(src, name_node)
+                # Include receiver type to avoid symbol collision.
+                # The receiver is a parameter_list containing a parameter_declaration
+                # whose children include type_identifier or pointer_type.
+                receiver_type = ""
+                receiver_node = child.child_by_field_name("receiver")
+                if receiver_node:
+                    for rc in receiver_node.children:
+                        if rc.type != "parameter_declaration":
+                            continue
+                        for rcc in rc.children:
+                            if rcc.type == "type_identifier":
+                                receiver_type = _node_text(src, rcc)
+                                break
+                            if rcc.type == "pointer_type":
+                                inner = rcc.child_by_field_name("type") or rcc
+                                receiver_type = _node_text(src, inner).lstrip("*")
+                                break
+                        if receiver_type:
+                            break
+                symbol = f"{receiver_type}.{name}" if receiver_type else name
                 out.append(
                     self._build_node(
                         child, src, path,
-                        kind=NodeKind.METHOD, name=name, symbol=name,
+                        kind=NodeKind.METHOD, name=name, symbol=symbol,
                         parent_id=parent_id,
                     )
                 )

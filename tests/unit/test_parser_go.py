@@ -5,6 +5,11 @@ from __future__ import annotations
 from loom.graph.models import NodeKind
 from loom.indexer.languages.go import GoHandler
 
+
+def parse_go(src: bytes, path: str) -> list:
+    """Helper: parse Go source bytes directly."""
+    return GoHandler().parse(src, path)
+
 GO_SRC = b"""package main
 
 import "fmt"
@@ -55,3 +60,17 @@ def test_parse_go_line_numbers_set():
         assert n.start_line is not None
         assert n.end_line is not None
         assert n.end_line >= n.start_line
+
+
+def test_parse_go_no_method_id_collision():
+    """Two methods with same name on different types should have different IDs."""
+    src = b"""package main
+type Foo struct{}
+type Bar struct{}
+func (f Foo) String() string { return "foo" }
+func (b Bar) String() string { return "bar" }
+"""
+    nodes = parse_go(src, "types.go")
+    methods = [n for n in nodes if n.name == "String"]
+    assert len(methods) == 2
+    assert methods[0].id != methods[1].id

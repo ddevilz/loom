@@ -33,7 +33,7 @@ def test_parse_csharp_basic():
     assert ("Point", NodeKind.CLASS) in name_kinds
     assert ("Box", NodeKind.CLASS) in name_kinds
     assert any(n.kind == NodeKind.METHOD and n.name == "Say" for n in nodes)
-    assert any(n.kind == NodeKind.FUNCTION and n.name == "Greeter" for n in nodes)
+    assert any(n.kind == NodeKind.METHOD and n.name == "Greeter" for n in nodes)  # ctor
 
 
 def test_parse_csharp_assigns_paths_and_language():
