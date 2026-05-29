@@ -99,7 +99,7 @@ class EdgeRepository:
 
         return [self._row_to_edge(r) for r in rows]
 
-    def edge_exists(self, from_id: str, to_id: str, kind: object) -> bool:
+    def edge_exists(self, from_id: str, to_id: str, kind: EdgeType | str) -> bool:
         """Return True if an edge with the given from_id, to_id, and kind exists.
 
         Args:
@@ -110,7 +110,8 @@ class EdgeRepository:
         Returns:
             True if a matching edge exists, False otherwise.
         """
-        with self._db.connect() as conn:
+        with self._db._lock:
+            conn = self._db.connect()
             row = conn.execute(
                 "SELECT 1 FROM edges WHERE from_id = ? AND to_id = ? AND kind = ? LIMIT 1",
                 (from_id, to_id, kind.value if hasattr(kind, "value") else str(kind)),

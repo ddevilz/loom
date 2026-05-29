@@ -63,6 +63,9 @@ def row_to_node(row: sqlite3.Row) -> Node:
         summary=row["summary"],
         summary_hash=row["summary_hash"] if "summary_hash" in row.keys() else None,  # noqa: SIM118
         token_count=row["token_count"] if "token_count" in row.keys() else None,  # noqa: SIM118
+        language_notes=row["language_notes"] if "language_notes" in row.keys() else None,  # noqa: SIM118
+        layer=row["layer"] if "layer" in row.keys() else None,  # noqa: SIM118
+        bridge_score=row["bridge_score"] if "bridge_score" in row.keys() else None,  # noqa: SIM118
         community_id=row["community_id"],
         metadata=metadata,
     )
