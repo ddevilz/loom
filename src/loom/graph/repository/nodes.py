@@ -127,6 +127,15 @@ class NodeRepository:
             ).fetchall()
             return {r["path"]: (r["file_hash"], r["file_mtime"]) for r in rows}
 
+    def list_all_undeleted(self) -> list[Node]:
+        """Return all non-deleted nodes. Used by architecture layer assignment and Brandes."""
+        with self._db._lock:
+            conn = self._db.connect()
+            rows = conn.execute(
+                "SELECT * FROM nodes WHERE deleted_at IS NULL"
+            ).fetchall()
+        return [row_to_node(r) for r in rows]
+
     def get_file_hash(self, path: str) -> str | None:
         """Return the file_hash for a given path, or None."""
         with self._db._lock:

@@ -136,3 +136,25 @@ class EdgeRepository:
             )
             conn.commit()
         return cur.rowcount
+
+    def get_all(self) -> list[Edge]:
+        """Return all edges. WARNING: in-memory; avoid on graphs > 100k edges."""
+        with self._db._lock:
+            conn = self._db.connect()
+            rows = conn.execute(
+                "SELECT from_id, to_id, kind, confidence, confidence_tier, description, metadata FROM edges"
+            ).fetchall()
+        return [self._row_to_edge(r) for r in rows]
+
+    def iter_pairs(self, kind=None):
+        """Generator yielding (from_id, to_id) tuples. Memory-efficient for Brandes."""
+        sql = "SELECT from_id, to_id FROM edges"
+        params: tuple = ()
+        if kind is not None:
+            kind_val = kind.value if hasattr(kind, "value") else str(kind)
+            sql += " WHERE kind = ?"
+            params = (kind_val,)
+        with self._db._lock:
+            conn = self._db.connect()
+            for row in conn.execute(sql, params):
+                yield (row["from_id"], row["to_id"])
