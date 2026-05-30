@@ -16,7 +16,7 @@ def register(mcp: object, pool: object, session: dict, cache: object) -> None:
         for each *.db. Use the name in the `project=` arg on any read tool
         to scope queries to a specific project.
         """
-        registry = pool._registry  # type: ignore[attr-defined]
+        registry = pool.registry  # type: ignore[attr-defined]
         infos = []
         for p in registry.list():
             d = asdict(p)

@@ -28,6 +28,10 @@ class DBPool:
         self._lock = threading.RLock()
         self._cache: OrderedDict[Path, DB] = OrderedDict()
 
+    @property
+    def registry(self) -> ProjectRegistry:
+        return self._registry
+
     def get(self, project: str | None, cwd: Path | None = None) -> DB:
         name = project if project is not None else self._registry.current(cwd)
         path = self._registry.resolve(name)
