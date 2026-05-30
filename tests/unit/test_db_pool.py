@@ -89,3 +89,37 @@ def test_get_none_resolves_current(registry: ProjectRegistry, tmp_path: Path, mo
     pool = DBPool(registry)
     db = pool.get(None)
     assert db.path.stem == tmp_path.name
+
+
+def test_get_none_uses_primed_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """prime() should establish the default DB returned by get(None)."""
+    pdir = tmp_path / "projects"
+    pdir.mkdir()
+    db_path = pdir / "x.db"
+    _make_indexed_db(db_path)
+    # cwd is unrelated to the primed DB — registry.current(cwd) would NOT return "x"
+    monkeypatch.chdir(tmp_path)
+    pool = DBPool(ProjectRegistry(projects_dir=pdir))
+    primed = DB(path=db_path)
+    primed.connect()
+    pool.prime(primed)
+    assert pool.get(None) is primed
+
+
+def test_get_named_still_works_after_prime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicit project= names must still resolve through the registry after prime()."""
+    pdir = tmp_path / "projects"
+    pdir.mkdir()
+    primed_path = pdir / "primed.db"
+    other_path = pdir / "other.db"
+    _make_indexed_db(primed_path)
+    _make_indexed_db(other_path)
+    monkeypatch.chdir(tmp_path)
+    pool = DBPool(ProjectRegistry(projects_dir=pdir))
+    primed = DB(path=primed_path)
+    primed.connect()
+    pool.prime(primed)
+    # Explicit name routes through registry, not the prime default
+    other = pool.get("other")
+    assert other.path.name == "other.db"
+    assert other is not primed

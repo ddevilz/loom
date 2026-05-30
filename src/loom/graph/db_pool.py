@@ -27,12 +27,15 @@ class DBPool:
         self._capacity = capacity
         self._lock = threading.RLock()
         self._cache: OrderedDict[Path, DB] = OrderedDict()
+        self._default_path: Path | None = None
 
     @property
     def registry(self) -> ProjectRegistry:
         return self._registry
 
     def get(self, project: str | None, cwd: Path | None = None) -> DB:
+        if project is None and self._default_path is not None:
+            return self._get_by_path(self._default_path)
         name = project if project is not None else self._registry.current(cwd)
         path = self._registry.resolve(name)
         return self._get_by_path(path)
@@ -42,6 +45,7 @@ class DBPool:
         with self._lock:
             self._cache[path] = db
             self._cache.move_to_end(path)
+            self._default_path = path
             self._evict_if_needed()
 
     def close_all(self) -> None:
