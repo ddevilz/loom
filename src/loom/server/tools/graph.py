@@ -36,14 +36,25 @@ async def _store_tags_impl(
     return await _asyncio.to_thread(_run)
 
 
-def register(mcp: object, db: object, session: dict, cache: object) -> None:
+def register(mcp: object, pool: object, session: dict, cache: object) -> None:
+    from loom.graph.projects import UnknownProjectError
     from loom.intelligence.cohesion import get_community_cohesion
     from loom.query import traversal
     from loom.query.blast_radius import build_blast_radius_payload
     from loom.server.enums import ErrorCode
     from loom.server.validation import MAX_ID, clamp_depth, clamp_limit, err, ok, validate_text
 
-    async def _log(node_id: str, tool: str) -> None:
+    def _resolve(project: str | None) -> tuple[object | None, dict | None]:
+        """Return (db, None) on success, (None, err_dict) on unknown project."""
+        try:
+            return pool.get(project), None  # type: ignore[attr-defined]
+        except UnknownProjectError:
+            return None, err(
+                ErrorCode.VALIDATION_ERROR,
+                f"unknown project '{project}'. Call list_projects to see available projects.",
+            )
+
+    async def _log(db: object, node_id: str, tool: str) -> None:
         from loom.store.node_visits import log_visit
 
         sid = session.get("id")
@@ -52,14 +63,21 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
 
     @mcp.tool()
     async def get_blast_radius(
-        node_id: str, depth: int = 3, limit: int = 50, offset: int = 0
+        node_id: str,
+        depth: int = 3,
+        limit: int = 50,
+        offset: int = 0,
+        project: str | None = None,
     ) -> dict:
         """Transitive callers via SQLite recursive CTE. Paginated."""
         try:
             nid = validate_text(node_id, field="node_id", max_length=MAX_ID)
         except ValueError as exc:
             return err(ErrorCode.VALIDATION_ERROR, str(exc))
-        await _log(nid, "get_blast_radius")
+        db, error = _resolve(project)
+        if error is not None:
+            return error
+        await _log(db, nid, "get_blast_radius")
         d = clamp_depth(depth)
         lim = max(1, min(limit, 200))
         key = cache.make_key("get_blast_radius", nid, depth=d, limit=lim, offset=offset)
@@ -77,6 +95,7 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         depth: int = 1,
         limit: int = 20,
         include_summaries: bool = True,
+        project: str | None = None,
     ) -> dict:
         """Generic neighbor traversal across all edge kinds, both directions.
 
@@ -84,12 +103,16 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
             depth: Hop depth (1-10). Default 1.
             limit: Max neighbors to return (1-100). Default 20.
             include_summaries: Include summary text. Set False for names/paths only.
+            project: optional project name to query a different indexed repo.
         """
         try:
             nid = validate_text(node_id, field="node_id", max_length=MAX_ID)
         except ValueError as exc:
             return err(ErrorCode.VALIDATION_ERROR, str(exc))
-        await _log(nid, "get_neighbors")
+        db, error = _resolve(project)
+        if error is not None:
+            return error
+        await _log(db, nid, "get_neighbors")
         d = clamp_depth(depth)
         lim = clamp_limit(limit)
         key = cache.make_key("get_neighbors", nid, depth=d, limit=lim)
@@ -122,17 +145,22 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         community_id: str,
         limit: int = 50,
         include_summaries: bool = True,
+        project: str | None = None,
     ) -> dict:
         """Return member nodes of a community cluster.
 
         Args:
             limit: Max members to return (1-100). Default 50.
             include_summaries: Include summary text. Set False for names/paths only.
+            project: optional project name to query a different indexed repo.
         """
         try:
             cid = validate_text(community_id, field="community_id", max_length=MAX_ID)
         except ValueError as exc:
             return err(ErrorCode.VALIDATION_ERROR, str(exc))
+        db, error = _resolve(project)
+        if error is not None:
+            return error
         nodes = await traversal.community_members(db, cid)
         nodes = nodes[: clamp_limit(limit)]
         if include_summaries:
@@ -157,17 +185,22 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         from_id: str,
         to_id: str,
         include_summaries: bool = True,
+        project: str | None = None,
     ) -> dict:
         """Shortest directed path on CALLS subgraph.
 
         Args:
             include_summaries: Include summary text on path nodes. Set False for names/paths only.
+            project: optional project name to query a different indexed repo.
         """
         try:
             fid = validate_text(from_id, field="from_id", max_length=MAX_ID)
             tid = validate_text(to_id, field="to_id", max_length=MAX_ID)
         except ValueError as exc:
             return err(ErrorCode.VALIDATION_ERROR, str(exc))
+        db, error = _resolve(project)
+        if error is not None:
+            return error
         path = await traversal.shortest_path(db, fid, tid)
         if path is None:
             return ok(None)
@@ -178,26 +211,41 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         return ok([{"id": n.id, "name": n.name, "path": n.path} for n in path])
 
     @mcp.tool()
-    async def graph_stats(include_cohesion: bool = False) -> dict:
+    async def graph_stats(
+        include_cohesion: bool = False,
+        project: str | None = None,
+    ) -> dict:
         """Node/edge counts broken down by kind.
 
         Args:
             include_cohesion: Include per-community cohesion scores (expensive, O(edges)).
                               Replaces get_community_cohesion when True.
+            project: optional project name to query a different indexed repo.
         """
+        db, error = _resolve(project)
+        if error is not None:
+            return error
         stats = await traversal.stats(db)
         if include_cohesion:
             stats["cohesion"] = await get_community_cohesion(db)
         return ok(stats)
 
     @mcp.tool()
-    async def god_nodes(limit: int = 20, include_summaries: bool = True) -> dict:
+    async def god_nodes(
+        limit: int = 20,
+        include_summaries: bool = True,
+        project: str | None = None,
+    ) -> dict:
         """Highest in-degree on CALLS subgraph (most-called functions).
 
         Args:
             limit: Max nodes to return (1-100). Default 20.
             include_summaries: Include summary text. Set False for names/paths/degree only.
+            project: optional project name to query a different indexed repo.
         """
+        db, error = _resolve(project)
+        if error is not None:
+            return error
         pairs = await traversal.god_nodes(db, clamp_limit(limit))
         if include_summaries:
             return ok(
@@ -229,5 +277,6 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         remove: specific tags to remove
         clear: if True, wipe all agent tags first (then apply `add`)
         """
+        db = pool.get(None)  # type: ignore[attr-defined]
         cache.invalidate(node_id)
         return await _store_tags_impl(db, node_id, add=add, remove=remove, clear=clear)
