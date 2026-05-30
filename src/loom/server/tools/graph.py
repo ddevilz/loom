@@ -80,7 +80,9 @@ def register(mcp: object, pool: object, session: dict, cache: object) -> None:
         await _log(db, nid, "get_blast_radius")
         d = clamp_depth(depth)
         lim = max(1, min(limit, 200))
-        key = cache.make_key("get_blast_radius", nid, depth=d, limit=lim, offset=offset)
+        key = cache.make_key(
+            "get_blast_radius", nid, depth=d, limit=lim, offset=offset, project=project
+        )
         if (hit := cache.get(key)) is not None:
             return hit
         result = ok(
@@ -115,7 +117,7 @@ def register(mcp: object, pool: object, session: dict, cache: object) -> None:
         await _log(db, nid, "get_neighbors")
         d = clamp_depth(depth)
         lim = clamp_limit(limit)
-        key = cache.make_key("get_neighbors", nid, depth=d, limit=lim)
+        key = cache.make_key("get_neighbors", nid, depth=d, limit=lim, project=project)
         if (hit := cache.get(key)) is not None:
             return hit
         nodes = await traversal.neighbors(db, nid, depth=d)
