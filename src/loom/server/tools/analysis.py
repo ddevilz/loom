@@ -68,7 +68,8 @@ def _build_architecture_response(db) -> dict:
     }
 
 
-def register(mcp: object, db: object, session: dict, cache: object) -> None:
+def register(mcp: object, pool: object, session: dict, cache: object) -> None:
+    from loom.graph.projects import UnknownProjectError
     from loom.intelligence.cohesion import get_community_cohesion as _get_cohesion  # noqa: F401
     from loom.intelligence.suggested_questions import suggest_questions as _suggest_questions
     from loom.intelligence.surprising_connections import (
@@ -80,9 +81,20 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
     from loom.store.node_visits import get_annotation_gaps
     from loom.store.savings import get_recent_savings, get_savings_stats
 
+    def _resolve(project: str | None) -> tuple[object | None, dict | None]:
+        """Return (db, None) on success, (None, err_dict) on unknown project."""
+        try:
+            return pool.get(project), None  # type: ignore[attr-defined]
+        except UnknownProjectError:
+            return None, err(
+                ErrorCode.VALIDATION_ERROR,
+                f"unknown project '{project}'. Call list_projects to see available projects.",
+            )
+
     @mcp.tool()
     async def store_understanding_batch(updates: list[dict]) -> dict:
         """Cache summaries for multiple nodes in one call. Max 50 per call."""
+        db = pool.get(None)  # type: ignore[attr-defined]
         batch = updates[:50]
         stored = skipped = 0
         errors: list[dict] = []
@@ -134,6 +146,7 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
 
         Returns {"ok": true, "skipped": true} when skipped — no re-read needed.
         """
+        db = pool.get(None)  # type: ignore[attr-defined]
         try:
             nid = validate_text(node_id, field="node_id", max_length=MAX_ID)
             s = validate_text(summary, field="summary", max_length=4000)
@@ -184,18 +197,21 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         )
 
     @mcp.tool()
-    async def get_savings() -> dict:
+    async def get_savings(project: str | None = None) -> dict:
         """Report tokens saved by Loom cache hits — all-time and recent.
 
         agent_hits: summaries written by you (store_understanding) — file reads provably skipped.
         auto_hits: structural summaries from analyze — may still need source for full context.
         """
+        db, error = _resolve(project)
+        if error is not None:
+            return error
         stats = await get_savings_stats(db)
         recent = await get_recent_savings(db, limit=10)
         return ok({**stats, "recent": recent})
 
     @mcp.tool()
-    async def get_surprising_connections(limit: int = 10) -> dict:
+    async def get_surprising_connections(limit: int = 10, project: str | None = None) -> dict:
         """Find non-obvious CALLS edges — cross-community, peripheral-to-hub, cross-module.
 
         Ranked by composite surprise score. Each result includes human-readable
@@ -204,10 +220,13 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         Useful for: discovering hidden coupling, unexpected dependencies,
         functions that act as unofficial bridges between subsystems.
         """
+        db, error = _resolve(project)
+        if error is not None:
+            return error
         return ok(await _get_surprising(db, limit=clamp_limit(limit)))
 
     @mcp.tool()
-    async def suggest_questions(limit: int = 7) -> dict:
+    async def suggest_questions(limit: int = 7, project: str | None = None) -> dict:
         """Generate questions worth investigating based on graph topology.
 
         Question types:
@@ -218,10 +237,13 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
 
         Call this at session start to prioritize what to investigate.
         """
+        db, error = _resolve(project)
+        if error is not None:
+            return error
         return ok(await _suggest_questions(db, limit=clamp_limit(limit)))
 
     @mcp.tool()
-    async def get_work_plan() -> dict:
+    async def get_work_plan(project: str | None = None) -> dict:
         """One-call session bootstrap — priority, reason, and concrete annotation tasks.
 
         Combines suggest_questions + annotation_gaps + live graph stats to compute
@@ -236,6 +258,9 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         Replaces the primer → suggest_questions → god_nodes orientation sequence
         with a single call (~200 tokens).
         """
+        db, error = _resolve(project)
+        if error is not None:
+            return error
         import asyncio as _asyncio
 
         questions = await _suggest_questions(db, limit=7)
@@ -329,16 +354,20 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         )
 
     @mcp.tool()
-    async def get_architecture() -> dict:
+    async def get_architecture(project: str | None = None) -> dict:
         """Architecture overview: layer counts, cross-layer gateways, dep graph, violations.
 
         Cached for 5 minutes (matches MemoCache default TTL).
         """
+        db, error = _resolve(project)
+        if error is not None:
+            return error
         import asyncio as _asyncio
 
-        cached = cache.get("get_architecture:_")
+        cache_key = f"get_architecture:{db.path}"
+        cached = cache.get(cache_key)
         if cached is not None:
             return cached
         result = await _asyncio.to_thread(_build_architecture_response, db)
-        cache.set("get_architecture:_", result)
+        cache.set(cache_key, result)
         return result
