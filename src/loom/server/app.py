@@ -18,37 +18,53 @@ def build_server(
     *,
     db: object = None,
 ) -> object:
-    """Build and return the FastMCP server with all 17 tools registered."""
-    from loom.graph.db import DB, DEFAULT_DB_PATH
+    """Build and return the FastMCP server with all tools registered."""
+    from loom.graph.db import DB, resolve_db_path
+    from loom.graph.db_pool import DBPool
+    from loom.graph.projects import ProjectRegistry
     from loom.server import run as run_mod
     from loom.server.cache import MemoCache
-    from loom.server.tools import analysis, context, graph, search
+    from loom.server.tools import analysis, context, graph, projects, search
     from loom.server.tools import session as session_tools
 
     if FastMCP is None:
         raise RuntimeError("fastmcp not installed — run: uv add fastmcp")
     mcp = FastMCP("loom")
-    if db is None:
-        db = DB(path=db_path or DEFAULT_DB_PATH)
+
+    registry = ProjectRegistry()
+    pool = DBPool(registry)
+
+    # Determine the current project's DB and prime the pool so the first call
+    # has the same latency profile as v0.6.2 (no cold open on first tool call).
+    if db is not None:
+        pool.prime(db)  # type: ignore[arg-type]
+        primary = db
+    else:
+        primary = DB(path=db_path or resolve_db_path())
+        primary.connect()
+        pool.prime(primary)  # type: ignore[arg-type]
 
     cache = MemoCache()
     session: dict[str, str] = {}
 
-    search.register(mcp, db, session, cache)
-    graph.register(mcp, db, session, cache)
-    analysis.register(mcp, db, session, cache)
-    session_tools.register(mcp, db, session, run_mod)
-    context.register(mcp, db, session, cache)
+    search.register(mcp, pool, session, cache)
+    graph.register(mcp, pool, session, cache)
+    analysis.register(mcp, pool, session, cache)
+    session_tools.register(mcp, pool, session, run_mod)
+    context.register(mcp, pool, session, cache)
+    projects.register(mcp, pool, session, cache)
 
-    # ── Resources ─────────────────────────────────────────────────────────────
+    # Resources read from the primed (current) DB. They reflect the server's
+    # boot project — they intentionally do NOT switch with `project=` args.
+    primed = primary
 
     @mcp.resource("loom://savings")
     async def savings_resource() -> str:
         """Token savings report — how much Loom has saved across all sessions."""
         from loom.store.savings import get_recent_savings, get_savings_stats
 
-        stats = await get_savings_stats(db)
-        recent = await get_recent_savings(db, limit=5)
+        stats = await get_savings_stats(primed)
+        recent = await get_recent_savings(primed, limit=5)
         lines = [
             "# Loom Token Savings",
             f"Total saved : {stats['total_tokens_saved']:,} tokens",
@@ -68,14 +84,10 @@ def build_server(
 
     @mcp.resource("loom://primer")
     async def primer_resource() -> str:
-        """Compressed codebase overview — load at session start.
-
-        Returns ~200-token summary: repo shape, modules, hot functions, coverage stats.
-        Replaces cold-start file exploration (saves 3,000–10,000 tokens per session).
-        """
+        """Compressed codebase overview — load at session start."""
         from loom.query.primer import build_primer
 
-        result = await build_primer(db)
+        result = await build_primer(primed)
         return str(result)
 
     @mcp.resource("loom://status")
@@ -85,8 +97,8 @@ def build_server(
         import time
 
         def _query() -> dict:
-            with db._lock:
-                conn = db.connect()
+            with primed._lock:
+                conn = primed.connect()
                 node_count = conn.execute(
                     "SELECT COUNT(*) FROM nodes WHERE deleted_at IS NULL"
                 ).fetchone()[0]
@@ -117,8 +129,8 @@ def build_server(
             f"Nodes       : {stats['node_count']:,}",
             f"Last indexed: {last_analyzed_ago}",
             f"Indexing    : {'yes (background)' if indexing else 'no'}",
-            f"FTS5        : {'yes' if db._fts5 else 'no'}",
-            f"DB          : {db.path}",
+            f"FTS5        : {'yes' if primed._fts5 else 'no'}",
+            f"DB          : {primed.path}",
         ]
         if indexing:
             done = progress.get("files_processed", 0)

@@ -35,7 +35,7 @@ async def empty_server():
 
 
 @pytest.mark.asyncio
-async def test_list_tools_returns_all_19(indexed_server) -> None:
+async def test_list_tools_returns_all_20(indexed_server) -> None:
     async with Client(indexed_server) as client:
         tools = await client.list_tools()
     names = {t.name for t in tools}
@@ -59,6 +59,7 @@ async def test_list_tools_returns_all_19(indexed_server) -> None:
         "get_status",
         "get_architecture",
         "store_tags",
+        "list_projects",
     }
     assert names == expected
 
