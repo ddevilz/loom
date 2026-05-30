@@ -8,9 +8,11 @@ def _is_test_path(path: str) -> bool:
     return "/test" in p or p.startswith("test")
 
 
-def register(mcp: object, db: object, session: dict, cache: object) -> None:
+def register(mcp: object, pool: object, session: dict, cache: object) -> None:
     from loom.graph.models import SummarySource
+    from loom.graph.projects import UnknownProjectError
     from loom.query.search import find_replacement_candidates, search
+    from loom.server.enums import ErrorCode
     from loom.server.validation import (
         MAX_QUERY,
         clamp_limit,
@@ -21,16 +23,16 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
     )
     from loom.store.savings import log_saving
 
-    async def _log(node_id: str, tool: str) -> None:
-        from loom.store.node_visits import log_visit
-
-        sid = session.get("id")
-        if sid:
-            await log_visit(db, session_id=sid, node_id=node_id, tool=tool)
-
-    @mcp.tool()
-    async def search_code(query: str, limit: int = 10) -> dict:
+    @mcp.tool()  # type: ignore[attr-defined]
+    async def search_code(query: str, limit: int = 10, project: str | None = None) -> dict:
         """Search nodes by name/summary/path via FTS5 or LIKE.
+
+        Args:
+            query: search text.
+            limit: max results (clamped).
+            project: optional project name to search a different indexed repo.
+                Use list_projects to discover available names. Defaults to the
+                current project (server cwd's git root).
 
         Results include caller_count and community_id for disambiguation.
         Dead nodes are ranked last with replacement_candidates where detectable.
@@ -41,9 +43,22 @@ def register(mcp: object, db: object, session: dict, cache: object) -> None:
         try:
             q = validate_text(query, field="query", max_length=MAX_QUERY)
         except ValueError as exc:
-            from loom.server.enums import ErrorCode
-
             return err(ErrorCode.VALIDATION_ERROR, str(exc))
+
+        try:
+            db = pool.get(project)  # type: ignore[attr-defined]
+        except UnknownProjectError:
+            return err(
+                ErrorCode.VALIDATION_ERROR,
+                f"unknown project '{project}'. Call list_projects to see available projects.",
+            )
+
+        async def _log(node_id: str, tool: str) -> None:
+            from loom.store.node_visits import log_visit
+
+            sid = session.get("id")
+            if sid:
+                await log_visit(db, session_id=sid, node_id=node_id, tool=tool)
 
         raw = await search(q, db, limit=clamp_limit(limit))
 
