@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 
-def register(mcp: object, db: object, session: dict, run_mod: object) -> None:
+def register(mcp: object, pool: object, session: dict, run_mod: object) -> None:
+    from loom.graph.projects import UnknownProjectError
     from loom.query.delta import get_delta_payload
     from loom.server.enums import ErrorCode
     from loom.server.validation import err, ok, validate_text
     from loom.store.node_visits import get_annotation_gaps, get_unannotated_reads
     from loom.store.sessions import create_session, get_latest_session_for_agent, get_session
 
-    @mcp.tool()
+    def _resolve(project: str | None) -> tuple[object | None, dict | None]:
+        try:
+            return pool.get(project), None  # type: ignore[attr-defined]
+        except UnknownProjectError:
+            return None, err(
+                ErrorCode.VALIDATION_ERROR,
+                f"unknown project '{project}'. Call list_projects to see available projects.",
+            )
+
+    @mcp.tool()  # type: ignore[attr-defined]
     async def start_session(agent_id: str = "default") -> dict:
         """Register start of agent session. Call once at session beginning.
 
@@ -30,8 +40,9 @@ def register(mcp: object, db: object, session: dict, run_mod: object) -> None:
         except ValueError as exc:
             return err(ErrorCode.VALIDATION_ERROR, str(exc))
 
-        prev = await get_latest_session_for_agent(db, aid)
+        db = pool.get(None)  # type: ignore[attr-defined]  # session always uses current project
 
+        prev = await get_latest_session_for_agent(db, aid)
         result = await create_session(db, agent_id=aid)
         session["id"] = result["session_id"]
         session["agent_id"] = aid
@@ -41,7 +52,6 @@ def register(mcp: object, db: object, session: dict, run_mod: object) -> None:
             unannotated = await get_unannotated_reads(db, prev["id"])
 
         gaps = await get_annotation_gaps(db, limit=5)
-
         result["unannotated_reads"] = unannotated
         result["annotation_gaps"] = gaps
         if unannotated:
@@ -51,10 +61,11 @@ def register(mcp: object, db: object, session: dict, run_mod: object) -> None:
             )
         return ok(result)
 
-    @mcp.tool()
+    @mcp.tool()  # type: ignore[attr-defined]
     async def get_delta(
         previous_session_id: str | None = None,
         agent_id: str | None = None,
+        project: str | None = None,
     ) -> dict:
         """What changed since your last session — skip re-reading unchanged functions.
 
@@ -65,9 +76,15 @@ def register(mcp: object, db: object, session: dict, run_mod: object) -> None:
         Args:
             previous_session_id: session_id from previous start_session call (most precise).
             agent_id: Find most recent session for this agent type (fallback).
+            project: Optional project name to compute delta against a different indexed repo.
+                     Use list_projects to discover names. Defaults to the current project.
         """
         if not previous_session_id and not agent_id:
             return err(ErrorCode.MISSING_ARGS, "Provide either previous_session_id or agent_id.")
+
+        db, error = _resolve(project)
+        if error is not None:
+            return error
 
         session_row = None
         if previous_session_id:
@@ -97,7 +114,7 @@ def register(mcp: object, db: object, session: dict, run_mod: object) -> None:
 
         return ok(await get_delta_payload(db, since_ts=session_row["started_at"]))
 
-    @mcp.tool()
+    @mcp.tool()  # type: ignore[attr-defined]
     async def get_status() -> dict:
         """Live indexing progress + DB stats.
 
@@ -107,6 +124,8 @@ def register(mcp: object, db: object, session: dict, run_mod: object) -> None:
         import asyncio as _asyncio
         import datetime
         import time
+
+        db = pool.get(None)  # type: ignore[attr-defined]  # status reflects current project / boot DB
 
         def _query() -> dict:
             with db._lock:
