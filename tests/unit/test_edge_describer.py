@@ -1,4 +1,4 @@
-from loom.indexer.edge_describer import extract_verb, describe_call_edge
+from loom.indexer.edge_describer import describe_call_edge, extract_verb
 
 
 def test_extract_verb_get():

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from loom.intelligence.architecture import (
-    FRAMEWORK_LAYERS,
     LAYER_PATTERNS,
     assign_layers_from_paths,
     detect_framework,

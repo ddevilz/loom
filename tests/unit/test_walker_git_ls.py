@@ -1,8 +1,6 @@
 import subprocess
 from pathlib import Path
 
-import pytest
-
 from loom.indexer.walker import _git_ls_files, walk_repo
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loom.graph.projects import ProjectInfo, ProjectRegistry, UnknownProjectError
+from loom.graph.projects import ProjectRegistry, UnknownProjectError
 
 
 def _make_db(path: Path, *, node_count: int = 0, last_ts: int | None = None) -> None:

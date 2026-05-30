@@ -4,7 +4,6 @@ from tree_sitter import Language, Parser
 from loom.indexer.language_notes import extract_language_notes
 from loom.indexer.languages._ts_utils import walk_all
 
-
 PY_LANG = Language(ts_py.language())
 
 

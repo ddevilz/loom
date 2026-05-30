@@ -1,6 +1,7 @@
 """graph.py — graph traversal MCP tools."""
 
 from __future__ import annotations
+
 import asyncio as _asyncio
 
 

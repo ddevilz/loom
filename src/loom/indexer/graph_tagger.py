@@ -33,13 +33,13 @@ def _compute_bridge_scores(
         adj[u].append(v)
         adj[v].append(u)
 
-    cb: dict[str, float] = {nid: 0.0 for nid in node_ids}
+    cb: dict[str, float] = dict.fromkeys(node_ids, 0.0)
 
     for s in node_ids:
         stack: list[str] = []
         pred: dict[str, list[str]] = defaultdict(list)
         sigma: dict[str, int] = defaultdict(int)
-        dist: dict[str, int] = {nid: -1 for nid in node_ids}
+        dist: dict[str, int] = dict.fromkeys(node_ids, -1)
         sigma[s] = 1
         dist[s] = 0
         q: deque[str] = deque([s])

@@ -1,6 +1,6 @@
 import tree_sitter_go as ts_go
-import tree_sitter_rust as ts_rust
 import tree_sitter_kotlin as ts_kotlin
+import tree_sitter_rust as ts_rust
 from tree_sitter import Language, Parser
 
 from loom.indexer.language_notes import extract_language_notes

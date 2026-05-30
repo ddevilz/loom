@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import threading
 from pathlib import Path
 
@@ -84,7 +83,11 @@ def test_threadsafe_smoke(registry: ProjectRegistry) -> None:
     assert errors == []
 
 
-def test_get_none_resolves_current(registry: ProjectRegistry, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_none_resolves_current(
+    registry: ProjectRegistry,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _make_indexed_db(registry._dir / f"{tmp_path.name}.db")
     pool = DBPool(registry)
     db = pool.get(None)

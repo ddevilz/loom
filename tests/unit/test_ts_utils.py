@@ -8,7 +8,6 @@ from loom.indexer.languages._ts_utils import (
     walk_all,
 )
 
-
 PY_LANG = Language(ts_py.language())
 
 

@@ -48,8 +48,8 @@ def test_extract_call_context_caps_at_200_chars():
 
 
 def test_edge_metadata_carries_call_context(tmp_path):
-    from loom.indexer.languages.python import parse_python
     from loom.indexer.calls.python import trace_calls_for_file
+    from loom.indexer.languages.python import parse_python
 
     src = b"def caller():\n    result = callee(x)\n\ndef callee(x):\n    return x\n"
     m_path = tmp_path / "m.py"
