@@ -284,6 +284,14 @@ class DB:
                 self._fts5 = has_fts5(self._conn)
             return self._conn
 
+    def close(self) -> None:
+        with self._lock:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                finally:
+                    self._conn = None
+
     def get_repo_name(self) -> str:
         """Return the repo name stored in the meta table (set during init_schema)."""
         conn = self.connect()
