@@ -15,8 +15,12 @@ def test_git_ls_files_discovers_multi_module_java(tmp_path: Path) -> None:
     # Multi-module Maven layout
     (tmp_path / "module-a" / "src" / "main" / "java" / "com" / "x").mkdir(parents=True)
     (tmp_path / "module-b" / "src" / "main" / "java" / "com" / "y").mkdir(parents=True)
-    (tmp_path / "module-a" / "src" / "main" / "java" / "com" / "x" / "A.java").write_text("class A {}")
-    (tmp_path / "module-b" / "src" / "main" / "java" / "com" / "y" / "B.java").write_text("class B {}")
+    (tmp_path / "module-a" / "src" / "main" / "java" / "com" / "x" / "A.java").write_text(
+        "class A {}"
+    )
+    (tmp_path / "module-b" / "src" / "main" / "java" / "com" / "y" / "B.java").write_text(
+        "class B {}"
+    )
     (tmp_path / "module-a" / "pom.xml").write_text("<project/>")
     (tmp_path / "pom.xml").write_text("<project/>")
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)

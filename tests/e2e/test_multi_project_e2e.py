@@ -79,17 +79,13 @@ async def test_cross_project_search_via_project_arg(
         assert "fn_in_b" not in names_a
 
         # Explicit project="repo_b" routes via registry to repo_b.db
-        rb = await client.call_tool(
-            "search_code", {"query": "fn_in_b", "project": "repo_b"}
-        )
+        rb = await client.call_tool("search_code", {"query": "fn_in_b", "project": "repo_b"})
         names_b = [r["name"] for r in rb.data["data"]]
         assert "fn_in_b" in names_b
         assert "fn_in_a" not in names_b
 
         # Unknown project returns validation error
-        rx = await client.call_tool(
-            "search_code", {"query": "x", "project": "nope"}
-        )
+        rx = await client.call_tool("search_code", {"query": "x", "project": "nope"})
         assert rx.data["ok"] is False
         assert "nope" in rx.data["message"]
 

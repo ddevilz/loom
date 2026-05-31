@@ -2,21 +2,40 @@ from __future__ import annotations
 
 import re
 
-GENERIC_VERBS = frozenset({
-    "run", "do", "process", "execute", "call", "invoke", "main",
-    "init", "setup", "handle",
-})
+GENERIC_VERBS = frozenset(
+    {
+        "run",
+        "do",
+        "process",
+        "execute",
+        "call",
+        "invoke",
+        "main",
+        "init",
+        "setup",
+        "handle",
+    }
+)
 
 VERB_MAP: dict[str, str] = {
-    "get": "{obj} retrieval", "fetch": "{obj} retrieval",
-    "set": "{obj} update", "update": "{obj} update",
-    "create": "{obj} creation", "build": "{obj} building",
-    "delete": "{obj} deletion", "remove": "{obj} removal",
-    "validate": "{obj} validation", "check": "{obj} checking",
-    "parse": "{obj} parsing", "serialize": "{obj} serialization",
-    "send": "{obj} sending", "receive": "{obj} receiving",
-    "save": "{obj} persistence", "load": "{obj} loading",
-    "hash": "{obj} hashing", "encrypt": "{obj} encryption",
+    "get": "{obj} retrieval",
+    "fetch": "{obj} retrieval",
+    "set": "{obj} update",
+    "update": "{obj} update",
+    "create": "{obj} creation",
+    "build": "{obj} building",
+    "delete": "{obj} deletion",
+    "remove": "{obj} removal",
+    "validate": "{obj} validation",
+    "check": "{obj} checking",
+    "parse": "{obj} parsing",
+    "serialize": "{obj} serialization",
+    "send": "{obj} sending",
+    "receive": "{obj} receiving",
+    "save": "{obj} persistence",
+    "load": "{obj} loading",
+    "hash": "{obj} hashing",
+    "encrypt": "{obj} encryption",
     "auth": "{obj} authentication",
 }
 
@@ -94,8 +113,10 @@ def describe_edges(edges: list, nodes_by_id: dict, *, confidence_floor: float = 
         callee_mod = _module_from_path(callee.path)
         caller_mod = _module_from_path(caller.path)
         desc = describe_call_edge(
-            caller.name, callee.name,
-            callee_module=callee_mod, caller_module=caller_mod,
+            caller.name,
+            callee.name,
+            callee_module=callee_mod,
+            caller_module=caller_mod,
         )
         if desc:
             e.description = desc

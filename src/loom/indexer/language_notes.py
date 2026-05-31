@@ -13,6 +13,7 @@ from loom.indexer.languages._ts_utils import (
 
 # ---------- Python detectors ----------
 
+
 def detect_async_generator(n: TSNode, s: bytes) -> str | None:
     return "async generator" if b"async def" in s and b"yield" in s else None
 
@@ -65,11 +66,7 @@ def detect_cli(n: TSNode, s: bytes) -> str | None:
 
 
 def detect_celery(n: TSNode, s: bytes) -> str | None:
-    return (
-        "Celery task"
-        if has_decorator_prefix(n, ("celery.task", "shared_task"))
-        else None
-    )
+    return "Celery task" if has_decorator_prefix(n, ("celery.task", "shared_task")) else None
 
 
 def detect_heavy_errors(n: TSNode, s: bytes) -> str | None:
@@ -115,11 +112,7 @@ def detect_ts_generator(n: TSNode, s: bytes) -> str | None:
 
 
 def detect_ts_generic(n: TSNode, s: bytes) -> str | None:
-    return (
-        "generic function"
-        if any(c.type == "type_parameters" for c in n.children)
-        else None
-    )
+    return "generic function" if any(c.type == "type_parameters" for c in n.children) else None
 
 
 def _ts_function_name(n: TSNode) -> str:
@@ -194,27 +187,15 @@ GO_PATTERNS: list[Callable[[TSNode, bytes], str | None]] = [
 
 
 def detect_rust_async(n: TSNode, s: bytes) -> str | None:
-    return (
-        "async"
-        if any(c.type == "async" for c in n.children) or b"async fn" in s
-        else None
-    )
+    return "async" if any(c.type == "async" for c in n.children) or b"async fn" in s else None
 
 
 def detect_rust_unsafe(n: TSNode, s: bytes) -> str | None:
-    return (
-        "unsafe"
-        if any(c.type == "unsafe" for c in n.children) or b"unsafe fn" in s
-        else None
-    )
+    return "unsafe" if any(c.type == "unsafe" for c in n.children) or b"unsafe fn" in s else None
 
 
 def detect_rust_generic(n: TSNode, s: bytes) -> str | None:
-    return (
-        "generic"
-        if any(c.type == "type_parameters" for c in n.children)
-        else None
-    )
+    return "generic" if any(c.type == "type_parameters" for c in n.children) else None
 
 
 RUST_PATTERNS: list[Callable[[TSNode, bytes], str | None]] = [
@@ -245,8 +226,10 @@ KOTLIN_PATTERNS: list[Callable[[TSNode, bytes], str | None]] = [
 ]
 
 
-PATTERN_DETECTORS.update({
-    "go": GO_PATTERNS,
-    "rust": RUST_PATTERNS,
-    "kotlin": KOTLIN_PATTERNS,
-})
+PATTERN_DETECTORS.update(
+    {
+        "go": GO_PATTERNS,
+        "rust": RUST_PATTERNS,
+        "kotlin": KOTLIN_PATTERNS,
+    }
+)

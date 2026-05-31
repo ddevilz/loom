@@ -11,9 +11,7 @@ from loom.graph.projects import ProjectRegistry, UnknownProjectError
 def _make_db(path: Path, *, node_count: int = 0, last_ts: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
-    conn.execute(
-        "CREATE TABLE nodes (id TEXT PRIMARY KEY, deleted_at INTEGER, updated_at INTEGER)"
-    )
+    conn.execute("CREATE TABLE nodes (id TEXT PRIMARY KEY, deleted_at INTEGER, updated_at INTEGER)")
     for i in range(node_count):
         conn.execute(
             "INSERT INTO nodes (id, deleted_at, updated_at) VALUES (?, NULL, ?)",

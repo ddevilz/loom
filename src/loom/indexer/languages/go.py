@@ -46,8 +46,12 @@ class GoHandler(BaseLanguageHandler):
                 name = _node_text(src, name_node)
                 out.append(
                     self._build_node(
-                        child, src, path,
-                        kind=NodeKind.FUNCTION, name=name, symbol=name,
+                        child,
+                        src,
+                        path,
+                        kind=NodeKind.FUNCTION,
+                        name=name,
+                        symbol=name,
                         parent_id=parent_id,
                     )
                 )
@@ -78,8 +82,12 @@ class GoHandler(BaseLanguageHandler):
                 symbol = f"{receiver_type}.{name}" if receiver_type else name
                 out.append(
                     self._build_node(
-                        child, src, path,
-                        kind=NodeKind.METHOD, name=name, symbol=symbol,
+                        child,
+                        src,
+                        path,
+                        kind=NodeKind.METHOD,
+                        name=name,
+                        symbol=symbol,
                         parent_id=parent_id,
                     )
                 )
@@ -98,14 +106,16 @@ class GoHandler(BaseLanguageHandler):
                         continue
                     name = _node_text(src, name_node)
                     kind = (
-                        NodeKind.INTERFACE
-                        if type_node.type == "interface_type"
-                        else NodeKind.CLASS
+                        NodeKind.INTERFACE if type_node.type == "interface_type" else NodeKind.CLASS
                     )
                     out.append(
                         self._build_node(
-                            ts, src, path,
-                            kind=kind, name=name, symbol=name,
+                            ts,
+                            src,
+                            path,
+                            kind=kind,
+                            name=name,
+                            symbol=name,
                             parent_id=parent_id,
                         )
                     )

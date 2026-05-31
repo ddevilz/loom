@@ -62,8 +62,12 @@ class KotlinHandler(BaseLanguageHandler):
                 else:
                     name = _node_text(src, name_node)
                 n_obj = self._build_node(
-                    child, src, path,
-                    kind=NodeKind.CLASS, name=name, symbol=name,
+                    child,
+                    src,
+                    path,
+                    kind=NodeKind.CLASS,
+                    name=name,
+                    symbol=name,
                     parent_id=parent_id,
                 )
                 out.append(n_obj)

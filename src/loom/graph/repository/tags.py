@@ -86,7 +86,8 @@ class TagRepository:
         with self._db._lock:
             conn = self._db.connect()
             rows = conn.execute(
-                f"SELECT DISTINCT node_id FROM node_tags WHERE tag IN ({placeholders}) AND source = ?",
+                f"SELECT DISTINCT node_id FROM node_tags "
+                f"WHERE tag IN ({placeholders}) AND source = ?",
                 (*tags, source),
             ).fetchall()
             affected = [r["node_id"] for r in rows]

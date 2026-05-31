@@ -39,7 +39,9 @@ def test_clear_by_tags_rebuilds_tags_normalized(tmp_path: Path):
     tr.clear_by_tags(["hub"], source="system")
     with db._lock:
         conn = db.connect()
-        row = conn.execute("SELECT tags_normalized FROM nodes WHERE id = ?", ("function:r:y.py:g",)).fetchone()
+        row = conn.execute(
+            "SELECT tags_normalized FROM nodes WHERE id = ?", ("function:r:y.py:g",)
+        ).fetchone()
     norm = row["tags_normalized"] or ""
     assert "hub" not in norm.split()
     assert "service" in norm.split()

@@ -44,7 +44,9 @@ def _extract_call_name(src: bytes, func_node: TSNode) -> tuple[str | None, float
     return None, 0.5
 
 
-def _find_calls_in_node(src: bytes, n: TSNode, calls: list[tuple[str, float, bool, TSNode]]) -> None:
+def _find_calls_in_node(
+    src: bytes, n: TSNode, calls: list[tuple[str, float, bool, TSNode]]
+) -> None:
     """Recursively find all call nodes and extract their names."""
     if n.type == TS_PY_CALL:
         func_node = n.child_by_field_name("function")

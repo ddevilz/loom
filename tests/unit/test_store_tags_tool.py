@@ -54,6 +54,7 @@ async def test_store_tags_agent_only_in_agent_tags(tmp_path: Path):
 
     # Add a system tag manually, then add agent tag
     from loom.graph.repository.tags import TagRepository
+
     tr = TagRepository(db)
     tr.add_tags("function:r:y.py:g", ["hub"], source="system")
 

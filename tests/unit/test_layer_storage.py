@@ -50,5 +50,7 @@ def test_assign_and_store_layers_persists(tmp_path: Path):
     assert counts.get("api") == 1
     with db._lock:
         conn = db.connect()
-        row = conn.execute("SELECT layer FROM nodes WHERE id = ?", ("function:r:src/api/x.py:f",)).fetchone()
+        row = conn.execute(
+            "SELECT layer FROM nodes WHERE id = ?", ("function:r:src/api/x.py:f",)
+        ).fetchone()
     assert row["layer"] == "api"

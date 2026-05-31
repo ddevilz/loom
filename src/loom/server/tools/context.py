@@ -57,6 +57,7 @@ def register(mcp: object, pool: object, session: dict, cache: object) -> None:
         sid = session.get("id")
         if sid:
             from loom.store.node_visits import log_visit
+
             await log_visit(db, session_id=sid, node_id=nid, tool="get_context")
 
         key = cache.make_key(

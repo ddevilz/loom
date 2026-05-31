@@ -58,8 +58,12 @@ class RustHandler(BaseLanguageHandler):
                     continue
                 name = _node_text(src, name_node)
                 n_obj = self._build_node(
-                    child, src, path,
-                    kind=NodeKind.CLASS, name=name, symbol=name,
+                    child,
+                    src,
+                    path,
+                    kind=NodeKind.CLASS,
+                    name=name,
+                    symbol=name,
                     parent_id=parent_id,
                 )
                 out.append(n_obj)
@@ -70,8 +74,12 @@ class RustHandler(BaseLanguageHandler):
                     continue
                 name = _node_text(src, name_node)
                 n_obj = self._build_node(
-                    child, src, path,
-                    kind=NodeKind.INTERFACE, name=name, symbol=name,
+                    child,
+                    src,
+                    path,
+                    kind=NodeKind.INTERFACE,
+                    name=name,
+                    symbol=name,
                     parent_id=parent_id,
                 )
                 out.append(n_obj)

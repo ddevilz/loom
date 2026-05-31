@@ -47,8 +47,12 @@ class RubyHandler(BaseLanguageHandler):
                     continue
                 name = _node_text(src, name_node)
                 n_obj = self._build_node(
-                    child, src, path,
-                    kind=NodeKind.CLASS, name=name, symbol=name,
+                    child,
+                    src,
+                    path,
+                    kind=NodeKind.CLASS,
+                    name=name,
+                    symbol=name,
                     parent_id=parent_id,
                 )
                 out.append(n_obj)
@@ -61,8 +65,12 @@ class RubyHandler(BaseLanguageHandler):
                 kind = NodeKind.METHOD if inside_class else NodeKind.FUNCTION
                 out.append(
                     self._build_node(
-                        child, src, path,
-                        kind=kind, name=name, symbol=name,
+                        child,
+                        src,
+                        path,
+                        kind=kind,
+                        name=name,
+                        symbol=name,
                         parent_id=parent_id,
                     )
                 )

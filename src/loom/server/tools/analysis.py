@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 def _build_architecture_response(db) -> dict:
-    """Pure helper — assembles layer summary, gateways, dep graph, framework + violations from meta."""
+    """Assemble layer summary, gateways, dep graph, framework + violations from meta."""
     import json as _json
 
     from loom.graph.repository import Repository
@@ -61,7 +61,9 @@ def _build_architecture_response(db) -> dict:
         deps.setdefault(r["fl"], []).append(r["tl"])
 
     return {
-        "layers": {name: {"node_count": cnt, "key_nodes": gateways.get(name, [])} for name, cnt in layers},
+        "layers": {
+            name: {"node_count": cnt, "key_nodes": gateways.get(name, [])} for name, cnt in layers
+        },
         "dependencies": deps,
         "violations": violations,
         "framework_detected": framework,

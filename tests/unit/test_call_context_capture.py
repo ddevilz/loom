@@ -39,7 +39,7 @@ def test_extract_call_context_return():
 
 
 def test_extract_call_context_caps_at_200_chars():
-    src = (b"def f():\n    result = compute(" + b"x," * 100 + b")\n")
+    src = b"def f():\n    result = compute(" + b"x," * 100 + b")\n"
     root = _parse(src)
     call = _find_call(root)
     ctx = extract_call_context(call, src)

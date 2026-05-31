@@ -26,7 +26,8 @@ namespace App {
 
 def test_parse_csharp_basic():
     nodes = CSharpHandler().parse(CS_SRC, "App.cs")
-    # Use set of (name, kind) tuples to handle name collisions (e.g. class Greeter + constructor Greeter)
+    # Use set of (name, kind) tuples to handle name collisions
+    # (e.g. class Greeter + constructor Greeter)
     name_kinds = {(n.name, n.kind) for n in nodes}
     assert ("IGreeter", NodeKind.INTERFACE) in name_kinds
     assert ("Greeter", NodeKind.CLASS) in name_kinds

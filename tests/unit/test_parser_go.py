@@ -10,6 +10,7 @@ def parse_go(src: bytes, path: str) -> list:
     """Helper: parse Go source bytes directly."""
     return GoHandler().parse(src, path)
 
+
 GO_SRC = b"""package main
 
 import "fmt"

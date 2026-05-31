@@ -135,9 +135,7 @@ def compute_graph_tags(repo: Repository) -> dict[str, list[str]]:
     suppress dead-code — a tested function with zero CALLS in-degree is still unreachable
     in production code.
     """
-    repo.tags.clear_by_tags(
-        ["dead-code", "entry-point", "hub", "bridge"], source="system"
-    )
+    repo.tags.clear_by_tags(["dead-code", "entry-point", "hub", "bridge"], source="system")
 
     tags: dict[str, list[str]] = defaultdict(list)
 

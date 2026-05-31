@@ -142,7 +142,8 @@ class EdgeRepository:
         with self._db._lock:
             conn = self._db.connect()
             rows = conn.execute(
-                "SELECT from_id, to_id, kind, confidence, confidence_tier, description, metadata FROM edges"
+                "SELECT from_id, to_id, kind, confidence, confidence_tier, description, metadata "
+                "FROM edges"
             ).fetchall()
         return [self._row_to_edge(r) for r in rows]
 

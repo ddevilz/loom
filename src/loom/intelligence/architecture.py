@@ -136,20 +136,20 @@ FRAMEWORK_LAYERS: dict[str, dict[str, str]] = {
 }
 
 FRAMEWORK_DETECTION_FILES: dict[str, str] = {
-    "next.config.js":   "nextjs",
-    "next.config.ts":   "nextjs",
-    "next.config.mjs":  "nextjs",
-    "manage.py":        "django",
-    "pom.xml":          "spring",
-    "build.gradle":     "spring",
+    "next.config.js": "nextjs",
+    "next.config.ts": "nextjs",
+    "next.config.mjs": "nextjs",
+    "manage.py": "django",
+    "pom.xml": "spring",
+    "build.gradle": "spring",
     "build.gradle.kts": "spring",
-    "go.mod":           "go",
+    "go.mod": "go",
 }
 
 EXPECTED_FLOW: dict[str, set[str]] = {
-    "data":    {"utils", "config"},
+    "data": {"utils", "config"},
     "service": {"data", "utils", "config"},
-    "utils":   {"config"},
+    "utils": {"config"},
 }
 
 

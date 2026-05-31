@@ -17,7 +17,14 @@ async def test_get_architecture_returns_expected_shape(tmp_path: Path):
     assert "violations" in result
     assert "framework_detected" in result
     assert result["framework_detected"] in (
-        "generic", "django", "spring", "go", "fastapi", "flask", "nextjs", "laravel"
+        "generic",
+        "django",
+        "spring",
+        "go",
+        "fastapi",
+        "flask",
+        "nextjs",
+        "laravel",
     )
 
 
