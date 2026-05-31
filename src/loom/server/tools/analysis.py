@@ -263,6 +263,7 @@ def register(mcp: object, pool: object, session: dict, cache: object) -> None:
         db, error = _resolve(project)
         if error is not None:
             return error
+        assert db is not None
         import asyncio as _asyncio
 
         questions = await _suggest_questions(db, limit=7)
@@ -364,6 +365,7 @@ def register(mcp: object, pool: object, session: dict, cache: object) -> None:
         db, error = _resolve(project)
         if error is not None:
             return error
+        assert db is not None
         import asyncio as _asyncio
 
         cache_key = f"get_architecture:{db.path}"

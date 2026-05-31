@@ -7,6 +7,7 @@ methods. Also adds get_for_node and delete_for_path which are new query methods.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from loom.graph.db import DB
 from loom.graph.models import Edge, EdgeType
@@ -19,7 +20,7 @@ class EdgeRepository:
         self._db = db
 
     @staticmethod
-    def _row_to_edge(r: object) -> Edge:
+    def _row_to_edge(r: Any) -> Edge:
         return Edge(
             from_id=r["from_id"],
             to_id=r["to_id"],
